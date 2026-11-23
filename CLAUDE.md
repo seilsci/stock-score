@@ -62,5 +62,5 @@
 
 ## 다음에 할 것
 
-- 웹 앱 액세스 "모든 사용자"로 고친 뒤 실제 응답 확인 → main에 올리고 GitHub Pages 켜기(Settings → Pages → main / root).
+- (끝남 2026-11-23) 사이트 https://seilsci.github.io/stock-score 배포, 월봉 차트, 한국 야후 종가. 구글 서버에서 야후 동작 확인(네이버 대체 14).
 - 이후 점수 기준 듣고 정렬을 점수 순으로.
