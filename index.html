@@ -6,7 +6,7 @@
 <title>월봉 10이평 신호</title>
 <meta name="description" content="한국·미국 주식 월봉 10이평 돌파 매수·매도 대상">
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#6b7280;--line:#e5e7eb;--seg:#e9ebef;--chip:#f0f1f3;--buy:#d9363e;--sell:#2563eb}
+:root{--ma:#f59e0b;--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#6b7280;--line:#e5e7eb;--seg:#e9ebef;--chip:#f0f1f3;--buy:#d9363e;--sell:#2563eb}
 @media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1e24;--fg:#e8eaed;--mut:#9aa1ab;--line:#2a2f37;--seg:#22272e;--chip:#262b33;--buy:#ff6b6b;--sell:#6ea8ff}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif}
@@ -33,6 +33,16 @@ h1{font-size:20px;margin:0}
 .px{font-weight:600}
 .gap.b{color:var(--buy)}.gap.s{color:var(--sell)}
 .msg{padding:28px 16px;text-align:center;color:var(--mut)}
+.chartbox{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 16px 4px}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 10px 6px}
+.ch-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:0 2px 6px}
+.ch-n{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-p{white-space:nowrap;font-weight:600}
+.ch-l{display:flex;gap:12px;font-size:11.5px;color:var(--mut);padding:2px 2px 0}
+.ch-l i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
+canvas{display:block;width:100%;height:230px}
+.row{cursor:pointer}
+.row.sel{background:var(--chip)}
 footer{padding:0 16px 28px;color:var(--mut);font-size:12px;line-height:1.6}
 a{color:inherit}
 </style>
@@ -51,6 +61,11 @@ a{color:inherit}
     <button class="on b" data-s="매수" id="sb">매수 대상</button>
     <button data-s="매도" id="ss">매도 대상</button>
   </div>
+  <div class="chartbox"><div class="chart">
+    <div class="ch-h"><div class="ch-n" id="cn">&nbsp;</div><div class="ch-p" id="cp"></div></div>
+    <canvas id="cv"></canvas>
+    <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span>월봉 최근 3년 · 아래는 거래량</span></div>
+  </div></div>
   <div class="list" id="L"><div class="msg">불러오는 중…</div></div>
   <footer>
     매수: 전달 종가가 월 10이평 아래였다가 최근 종가가 10이평 위.<br>
@@ -60,7 +75,7 @@ a{color:inherit}
 </main>
 <script>
 var API = 'https://script.google.com/macros/s/AKfycbwneUZ409vUCsLONb7sBwv7zeVeo0CGtxXfMsou-bAm6OOW4q4l1RGzQ89ZKVHQ2jyS/exec';
-var DATA = null, M = 'KR', S = '매수';
+var DATA = null, M = 'KR', S = '매수', SEL = null, LIST = [];
 try { M = localStorage.getItem('m') || 'KR'; S = localStorage.getItem('s') || '매수'; } catch (e) {}
 
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -92,13 +107,107 @@ function render() {
     var g = (r['최근종가'] / r['10이평'] - 1) * 100;
     var mk = r['시장'] === 'KOSPI' ? '코스피 · ' : r['시장'] === 'KOSDAQ' ? '코스닥 · ' : '';
     var tag = r['종류'] && r['종류'] !== 'stock' ? '<span class="tag">' + esc(String(r['종류']).toUpperCase()) + '</span>' : '';
-    return '<div class="row"><div class="rk">' + (i + 1) + '</div><div>' +
+    return '<div class="row' + (SEL && SEL['코드'] === r['코드'] && SEL['시장'] === r['시장'] ? ' sel' : '') + '" data-i="' + i + '"><div class="rk">' + (i + 1) + '</div><div>' +
       '<div class="nm">' + esc(r['이름']) + '<span class="cd">' + esc(r['코드']) + '</span>' + tag + '</div>' +
       '<div class="meta">' + mk + '시총 ' + cap(r) + '</div></div>' +
       '<div class="r"><div class="px">' + px(r, kr) + '</div>' +
       '<div class="meta gap ' + cls + '">10이평 ' + (g > 0 ? '+' : '') + g.toFixed(1) + '%</div></div></div>';
   }).join('');
+  LIST = sel;
+  if (!SEL || !sel.some(function (r) { return r['코드'] === SEL['코드'] && r['시장'] === SEL['시장']; })) {
+    SEL = sel[0] || null;
+    h = h.replace('class="row" data-i="0"', 'class="row sel" data-i="0"');
+  }
   document.getElementById('L').innerHTML = h || '<div class="msg">오늘은 ' + S + ' 대상이 없어요.</div>';
+  drawChart();
+}
+
+document.getElementById('L').onclick = function (e) {
+  var row = e.target.closest('.row');
+  if (!row) return;
+  SEL = LIST[+row.dataset.i];
+  document.querySelectorAll('.row.sel').forEach(function (x) { x.classList.remove('sel'); });
+  row.classList.add('sel');
+  drawChart();
+};
+window.addEventListener('resize', function () { drawChart(); });
+
+/* ───── 월봉 차트 (캔버스) ───── */
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function fmtP(v, kr) {
+  if (kr) return Math.round(v).toLocaleString();
+  return v >= 1000 ? Math.round(v).toLocaleString() : v.toFixed(v >= 100 ? 1 : 2);
+}
+function drawChart() {
+  var cv = document.getElementById('cv'), cn = document.getElementById('cn'), cp = document.getElementById('cp');
+  var W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr;
+  var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  var r = SEL;
+  if (!r) { cn.textContent = '\u00a0'; cp.textContent = ''; return; }
+  var kr = r['시장'] !== 'US';
+  cn.innerHTML = esc(r['이름']) + ' <span class="cd">' + esc(r['코드']) + '</span>';
+  var gp = (r['최근종가'] / r['10이평'] - 1) * 100;
+  cp.innerHTML = px(r, kr) + ' <span class="meta gap ' + (r['신호'] === '매수' ? 'b' : 's') + '">10이평 ' +
+                 (gp > 0 ? '+' : '') + gp.toFixed(1) + '%</span>';
+  var d = r['차트'];
+  if (!d || !d.length) { g.fillStyle = css('--mut'); g.font = '13px sans-serif'; g.textAlign = 'center';
+    g.fillText('차트 데이터 없음', W / 2, H / 2); return; }
+  // 빈 시가·고가·저가는 종가로 메움
+  d = d.map(function (x) {
+    var c = +x[4], o = +x[1] || c;
+    return [x[0], o, Math.max(+x[2] || 0, o, c), Math.min(+x[3] || Infinity, o, c), c, +x[5] || 0];
+  });
+  // 10이평
+  var ma = d.map(function (x, i) {
+    if (i < 9) return null;
+    var t = 0; for (var k = i - 9; k <= i; k++) t += d[k][4]; return t / 10;
+  });
+  var N = Math.min(36, d.length), st = d.length - N, bars = d.slice(st), mas = ma.slice(st);
+  var lo = Infinity, hi = -Infinity, vmax = 0;
+  bars.forEach(function (x, i) {
+    lo = Math.min(lo, x[3]); hi = Math.max(hi, x[2]); vmax = Math.max(vmax, x[5]);
+    if (mas[i] != null) { lo = Math.min(lo, mas[i]); hi = Math.max(hi, mas[i]); }
+  });
+  var padR = 48, plotW = W - padR, pH = H * 0.72, vTop = pH + 14, vH = H - vTop - 14;
+  var pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
+  function y(v) { return 4 + (hi - v) / (hi - lo) * (pH - 8); }
+  var step = plotW / N, bw = Math.max(1, step * 0.62);
+  var up = css('--buy'), dn = css('--sell'), line = css('--line'), mut = css('--mut');
+  // 가로 눈금 + 가격
+  g.font = '10.5px -apple-system,sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
+  for (var t = 0; t <= 3; t++) {
+    var v = lo + (hi - lo) * (t + 0.5) / 4, yy = y(v);
+    g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(0, yy); g.lineTo(plotW, yy); g.stroke();
+    g.fillStyle = mut; g.fillText(fmtP(v, kr), plotW + 4, yy);
+  }
+  // 연도 표시(1월)
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  bars.forEach(function (x, i) {
+    if (String(x[0]).slice(4) === '01') {
+      var xx = i * step + step / 2;
+      g.strokeStyle = line; g.setLineDash([2, 3]); g.beginPath(); g.moveTo(xx, 0); g.lineTo(xx, H - 12); g.stroke(); g.setLineDash([]);
+      g.fillStyle = mut; g.fillText(String(x[0]).slice(0, 4), xx, H - 1);
+    }
+  });
+  // 캔들 + 거래량
+  bars.forEach(function (x, i) {
+    var xx = i * step + step / 2, o = x[1], h = x[2], l = x[3], c = x[4], col = c >= o ? up : dn;
+    g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(xx, y(h)); g.lineTo(xx, y(l)); g.stroke();
+    var y1 = y(Math.max(o, c)), y2 = y(Math.min(o, c));
+    g.fillRect(xx - bw / 2, y1, bw, Math.max(1, y2 - y1));
+    if (vmax > 0) { var vh = x[5] / vmax * vH; g.globalAlpha = 0.45; g.fillRect(xx - bw / 2, vTop + vH - vh, bw, vh); g.globalAlpha = 1; }
+  });
+  // 10이평 선
+  g.strokeStyle = css('--ma'); g.lineWidth = 2; g.beginPath();
+  var started = false;
+  mas.forEach(function (m, i) {
+    if (m == null) return;
+    var xx = i * step + step / 2;
+    if (!started) { g.moveTo(xx, y(m)); started = true; } else g.lineTo(xx, y(m));
+  });
+  g.stroke();
 }
 
 document.querySelectorAll('.tab').forEach(function (t) {

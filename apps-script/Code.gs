@@ -16,12 +16,13 @@ var CFG = {
   KOSDAQ_N: 200,
   US_N: 500,
   MONTHS: 10,          // 이동평균 개월 수
+  CHART_N: 45,         // 차트용으로 저장하는 개월 수(화면 36개월 + 10이평 계산용 9개월)
   BATCH: 40,           // 한 번에 동시에 받는 개수
   UA: { 'User-Agent': 'Mozilla/5.0' }
 };
 
 var HEAD = ['시장', '코드', '이름', '종류', '시총', '시총단위', '최근종가', '10이평',
-            '전달종가', '전달10이평', '신호', '기준일', '개월수'];
+            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트'];
 
 /* ───────── 처음 한 번 실행 ───────── */
 function setup() {
@@ -46,19 +47,32 @@ function setup() {
 function updateKR() {
   var t0 = Date.now();
   var list = naverTop_('KOSPI', CFG.KOSPI_N).concat(naverTop_('KOSDAQ', CFG.KOSDAQ_N));
-  var urls = list.map(function (s) {
-    return 'https://fchart.stock.naver.com/sise.nhn?symbol=' + s.code +
-           '&timeframe=month&count=' + (CFG.MONTHS + 3) + '&requestType=0';
-  });
-  var bodies = fetchAll_(urls);
-  var rows = [], fail = 0;
+  // 월봉은 야후 먼저: 15:30 정규장 종가. 네이버 가격엔 16:00~18:00 시간외 단일가가 섞임
+  var bodies = fetchAll_(list.map(function (s) {
+    return 'https://query1.finance.yahoo.com/v8/finance/chart/' + s.code + (s.market === 'KOSPI' ? '.KS' : '.KQ') +
+           '?range=' + (CFG.CHART_N + 2) + 'mo&interval=1mo';
+  }));
+  var rows = [], retry = [];
   list.forEach(function (s, i) {
-    var mon = parseNaverMonthly_(bodies[i]);
-    if (!mon) { fail++; return; }
-    rows.push(makeRow_(s, mon));
+    var mon = parseYahooMonthly_(bodies[i]);
+    if (mon && mon.length > CFG.MONTHS) rows.push(makeRow_(s, mon)); else retry.push(s);
   });
+  // 야후에 없거나 막히면 네이버 월봉
+  var fail = 0;
+  if (retry.length) {
+    var b2 = fetchAll_(retry.map(function (s) {
+      return 'https://fchart.stock.naver.com/sise.nhn?symbol=' + s.code +
+             '&timeframe=month&count=' + (CFG.CHART_N + 2) + '&requestType=0';
+    }));
+    retry.forEach(function (s, i) {
+      var mon = parseNaverMonthly_(b2[i]);
+      if (mon) rows.push(makeRow_(s, mon)); else fail++;
+    });
+  }
+  rows.sort(function (a, b) { return b[4] - a[4]; });
   writeRows_('한국', rows);
-  log_('updateKR', rows.length + '종목, 실패 ' + fail + ', ' + Math.round((Date.now() - t0) / 1000) + '초');
+  log_('updateKR', rows.length + '종목, 네이버 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
+       Math.round((Date.now() - t0) / 1000) + '초');
 }
 
 function naverTop_(market, n) {
@@ -81,10 +95,11 @@ function naverTop_(market, n) {
 // <item data="20261123|시가|고가|저가|종가|거래량" />
 function parseNaverMonthly_(xml) {
   if (!xml) return null;
-  var re = /data="(\d{8})\|[^|]*\|[^|]*\|[^|]*\|([\d.]+)\|/g, m, mon = [];
+  var re = /data="(\d{8})\|([\d.]+)\|([\d.]+)\|([\d.]+)\|([\d.]+)\|(\d*)/g, m, mon = [];
   while ((m = re.exec(xml))) {
     var d = m[1];
-    mon.push({ ym: d.slice(0, 6), date: d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6), close: +m[2] });
+    mon.push({ ym: d.slice(0, 6), date: d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6),
+               open: +m[2], high: +m[3], low: +m[4], close: +m[5], vol: +m[6] || 0 });
   }
   return mon.length ? mon : null;
 }
@@ -95,7 +110,7 @@ function updateUS() {
   var t0 = Date.now();
   var list = naverUSTop_(CFG.US_N);
   var now = new Date(), y = now.getFullYear(), m = now.getMonth() + 1;
-  var start = (y - 2) + pad_(m) + '010000', end = (y + 1) + '01010000';
+  var start = (y - 4) + pad_(m) + '010000', end = (y + 1) + '01010000';
   var bodies = fetchAll_(list.map(function (s) {
     return 'https://api.stock.naver.com/chart/foreign/item/' + encodeURIComponent(s.reuters) +
            '/month?startDateTime=' + start + '&endDateTime=' + end;
@@ -109,7 +124,7 @@ function updateUS() {
   if (retry.length) {
     var b2 = fetchAll_(retry.map(function (s) {
       return 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(s.yahoo) +
-             '?range=' + (CFG.MONTHS + 3) + 'mo&interval=1mo';
+             '?range=' + (CFG.CHART_N + 2) + 'mo&interval=1mo';
     }));
     retry.forEach(function (s, i) {
       var mon = parseYahooMonthly_(b2[i]);
@@ -153,7 +168,8 @@ function parseNaverUSMonthly_(txt, lastDate) {
     if (!d || !d.length) return null;
     return d.map(function (x, i) {
       var ld = String(x.localDate);
-      return { ym: ld.slice(0, 6), close: +x.closePrice,
+      return { ym: ld.slice(0, 6), close: +x.closePrice, open: +x.openPrice, high: +x.highPrice,
+               low: +x.lowPrice, vol: +x.accumulatedTradingVolume || 0,
                date: i === d.length - 1 && lastDate ? lastDate : ld.slice(0, 4) + '-' + ld.slice(4, 6) };
     });
   } catch (e) { return null; }
@@ -163,21 +179,30 @@ function parseYahooMonthly_(txt) {
   try {
     var r = JSON.parse(txt).chart.result[0];
     // 월봉 시각은 뉴욕 자정이라 서머타임 때 gmtoffset(겨울 기준)으로 바꾸면 전날로 밀림 → 6시간 더함
-    var off = (r.meta.gmtoffset || 0) + 6 * 3600, ts = r.timestamp, c = r.indicators.quote[0].close;
+    var off = (r.meta.gmtoffset || 0) + 6 * 3600, ts = r.timestamp, q = r.indicators.quote[0], c = q.close;
     var by = {}, keys = [];
     for (var i = 0; i < ts.length; i++) {
       if (c[i] == null) continue;
       var d = new Date((ts[i] + off) * 1000);
       var ym = '' + d.getUTCFullYear() + pad_(d.getUTCMonth() + 1);
       if (!by[ym]) keys.push(ym);
-      by[ym] = c[i];                          // 같은 달이 두 번 오면 뒤의 값(최근 종가)
+      // 같은 달이 두 번 오면(월봉 + 오늘 하루치) 합침: 종가는 뒤의 값, 시가는 앞의 값,
+      // 고가·저가는 최대·최소(0은 빈 값), 거래량은 큰 쪽
+      var o = q.open[i] || null, h = q.high[i] || null, l = q.low[i] || null, v = q.volume[i] || 0, p = by[ym];
+      by[ym] = p ? { close: c[i], open: p.open || o,
+                     high: Math.max(p.high || 0, h || 0) || null,
+                     low: Math.min(p.low || Infinity, l || Infinity) === Infinity ? null : Math.min(p.low || Infinity, l || Infinity),
+                     vol: Math.max(p.vol, v) }
+                 : { close: c[i], open: o, high: h, low: l, vol: v };
     }
     var last = new Date(((r.meta.regularMarketTime || ts[ts.length - 1]) + off) * 1000);
     var lastYm = '' + last.getUTCFullYear() + pad_(last.getUTCMonth() + 1);
-    if (r.meta.regularMarketPrice && by[lastYm] != null) by[lastYm] = r.meta.regularMarketPrice;
+    if (r.meta.regularMarketPrice && by[lastYm] != null) by[lastYm].close = r.meta.regularMarketPrice;
     var lastDate = last.getUTCFullYear() + '-' + pad_(last.getUTCMonth() + 1) + '-' + pad_(last.getUTCDate());
     return keys.map(function (k) {
-      return { ym: k, date: k === lastYm ? lastDate : k.slice(0, 4) + '-' + k.slice(4), close: by[k] };
+      var b = by[k];
+      return { ym: k, date: k === lastYm ? lastDate : k.slice(0, 4) + '-' + k.slice(4),
+               close: b.close, open: b.open, high: b.high, low: b.low, vol: b.vol };
     });
   } catch (e) { return null; }
 }
@@ -194,8 +219,15 @@ function makeRow_(s, mon) {
     else if (prev >= pma && cur < ma) sig = '매도';
     else sig = cur > ma ? '위' : '아래';
   }
+  // 매수·매도 종목만 차트용 월봉 저장: [[YYYYMM, 시가, 고가, 저가, 종가, 거래량], ...]
+  var chart = '';
+  if (sig === '매수' || sig === '매도') {
+    chart = JSON.stringify(mon.slice(-CFG.CHART_N).map(function (x) {
+      return [+x.ym, round_(x.open), round_(x.high), round_(x.low), round_(x.close), Math.round(x.vol || 0)];
+    }));
+  }
   return [s.market, s.code, s.name, s.type, s.cap, s.capUnit, round_(cur), round_(ma), n > 1 ? round_(prev) : '',
-          round_(pma), sig, mon[n - 1].date, n];
+          round_(pma), sig, mon[n - 1].date, n, chart];
 }
 
 /* ───────── 사이트용 ───────── */
@@ -206,12 +238,13 @@ function doGet(e) {
   ['한국', '미국'].forEach(function (n) {
     var sh = ss.getSheetByName(n);
     if (!sh || sh.getLastRow() < 2) return;
-    out.updated[n] = sh.getRange('O1').getValue();
+    out.updated[n] = sh.getRange('R1').getValue();
     var v = sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues();
     v.forEach(function (r) {
       if (!all && r[10] !== '매수' && r[10] !== '매도') return;
       var o = {};
       HEAD.forEach(function (h, i) { o[h] = r[i] instanceof Date ? fmtDate_(r[i]) : r[i]; });
+      if (o['차트']) { try { o['차트'] = JSON.parse(o['차트']); } catch (err) { o['차트'] = null; } }
       out.rows.push(o);
     });
   });
@@ -236,11 +269,11 @@ function writeRows_(name, rows) {
   var sh = SpreadsheetApp.getActive().getSheetByName(name) || SpreadsheetApp.getActive().insertSheet(name);
   sh.clearContents();
   // 코드(005930)·기준일·갱신 시각이 숫자·날짜로 바뀌지 않게 텍스트로
-  ['B:D', 'F:F', 'K:L', 'N1:O1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
+  ['B:D', 'F:F', 'K:L', 'N:N', 'Q1:R1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
   sh.getRange(1, 1, 1, HEAD.length).setValues([HEAD]);
   if (rows.length) sh.getRange(2, 1, rows.length, HEAD.length).setValues(rows);
-  sh.getRange('N1').setValue('갱신');
-  sh.getRange('O1').setValue(Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'));
+  sh.getRange('Q1').setValue('갱신');
+  sh.getRange('R1').setValue(Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'));
   sh.setFrozenRows(1);
 }
 
@@ -251,6 +284,6 @@ function log_(what, msg) {
 
 function num_(s) { return +String(s).replace(/[^0-9.\-]/g, '') || 0; }
 function avg_(a) { var t = 0; a.forEach(function (x) { t += x; }); return t / a.length; }
-function round_(x) { return x === '' ? '' : Math.round(x * 100) / 100; }
+function round_(x) { return x === '' || x == null ? '' : Math.round(x * 100) / 100; }
 function pad_(n) { return (n < 10 ? '0' : '') + n; }
 function fmtDate_(d) { return Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd HH:mm'); }
