@@ -6,7 +6,8 @@
  * 10이평 = 최근 10개월 월말 종가 평균(이번 달은 최근 종가를 그 달 종가로 씀)
  *
  * 대상: 코스피 시총 상위 300(ETF·ETN·우선주 포함) + 코스닥 상위 200 + 미국 상위 500
- * 데이터: 네이버 증권(한국·미국), 야후 파이낸스(미국 예비)
+ * 데이터: 한국 = 네이버 시총 순위 + 야후 월봉(15:30 종가, 없으면 네이버)
+ *         미국 = 네이버 시총 순위·월봉(막히면 야후)
  *
  * 처음 한 번: setup 실행 → 탭 만들기 + 매일 자동 갱신 예약
  */
@@ -34,7 +35,7 @@ function setup() {
   if (s1 && ss.getSheets().length > 1 && s1.getLastRow() === 0) ss.deleteSheet(s1);
 
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
-  // 한국: 장 마감(15:30) 후 네이버 종가 반영(16:30) 뒤
+  // 한국: 장 마감(15:30) 뒤
   ScriptApp.newTrigger('updateKR').timeBased().everyDays(1).atHour(17).nearMinute(5)
     .inTimezone('Asia/Seoul').create();
   // 미국: 마감(뉴욕 16:00 = 한국 05:00~06:00) 뒤
