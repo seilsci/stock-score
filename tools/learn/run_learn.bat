@@ -1,6 +1,6 @@
 @echo off
 rem stock-score: git pull + tools/learn/run.sh
-set "CMDLINE=( cd /e/GitHub/stock-score 2>/dev/null || cd /c/Users/$USERNAME/stock-score 2>/dev/null || cd ~/stock-score ) && git pull && tools/learn/run.sh; echo; echo '--- done: press Enter to close ---'; read"
+set "CMDLINE=cd /c/Users/$USERNAME/stock-score 2>/dev/null || cd /e/GitHub/stock-score 2>/dev/null || cd ~/stock-score; git pull && tools/learn/run.sh; echo; echo '--- done: press Enter to close ---'; read"
 if exist "%ProgramFiles%\Git\git-bash.exe" (
   start "" "%ProgramFiles%\Git\git-bash.exe" -c "%CMDLINE%"
   exit /b 0
