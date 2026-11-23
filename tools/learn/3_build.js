@@ -19,9 +19,13 @@ function indexInfo(y) {
 function avg(a, s, e) { let t = 0; for (let k = s; k <= e; k++) t += a[k]; return t / (e - s + 1); }
 const IDX = { KOSPI: indexInfo('^KS11'), KOSDAQ: indexInfo('^KQ11'), US: indexInfo('^GSPC') };
 
-const F = ['gap', 'slope1', 'slope3', 'cross24', 'below', 'above24', 'c_ma12', 'ma10_ma24', 'vol', 'vol3',
+// 거시 지표(2b_macro.js가 만든 data/macro.json, 없으면 빈 값)
+let MACRO = {}; try { MACRO = JSON.parse(fs.readFileSync(path.join(DATA, 'macro.json'))); } catch (e) {}
+const MF = ['cpi_yoy', 'unrate', 'unrate_chg12', 'ff', 'ff_chg12', 'y10', 'y10_chg12', 't10y2y', 'krw_chg12', 'usd_chg12', 'vix', 'hy'];
+const F0 = ['gap', 'slope1', 'slope3', 'cross24', 'below', 'above24', 'c_ma12', 'ma10_ma24', 'vol', 'vol3',
            'body', 'upwick', 'lowwick', 'range', 'ret1', 'ret3', 'ret12', 'high24', 'dd36', 'volat12',
            'idx_above', 'idx_slope', 'idx_ret12', 'us', 'etf'];
+const F = F0.concat(MF.map(k => 'm_' + k));
 const rows = [];
 let nEv = 0, ns = 0;
 for (const s of list) {
@@ -65,6 +69,8 @@ for (const s of list) {
       idx_above: ix.above, idx_slope: ix.slope, idx_ret12: ix.ret12,
       us: s.mk === 'US' ? 1 : 0, etf: s.type === 'stock' ? 0 : 1
     };
+    const mm = MACRO[ym] || {};
+    MF.forEach(k => { f['m_' + k] = mm[k] === undefined ? '' : mm[k]; });
     rows.push([s.y, ym, label, hold, exitRet === '' ? '' : exitRet.toFixed(4)].concat(F.map(k => f[k] === '' ? '' : +(+f[k]).toFixed(5))).join(','));
     nEv++;
   }

@@ -20,8 +20,9 @@ for k in 1 2 3; do
   grep -q '실패 0' $D/dl.log && break
   echo "실패한 것만 다시 받기 ($k/3)"
 done
-done_ "월봉 받기 (2/5)"
-PFROM=80 PTO=88 node 3_build.js | tee -a $LOG
+PFROM=80 PTO=81 node 2b_macro.js | tee -a $LOG || true
+done_ "월봉·거시 지표 받기 (2/5)"
+PFROM=81 PTO=88 node 3_build.js | tee -a $LOG
 done_ "매수 신호·정답·지표 (3/5)"
 PFROM=88 PTO=100 node 4_train.js | tee -a $LOG
 done_ "학습·검증 (4/5)"

@@ -95,21 +95,19 @@ function walk(cols, lam) {
   return { a: auc(sc, lab), sc, lab, rows };
 }
 const allCols = F.map((_, j) => j);
-const sets = {
-  '전체 지표': allCols,
-  '지수 빼고': allCols.filter(j => !F[j].startsWith('idx')),
-  '상위 8개': uni.slice(0, 8).map(u => u.j),
-  '상위 12개': uni.slice(0, 12).map(u => u.j)
-};
+const price = allCols.filter(j => !F[j].startsWith('m_'));
+const hasMacro = allCols.some(j => F[j].startsWith('m_') && L.some(r => Number.isFinite(r.x[j])));
+const sets = { '가격만': price, '가격 상위12': uni.filter(u => !F[u.j].startsWith('m_')).slice(0, 12).map(u => u.j) };
+if (hasMacro) { sets['가격+거시'] = allCols; sets['전체 상위16'] = uni.slice(0, 16).map(u => u.j); }
 log(`\n## 시간 순서 검증 AUC (과거로 학습 → 다음 해로 시험)`);
 let best = null, nk = 0;
 for (const [name, cols] of Object.entries(sets)) for (const lam of [1, 30]) {
-  progress('학습·검증', nk++ / 8);
+  progress('학습·검증', nk++ / (Object.keys(sets).length * 2));
   const r = walk(cols, lam);
   log(`${name.padEnd(8)} 벌점${String(lam).padStart(3)}  AUC ${r.a.toFixed(3)}  (시험 ${r.lab.length}건)`);
   if (!best || r.a > best.r.a) best = { name, cols, lam, r };
 }
-log(`→ 가장 좋은 것: ${best.name}, 벌점 ${best.lam}`);
+log(`→ 가장 좋은 것: ${best.name}, 벌점 ${best.lam}` + (hasMacro ? '' : '  (거시 지표 못 받음)'));
 
 // 점수 5구간별 실제 결과 (시험 구간)
 const R = best.r, ord = R.sc.map((s, i) => i).sort((a, b) => R.sc[b] - R.sc[a]);
