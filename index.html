@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>월봉 10이평 신호</title>
+<meta name="description" content="한국·미국 주식 월봉 10이평 돌파 매수·매도 대상">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#6b7280;--line:#e5e7eb;--seg:#e9ebef;--chip:#f0f1f3;--buy:#d9363e;--sell:#2563eb}
+@media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1e24;--fg:#e8eaed;--mut:#9aa1ab;--line:#2a2f37;--seg:#22272e;--chip:#262b33;--buy:#ff6b6b;--sell:#6ea8ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif}
+main{max-width:640px;margin:0 auto}
+header{padding:16px 16px 8px}
+h1{font-size:20px;margin:0}
+.sub{color:var(--mut);font-size:12.5px;margin-top:4px}
+.tabs{display:flex;gap:8px;padding:8px 16px}
+.tab{flex:1;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
+.tab.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.seg{display:flex;margin:8px 16px;background:var(--seg);border-radius:10px;padding:3px}
+.seg button{flex:1;padding:8px;border:0;background:none;border-radius:8px;font:inherit;font-weight:600;color:var(--mut);cursor:pointer}
+.seg button.on{background:var(--card)}
+.seg button.on.b{color:var(--buy)}.seg button.on.s{color:var(--sell)}
+.list{margin:8px 16px 16px;background:var(--card);border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.row{display:grid;grid-template-columns:28px 1fr auto;gap:8px;padding:11px 12px;border-top:1px solid var(--line);align-items:center}
+.row:first-child{border-top:0}
+.rk{color:var(--mut);font-size:13px;text-align:right}
+.nm{font-weight:600;word-break:keep-all}
+.cd{color:var(--mut);font-size:12px;font-weight:400;margin-left:4px}
+.meta{color:var(--mut);font-size:12.5px}
+.tag{font-size:11px;padding:1px 6px;border-radius:6px;background:var(--chip);color:var(--mut);margin-left:4px;font-weight:600}
+.r{text-align:right;white-space:nowrap}
+.px{font-weight:600}
+.gap.b{color:var(--buy)}.gap.s{color:var(--sell)}
+.msg{padding:28px 16px;text-align:center;color:var(--mut)}
+footer{padding:0 16px 28px;color:var(--mut);font-size:12px;line-height:1.6}
+a{color:inherit}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>월봉 10이평 돌파</h1>
+    <div class="sub" id="upd">불러오는 중…</div>
+  </header>
+  <div class="tabs">
+    <button class="tab on" data-m="KR">🇰🇷 한국</button>
+    <button class="tab" data-m="US">🇺🇸 미국</button>
+  </div>
+  <div class="seg">
+    <button class="on b" data-s="매수" id="sb">매수 대상</button>
+    <button data-s="매도" id="ss">매도 대상</button>
+  </div>
+  <div class="list" id="L"><div class="msg">불러오는 중…</div></div>
+  <footer>
+    매수: 전달 종가가 월 10이평 아래였다가 최근 종가가 10이평 위.<br>
+    매도: 전달 종가가 월 10이평 위였다가 최근 종가가 10이평 아래.<br>
+    한국 코스피 상위 300·코스닥 상위 200, 미국 상위 500 (시가총액 순). 투자 판단의 책임은 본인에게 있습니다.
+  </footer>
+</main>
+<script>
+var API = 'https://script.google.com/macros/s/AKfycbwneUZ409vUCsLONb7sBwv7zeVeo0CGtxXfMsou-bAm6OOW4q4l1RGzQ89ZKVHQ2jyS/exec';
+var DATA = null, M = 'KR', S = '매수';
+try { M = localStorage.getItem('m') || 'KR'; S = localStorage.getItem('s') || '매수'; } catch (e) {}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function cap(r) {
+  var c = +r['시총'];
+  if (r['시총단위'] === '억원') return c >= 10000 ? (c / 10000).toFixed(1) + '조' : c.toLocaleString() + '억';
+  return c >= 10000 ? (c / 10000).toFixed(2) + '조$' : c.toLocaleString() + '억$';
+}
+function px(r, kr) { return kr ? Math.round(r['최근종가']).toLocaleString() + '원' : '$' + (+r['최근종가']).toFixed(2); }
+
+function render() {
+  document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.m === M); });
+  var sb = document.getElementById('sb'), ss = document.getElementById('ss');
+  sb.className = S === '매수' ? 'on b' : ''; ss.className = S === '매도' ? 'on s' : '';
+  if (!DATA) return;
+  var kr = M === 'KR';
+  var rows = DATA.rows.filter(function (r) { return kr ? r['시장'] !== 'US' : r['시장'] === 'US'; });
+  var nb = 0, ns = 0;
+  rows.forEach(function (r) { if (r['신호'] === '매수') nb++; else if (r['신호'] === '매도') ns++; });
+  sb.textContent = '매수 대상 ' + nb; ss.textContent = '매도 대상 ' + ns;
+  var day = '';
+  rows.forEach(function (r) { if (String(r['기준일']) > day) day = String(r['기준일']); });
+  document.getElementById('upd').textContent =
+    (day ? '기준: ' + day + ' 종가' + (kr ? '' : ' (미국)') + ' · ' : '') + '매일 자동 갱신';
+  var sel = rows.filter(function (r) { return r['신호'] === S; })
+                .sort(function (a, b) { return b['시총'] - a['시총']; });
+  var cls = S === '매수' ? 'b' : 's';
+  var h = sel.map(function (r, i) {
+    var g = (r['최근종가'] / r['10이평'] - 1) * 100;
+    var mk = r['시장'] === 'KOSPI' ? '코스피 · ' : r['시장'] === 'KOSDAQ' ? '코스닥 · ' : '';
+    var tag = r['종류'] && r['종류'] !== 'stock' ? '<span class="tag">' + esc(String(r['종류']).toUpperCase()) + '</span>' : '';
+    return '<div class="row"><div class="rk">' + (i + 1) + '</div><div>' +
+      '<div class="nm">' + esc(r['이름']) + '<span class="cd">' + esc(r['코드']) + '</span>' + tag + '</div>' +
+      '<div class="meta">' + mk + '시총 ' + cap(r) + '</div></div>' +
+      '<div class="r"><div class="px">' + px(r, kr) + '</div>' +
+      '<div class="meta gap ' + cls + '">10이평 ' + (g > 0 ? '+' : '') + g.toFixed(1) + '%</div></div></div>';
+  }).join('');
+  document.getElementById('L').innerHTML = h || '<div class="msg">오늘은 ' + S + ' 대상이 없어요.</div>';
+}
+
+document.querySelectorAll('.tab').forEach(function (t) {
+  t.onclick = function () { M = t.dataset.m; try { localStorage.setItem('m', M); } catch (e) {} render(); };
+});
+document.querySelectorAll('.seg button').forEach(function (b) {
+  b.onclick = function () { S = b.dataset.s; try { localStorage.setItem('s', S); } catch (e) {} render(); };
+});
+render();
+fetch(API).then(function (r) { return r.json(); }).then(function (d) { DATA = d; render(); })
+  .catch(function () {
+    document.getElementById('upd').textContent = '데이터를 불러오지 못했어요';
+    document.getElementById('L').innerHTML = '<div class="msg">잠시 뒤 새로고침해 주세요.</div>';
+  });
+</script>
+</body>
+</html>
