@@ -49,6 +49,10 @@ for (const s of list) {
     for (let j = i + 1; j <= lastDone; j++) { if (above[j]) hold++; else { exitRet = c[j] / c[i] - 1; break; } }
     if (i + HOLD <= lastDone) label = hold >= HOLD ? 1 : 0;
     else if (exitRet !== '') label = 0;                                // 12개월 전에 이미 깨짐
+    // 수익 목표: 매도 신호 달 종가에 판 수익. 아직 보유 중이면 12개월 이상 된 것만 지금까지 수익으로
+    let tgt = '';
+    if (exitRet !== '') tgt = Math.log(1 + exitRet);
+    else if (lastDone - i >= HOLD) { exitRet = c[lastDone] / c[i] - 1; tgt = Math.log(1 + exitRet); }
     // 지표
     let cross = 0, ab = 0, below = 0;
     for (let k = i - 24; k < i; k++) { if (above[k] !== above[k - 1]) cross++; if (above[k]) ab++; }
@@ -88,11 +92,11 @@ for (const s of list) {
     f.gap_prev = c[i - 1] / ma[i - 1] - 1;
     const mm = MACRO[ym] || {};
     MF.forEach(k => { f['m_' + k] = mm[k] === undefined ? '' : mm[k]; });
-    rows.push([s.y, ym, label, hold, exitRet === '' ? '' : exitRet.toFixed(4)].concat(F.map(k => f[k] === '' ? '' : +(+f[k]).toFixed(5))).join(','));
+    rows.push([s.y, ym, label, hold, exitRet === '' ? '' : exitRet.toFixed(4), tgt === '' ? '' : tgt.toFixed(4)].concat(F.map(k => f[k] === '' ? '' : +(+f[k]).toFixed(5))).join(','));
     nEv++;
   }
 }
-fs.writeFileSync(path.join(DATA, 'events.csv'), ['y,ym,label,hold,exitret,' + F.join(',')].concat(rows).join('\n'));
-const lab = rows.filter(r => r.split(',')[2] !== ''), good = lab.filter(r => r.split(',')[2] === '1');
+fs.writeFileSync(path.join(DATA, 'events.csv'), ['y,ym,label,hold,exitret,tgt,' + F.join(',')].concat(rows).join('\n'));
+const T = rows.map(r => r.split(',')).filter(p => p[5] !== ''), win = T.filter(p => +p[5] > 0);
 progress('신호·지표 만들기', 1);
-console.log(`\n매수 신호 ${nEv}건 (정답 있는 것 ${lab.length}건, 그중 12개월 유지 ${good.length}건 = ${(good.length / lab.length * 100).toFixed(1)}%)`);
+console.log(`\n매수 신호 ${nEv}건 (수익 확정 ${T.length}건, 그중 수익 ${win.length}건 = ${(win.length / T.length * 100).toFixed(1)}%)`);

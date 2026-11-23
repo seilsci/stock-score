@@ -53,4 +53,27 @@ function solve(A, b) {
 }
 const score = (w, zx) => { let s = w[0]; zx.forEach((v, k) => s += w[k + 1] * v); return s; };
 
-module.exports = { auc, prep, z, fitLR, solve, score };
+// 릿지 회귀(닫힌 식): (X'X + lam I) w = X'y, 절편은 벌점 없음
+function fitRidge(X, y, lam = 30) {
+  const d = X[0].length + 1, A = Array.from({ length: d }, () => new Array(d).fill(0)), b = new Array(d).fill(0);
+  X.forEach((x, i) => { const xx = [1].concat(x);
+    for (let a = 0; a < d; a++) { b[a] += xx[a] * y[i]; for (let c = a; c < d; c++) A[a][c] += xx[a] * xx[c]; } });
+  for (let a = 0; a < d; a++) { for (let c = 0; c < a; c++) A[a][c] = A[c][a]; if (a) A[a][a] += lam; }
+  return solve(A, b);
+}
+function rank(a) { const o = a.map((v, i) => i).sort((x, y) => a[x] - a[y]), r = new Array(a.length);
+  for (let k = 0; k < o.length;) { let e = k; while (e + 1 < o.length && a[o[e + 1]] === a[o[k]]) e++; for (let t = k; t <= e; t++) r[o[t]] = (k + e) / 2; k = e + 1; } return r; }
+function spearman(a, b) { const ra = rank(a), rb = rank(b), n = a.length, ma = (n - 1) / 2;
+  let s = 0, sa = 0, sb = 0; for (let i = 0; i < n; i++) { s += (ra[i] - ma) * (rb[i] - ma); sa += (ra[i] - ma) ** 2; sb += (rb[i] - ma) ** 2; } return s / Math.sqrt(sa * sb); }
+// 평가: 점수 순 5구간 — 평균 수익(로그 평균을 %로), 수익 낸 비율, 중앙값
+function quint(sc, tg) {
+  const o = sc.map((s, i) => i).sort((a, b) => sc[b] - sc[a]), out = [];
+  for (let q = 0; q < 5; q++) {
+    const ids = o.slice(Math.floor(o.length * q / 5), Math.floor(o.length * (q + 1) / 5)), v = ids.map(i => tg[i]).sort((a, b) => a - b);
+    const ml = v.reduce((a, b) => a + b, 0) / v.length;
+    out.push({ n: ids.length, gmean: Math.exp(ml) - 1, mean: v.reduce((a, x) => a + Math.exp(x) - 1, 0) / v.length,
+               win: v.filter(x => x > 0).length / v.length, med: Math.exp(v[Math.floor(v.length / 2)]) - 1, ml });
+  }
+  return out;
+}
+module.exports = { auc, prep, z, fitLR, solve, score, fitRidge, spearman, quint };

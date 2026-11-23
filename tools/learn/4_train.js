@@ -1,82 +1,68 @@
-// 4·5단계: 지표 하나씩 비교 + 가중치 학습(로지스틱 회귀) + 시간 순서 검증 → data/report.txt, data/weights.json
+// 4단계: 수익 예측 학습(릿지 회귀, 목표 = 로그 수익) + 시간 순서 검증 → data/report.txt, data/weights.json
+// 수익 = 매수 신호 달 종가에 사서 매도 신호 달 종가에 판 수익(1년 넘게 보유 중이면 지금까지)
 const { fs, path, DATA, progress } = require('./common');
+const { prep, z, fitRidge, score, spearman, quint } = require('./ml');
 const lines = fs.readFileSync(path.join(DATA, 'events.csv'), 'utf8').trim().split('\n');
-const head = lines[0].split(','), F = head.slice(5);
-const all = lines.slice(1).map(l => {
-  const p = l.split(',');
-  return { y: p[0], ym: +p[1], label: p[2] === '' ? null : +p[2], hold: +p[3], ret: p[4] === '' ? null : +p[4],
-           x: p.slice(5).map(v => v === '' ? NaN : +v) };
-});
-const L = all.filter(r => r.label !== null);
-const out = [];
-const log = s => { out.push(s); if (process.env.VERBOSE) console.log(s); };
-const pct = x => (x * 100).toFixed(1) + '%';
-
-const { auc, prep, z, fitLR, solve, score } = require('./ml');
-// ── 요약
-const base = L.filter(r => r.label).length / L.length;
-log(`# 월봉 10이평 매수 신호 학습 보고서 (${new Date().toISOString().slice(0, 10)})`);
-log(`정답 있는 신호 ${L.length}건, 12개월 유지 ${pct(base)} (기준선)`);
+const F = lines[0].split(',').slice(6);
+const L = lines.slice(1).map(l => { const p = l.split(','); return p[5] === '' ? null :
+  { ym: +p[1], hold: +p[3], t: +p[5], x: p.slice(6).map(v => v === '' ? NaN : +v) }; }).filter(Boolean);
+const clipT = t => Math.max(-2, Math.min(3, t));      // 학습용: 극단값 자르기(로그 −86% ~ +1900%)
+const out = [], log = s => { out.push(s); if (process.env.VERBOSE) console.log(s); };
+const pct = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
 const yrs = [...new Set(L.map(r => Math.floor(r.ym / 100)))].sort();
-log(`기간 ${yrs[0]}~${yrs[yrs.length - 1]}`);
 
-// ── 4단계: 지표 하나씩 (AUC 0.5 = 소용없음, 멀수록 잘 가름)
-log(`\n## 지표 하나씩 (AUC, 0.5에서 멀수록 잘 가름. <0.5는 클수록 나쁨)`);
-const uni = F.map((f, j) => {
-  const rr = L.filter(r => Number.isFinite(r.x[j]));
-  return { f, j, a: auc(rr.map(r => r.x[j]), rr.map(r => r.label)) };
-}).sort((a, b) => Math.abs(b.a - 0.5) - Math.abs(a.a - 0.5));
-uni.forEach(u => log(`${u.f.padEnd(10)} ${u.a.toFixed(3)}`));
-
-// ── 5단계: 시간 순서 검증 (그해 1월 전에 정답이 확정된 신호로 학습 → 그해 신호로 시험)
 function walk(cols, lam) {
-  const sc = [], lab = [], rows = [];
+  const sc = [], tg = [];
   for (const Y of yrs) {
     if (Y < yrs[0] + 3) continue;
-    const tr = L.filter(r => r.ym + 100 + 1 <= Y * 100 + 1);      // 신호월+12개월 < 그해 1월
-    const te = L.filter(r => Math.floor(r.ym / 100) === Y);
+    const tr = L.filter(r => r.ym + 101 <= Y * 100 + 1), te = L.filter(r => Math.floor(r.ym / 100) === Y);
     if (tr.length < 500 || !te.length) continue;
-    const P = prep(tr, cols), w = fitLR(tr.map(r => z(r, P)), tr.map(r => r.label), lam);
-    te.forEach(r => { sc.push(score(w, z(r, P))); lab.push(r.label); rows.push(r); });
+    const P = prep(tr, cols), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => clipT(r.t)), lam);
+    te.forEach(r => { sc.push(score(w, z(r, P))); tg.push(r.t); });
   }
-  return { a: auc(sc, lab), sc, lab, rows };
+  const q = quint(sc, tg);
+  return { sp: spearman(sc, tg), top: q[0].ml, q, sc, tg };
 }
-const allCols = F.map((_, j) => j);
-const price = allCols.filter(j => !F[j].startsWith('m_'));
-const hasMacro = allCols.some(j => F[j].startsWith('m_') && L.some(r => Number.isFinite(r.x[j])));
+
+const all = quint(L.map(() => 0), L.map(r => r.t));
+const win = L.filter(r => r.t > 0).length / L.length, gm = Math.exp(L.reduce((a, r) => a + r.t, 0) / L.length) - 1;
+log(`# 월봉 10이평 매수 신호 — 수익 예측 학습 보고서 (${new Date().toISOString().slice(0, 10)})`);
+log(`수익 확정 신호 ${L.length}건 · 수익 낸 비율 ${(win * 100).toFixed(1)}% · 평균 수익(기하) ${pct(gm)} (기준선)`);
+log(`기간 ${yrs[0]}~${yrs[yrs.length - 1]}`);
+
+log(`\n## 지표 하나씩 (수익과 순위 상관, 0에서 멀수록 잘 가름)`);
+const uni = F.map((f, j) => { const rr = L.filter(r => Number.isFinite(r.x[j])); return { f, j, c: spearman(rr.map(r => r.x[j]), rr.map(r => r.t)) }; })
+  .sort((a, b) => Math.abs(b.c) - Math.abs(a.c));
+uni.forEach(u => log(`${u.f.padEnd(14)} ${u.c >= 0 ? '+' : ''}${u.c.toFixed(3)}`));
+
+const cols = F.map((_, j) => j), price = cols.filter(j => !F[j].startsWith('m_'));
 const sets = { '가격만': price, '가격 상위12': uni.filter(u => !F[u.j].startsWith('m_')).slice(0, 12).map(u => u.j) };
-if (hasMacro) { sets['가격+거시'] = allCols; sets['전체 상위16'] = uni.slice(0, 16).map(u => u.j); }
-log(`\n## 시간 순서 검증 AUC (과거로 학습 → 다음 해로 시험)`);
+if (cols.length > price.length) sets['가격+거시'] = cols;
+log(`\n## 시간 순서 검증 (과거로 학습 → 다음 해로 시험). 상위20% = 점수 상위 20%만 샀을 때 평균 수익(기하)`);
 let best = null, nk = 0;
-for (const [name, cols] of Object.entries(sets)) for (const lam of [1, 30]) {
+for (const [name, cs] of Object.entries(sets)) for (const lam of [10, 1000]) {
   progress('학습·검증', nk++ / (Object.keys(sets).length * 2));
-  const r = walk(cols, lam);
-  log(`${name.padEnd(8)} 벌점${String(lam).padStart(3)}  AUC ${r.a.toFixed(3)}  (시험 ${r.lab.length}건)`);
-  if (!best || r.a > best.r.a) best = { name, cols, lam, r };
+  const r = walk(cs, lam);
+  log(`${name.padEnd(8)} 벌점${String(lam).padStart(5)}  상위20% ${pct(Math.exp(r.top) - 1).padStart(7)}  순위상관 ${r.sp.toFixed(3)}`);
+  if (!best || r.top > best.r.top) best = { name, cs, lam, r };
 }
-log(`→ 가장 좋은 것: ${best.name}, 벌점 ${best.lam}` + (hasMacro ? '' : '  (거시 지표 못 받음)'));
+log(`→ 가장 좋은 것: ${best.name}, 벌점 ${best.lam}`);
 
-// 점수 5구간별 실제 결과 (시험 구간)
-const R = best.r, ord = R.sc.map((s, i) => i).sort((a, b) => R.sc[b] - R.sc[a]);
-log(`\n## 점수 구간별 실제 결과 (시험 구간, 점수 높은 순 20%씩)`);
-log(`구간   건수   12개월유지   평균보유(개월)   매도까지 수익(중앙값)`);
-for (let q = 0; q < 5; q++) {
-  const ids = ord.slice(Math.floor(ord.length * q / 5), Math.floor(ord.length * (q + 1) / 5));
-  const g = ids.filter(i => R.lab[i]).length / ids.length;
-  const hold = ids.reduce((t, i) => t + Math.min(R.rows[i].hold, 60), 0) / ids.length;
-  const rets = ids.map(i => R.rows[i].ret).filter(x => x !== null).sort((a, b) => a - b);
-  const med = rets.length ? rets[Math.floor(rets.length / 2)] : NaN;
-  log(`${q + 1}구간  ${String(ids.length).padStart(5)}   ${pct(g).padStart(8)}   ${hold.toFixed(1).padStart(10)}   ${pct(med).padStart(12)}`);
-}
+log(`\n## 점수 구간별 실제 수익 (시험 구간, 점수 높은 순 20%씩)`);
+log(`구간    건수   수익낸비율   평균(기하)   평균(산술)   중앙값`);
+best.r.q.forEach((q, k) => log(`${k + 1}구간  ${String(q.n).padStart(6)}   ${(q.win * 100).toFixed(1).padStart(6)}%   ${pct(q.gmean).padStart(8)}   ${pct(q.mean).padStart(8)}   ${pct(q.med).padStart(7)}`));
 
-// ── 최종 가중치: 정답 있는 전체로 다시 학습
-const P = prep(L, best.cols), w = fitLR(L.map(r => z(r, P)), L.map(r => r.label), best.lam);
-log(`\n## 최종 가중치 (표준화 기준, +면 갈 돌파 쪽)`);
+// 최종: 전체로 다시 학습 + 점수(0~100) 환산용 분위
+const P = prep(L, best.cs), w = fitRidge(L.map(r => z(r, P)), L.map(r => clipT(r.t)), best.lam);
+const pr = L.map(r => score(w, z(r, P))).sort((a, b) => a - b);
+const qs = Array.from({ length: 101 }, (_, k) => pr[Math.min(pr.length - 1, Math.floor(pr.length * k / 100))]);
+log(`\n## 최종 가중치 (표준화 기준, +면 수익 쪽)`);
 P.map((p, k) => ({ f: F[p.j], w: w[k + 1] })).sort((a, b) => Math.abs(b.w) - Math.abs(a.w))
-  .forEach(x => log(`${x.f.padEnd(10)} ${x.w >= 0 ? '+' : ''}${x.w.toFixed(3)}`));
+  .forEach(x => log(`${x.f.padEnd(14)} ${x.w >= 0 ? '+' : ''}${x.w.toFixed(4)}`));
 fs.writeFileSync(path.join(DATA, 'weights.json'), JSON.stringify({
-  made: new Date().toISOString(), n: L.length, base, auc: best.r.a, model: best.name, lam: best.lam,
-  b: w[0], feats: P.map((p, k) => ({ f: F[p.j], lo: p.lo, hi: p.hi, m: p.m, sd: p.sd, w: w[k + 1] }))
+  made: new Date().toISOString(), target: 'log(1+수익)', n: L.length, model: best.name, lam: best.lam,
+  top20: Math.exp(best.r.top) - 1, spearman: best.r.sp, b: w[0],
+  feats: P.map((p, k) => ({ f: F[p.j], lo: p.lo, hi: p.hi, m: p.m, sd: p.sd, w: w[k + 1] })), pct: qs
 }, null, 1));
 fs.writeFileSync(path.join(DATA, 'report.txt'), out.join('\n') + '\n');
 progress('학습·검증', 1); process.stdout.write('\n');
