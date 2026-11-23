@@ -6,7 +6,7 @@
  * 10이평 = 최근 10개월 월말 종가 평균(이번 달은 최근 종가를 그 달 종가로 씀)
  *
  * 대상: 코스피 시총 상위 300(ETF·ETN·우선주 포함) + 코스닥 상위 200 + 미국 상위 500
- * 데이터: 네이버 증권(한국), 나스닥·야후 파이낸스(미국)
+ * 데이터: 네이버 증권(한국·미국), 야후 파이낸스(미국 예비)
  *
  * 처음 한 번: setup 실행 → 탭 만들기 + 매일 자동 갱신 예약
  */
@@ -90,52 +90,73 @@ function parseNaverMonthly_(xml) {
 }
 
 /* ───────── 미국 ───────── */
+// 네이버 해외주식(나스닥·뉴욕·아멕스) 시총 순위 → 네이버 월봉(막히면 야후 월봉)
 function updateUS() {
   var t0 = Date.now();
-  var list = nasdaqTop_(CFG.US_N);
-  var urls = list.map(function (s) {
-    return 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(s.yahoo) +
-           '?range=' + (CFG.MONTHS + 3) + 'mo&interval=1mo';
-  });
-  var bodies = fetchAll_(urls);
+  var list = naverUSTop_(CFG.US_N);
+  var now = new Date(), y = now.getFullYear(), m = now.getMonth() + 1;
+  var start = (y - 2) + pad_(m) + '010000', end = (y + 1) + '01010000';
+  var bodies = fetchAll_(list.map(function (s) {
+    return 'https://api.stock.naver.com/chart/foreign/item/' + encodeURIComponent(s.reuters) +
+           '/month?startDateTime=' + start + '&endDateTime=' + end;
+  }));
   var rows = [], retry = [];
   list.forEach(function (s, i) {
-    var mon = parseYahooMonthly_(bodies[i]);
+    var mon = parseNaverUSMonthly_(bodies[i], s.date);
     if (mon) rows.push(makeRow_(s, mon)); else retry.push(s);
   });
-  // 야후가 막히면 나스닥 일봉으로 대신
   var fail = 0;
   if (retry.length) {
-    var from = Utilities.formatDate(new Date(Date.now() - 400 * 864e5), 'America/New_York', 'yyyy-MM-dd');
-    var to = Utilities.formatDate(new Date(), 'America/New_York', 'yyyy-MM-dd');
     var b2 = fetchAll_(retry.map(function (s) {
-      return 'https://api.nasdaq.com/api/quote/' + encodeURIComponent(s.code) +
-             '/historical?assetclass=stocks&fromdate=' + from + '&todate=' + to + '&limit=400';
+      return 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(s.yahoo) +
+             '?range=' + (CFG.MONTHS + 3) + 'mo&interval=1mo';
     }));
     retry.forEach(function (s, i) {
-      var mon = parseNasdaqDaily_(b2[i]);
+      var mon = parseYahooMonthly_(b2[i]);
       if (mon) rows.push(makeRow_(s, mon)); else fail++;
     });
   }
   rows.sort(function (a, b) { return b[4] - a[4]; });
   writeRows_('미국', rows);
-  log_('updateUS', rows.length + '종목, 나스닥 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
+  log_('updateUS', rows.length + '종목, 야후 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
        Math.round((Date.now() - t0) / 1000) + '초');
 }
 
-function nasdaqTop_(n) {
-  var url = 'https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=' + (n + 50) +
-            '&offset=0&sortcolumn=marketCap&sortorder=desc';
-  var d = JSON.parse(UrlFetchApp.fetch(url, { headers: CFG.UA }).getContentText());
-  var out = [];
-  d.data.table.rows.forEach(function (x) {
-    var cap = num_(x.marketCap);
-    if (out.length < n && cap > 0) out.push({
-      market: 'US', code: x.symbol, yahoo: x.symbol.replace('/', '-'), name: x.name,
-      type: 'stock', cap: Math.round(cap / 1e8), capUnit: '억달러'
+function naverUSTop_(n) {
+  var urls = [];
+  [['NASDAQ', 5], ['NYSE', 5], ['AMEX', 1]].forEach(function (e) {
+    for (var p = 1; p <= e[1]; p++)
+      urls.push('https://api.stock.naver.com/stock/exchange/' + e[0] + '/marketValue?page=' + p + '&pageSize=100');
+  });
+  var all = [];
+  fetchAll_(urls).forEach(function (txt) {
+    if (!txt) return;
+    (JSON.parse(txt).stocks || []).forEach(function (x) {
+      var cap = num_(x.marketValue);                       // 단위: 천 달러
+      if (cap > 0) all.push({
+        market: 'US', code: x.symbolCode, reuters: x.reutersCode,
+        yahoo: String(x.symbolCode).replace(/\s+/g, '-'),
+        name: x.stockName, type: x.stockEndType || 'stock',
+        cap: Math.round(cap / 1e5), capUnit: '억달러',
+        date: String(x.localTradedAt || '').slice(0, 10)
+      });
     });
   });
-  return out;
+  all.sort(function (a, b) { return b.cap - a.cap; });
+  return all.slice(0, n);
+}
+
+// [{localDate:"20261101", closePrice:342.56, ...}] — 이번 달 봉 = 최근 종가
+function parseNaverUSMonthly_(txt, lastDate) {
+  try {
+    var d = JSON.parse(txt);
+    if (!d || !d.length) return null;
+    return d.map(function (x, i) {
+      var ld = String(x.localDate);
+      return { ym: ld.slice(0, 6), close: +x.closePrice,
+               date: i === d.length - 1 && lastDate ? lastDate : ld.slice(0, 4) + '-' + ld.slice(4, 6) };
+    });
+  } catch (e) { return null; }
 }
 
 function parseYahooMonthly_(txt) {
@@ -158,20 +179,6 @@ function parseYahooMonthly_(txt) {
     return keys.map(function (k) {
       return { ym: k, date: k === lastYm ? lastDate : k.slice(0, 4) + '-' + k.slice(4), close: by[k] };
     });
-  } catch (e) { return null; }
-}
-
-function parseNasdaqDaily_(txt) {
-  try {
-    var rows = JSON.parse(txt).data.tradesTable.rows;   // 최신이 먼저
-    var by = {}, keys = [];
-    for (var i = rows.length - 1; i >= 0; i--) {
-      var p = rows[i].date.split('/');                     // MM/DD/YYYY
-      var ym = p[2] + p[0];
-      if (!by[ym]) keys.push(ym);
-      by[ym] = { close: num_(rows[i].close), date: p[2] + '-' + p[0] + '-' + p[1] };
-    }
-    return keys.map(function (k) { return { ym: k, date: by[k].date, close: by[k].close }; });
   } catch (e) { return null; }
 }
 

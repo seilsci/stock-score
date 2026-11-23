@@ -32,9 +32,10 @@
 - `apps-script/Code.gs`: 시트에 붙여 쓰는 Apps Script(저장소 사본이 원본). 사용자에게는 풀코드로 줌.
   - `setup()` 탭(한국·미국·로그) 만들기 + 매일 자동 갱신 예약(한국 17:05, 미국 07:05 KST)
   - `updateKR()` 네이버 시총 순위(코스피 300·코스닥 200, ETF·ETN·우선주 포함) → 네이버 월봉 → 신호
-  - `updateUS()` 나스닥 스크리너 시총 상위 500(보통주만, ETF 없음) → 야후 월봉(실패 시 나스닥 일봉) → 신호
+  - `updateUS()` 네이버 해외주식 시총 순위(나스닥·뉴욕·아멕스 합쳐 상위 500, 한국어 이름, ETF 없음) → 네이버 월봉(실패 시 야후 월봉) → 신호
   - `doGet` 사이트용 JSON(매수·매도만, `?all=1`이면 전체)
-  - 실측: 한국 500종목 약 40초, 미국 500종목 약 25초.
+  - 실측: 한국 500종목 약 40초, 미국 500종목 약 30초.
+  - **나스닥 API(api.nasdaq.com)는 구글 서버에서 응답 없이 멈춤 → 6분 제한 초과(2026-11-23 실제 발생).** 쓰지 말 것.
 - **구글 시트** "stock-score"(사용자 드라이브. 공유 링크·ID는 공개 저장소에 적지 않음): 탭 `한국`, `미국`(열: 시장·코드·이름·종류·시총·시총단위·최근종가·10이평·전달종가·전달10이평·신호(매수/매도/위/아래)·기준일·개월수, O1=갱신 시각), `로그`.
 - **사이트(GitHub Pages)**: doGet JSON을 받아 매수·매도 목록 표시.
 
@@ -44,11 +45,11 @@
 |---|---|
 | 한국 시총 순위 | m.stock.naver.com/api/stocks/marketValue/KOSPI?page=1&pageSize=100 (marketValue 단위 억원, stockEndType stock/etf/etn) |
 | 한국 월봉 | fchart.stock.naver.com/sise.nhn?symbol=005930&timeframe=month&count=13&requestType=0 (EUC-KR XML, 이번 달 봉 = 최근 거래일) |
-| 미국 시총 순위 | api.nasdaq.com/api/screener/stocks?tableonly=true&limit=550&sortcolumn=marketCap&sortorder=desc (BRK/B → 야후 BRK-B) |
-| 미국 월봉 | query1.finance.yahoo.com/v8/finance/chart/AAPL?range=13mo&interval=1mo (이번 달이 두 번 나올 수 있음 → 달별 마지막 값. 봉 시각은 gmtoffset+6시간으로 달 판정) |
-| 미국 예비 | api.nasdaq.com/api/quote/AAPL/historical?assetclass=stocks&fromdate=..&todate=..&limit=400 (야후와 50종목 비교 일치) |
+| 미국 시총 순위 | api.stock.naver.com/stock/exchange/NASDAQ/marketValue?page=1&pageSize=100 (NYSE·AMEX도 같은 형식. marketValue 단위 천 달러, symbolCode·reutersCode(AAPL.O, BRKb)·stockName 한국어, localTradedAt) |
+| 미국 월봉 | api.stock.naver.com/chart/foreign/item/AAPL.O/month?startDateTime=202411010000&endDateTime=202701010000 (배열, 이번 달 봉 localDate=YYYYMM01에 최근 종가. 야후와 50종목 중 47 일치, 차이는 분할·분사 보정과 신규 상장) |
+| 미국 예비 | query1.finance.yahoo.com/v8/finance/chart/AAPL?range=13mo&interval=1mo (이번 달이 두 번 나올 수 있음 → 달별 마지막 값. 봉 시각은 gmtoffset+6시간으로 달 판정. 심볼 공백→-, BRK B→BRK-B) |
 
-- stooq는 브라우저 확인 화면이 떠서 못 씀.
+- stooq는 브라우저 확인 화면이 떠서 못 씀. 나스닥 API는 위 이유로 뺌.
 - 클라우드 개발 환경 "stock-score"에 위 호스트가 열려 있음. 로컬 검증은 Apps Script 함수를 흉내 내는 node 장치로 Code.gs를 그대로 돌려 봄.
 
 ## 점수 기준
