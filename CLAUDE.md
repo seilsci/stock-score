@@ -19,12 +19,37 @@
 - Apps Script는 수정 후 **배포 → 배포 관리 → 연필(수정) → 새 버전**으로 배포해야 웹 앱 URL이 유지됨. "새 배포"를 만들면 URL이 바뀜.
 - 개인정보(이메일 등)·API 키는 저장소·사이트 코드에 넣지 않음. 키는 Apps Script의 스크립트 속성에만.
 
-## 구조 (계획)
+## 메인 알고리즘 — 월봉 10이평 돌파 (출처: 사용자가 준 차트 강의 영상)
 
-- **Apps Script**: 정해진 시각에 공개 데이터를 받아 시트에 저장, doGet으로 사이트에 값 제공.
-- **구글 시트** "stock-score"(사용자 드라이브, 지금은 빈 `시트1`만 있음. 공유 링크·ID는 공개 저장소에 적지 않음): `종목`(목록), `데이터`(받아 온 숫자), `점수`(계산 결과) — 기준이 정해지면 바뀔 수 있음.
-- **사이트(GitHub Pages)**: 시트 값을 받아 점수·순위 표시.
-- 대상: 한국·미국 둘 다. 데이터는 무료 공개 데이터 우선(미국 SEC EDGAR, 한국 DART 등 — 실제 동작 확인 전), 없으면 시트에 직접 입력.
+- 10이평 = 최근 10개월 월말 종가 평균. 이번 달은 **가장 최근 거래일 종가**를 그 달 종가로 씀(매일 갱신).
+- **매수 대상**: 전달 종가 ≤ 전달 10이평 그리고 최근 종가 > 이번 달 10이평.
+- **매도 대상**: 전달 종가 ≥ 전달 10이평 그리고 최근 종가 < 이번 달 10이평.
+- 예: 11월 23일이면 10월 말 기준 아래 → 11/23 종가 위 = 매수. 11월 1일 장 마감 뒤면 1일 종가로 판단.
+- 1차 화면: 매수·매도 대상을 각각 띄우고 **시가총액 큰 순** 정렬. 점수는 나중에(사용자가 기준 설명 예정).
+
+## 구조
+
+- `apps-script/Code.gs`: 시트에 붙여 쓰는 Apps Script(저장소 사본이 원본). 사용자에게는 풀코드로 줌.
+  - `setup()` 탭(한국·미국·로그) 만들기 + 매일 자동 갱신 예약(한국 17:05, 미국 07:05 KST)
+  - `updateKR()` 네이버 시총 순위(코스피 300·코스닥 200, ETF·ETN·우선주 포함) → 네이버 월봉 → 신호
+  - `updateUS()` 나스닥 스크리너 시총 상위 500(보통주만, ETF 없음) → 야후 월봉(실패 시 나스닥 일봉) → 신호
+  - `doGet` 사이트용 JSON(매수·매도만, `?all=1`이면 전체)
+  - 실측: 한국 500종목 약 40초, 미국 500종목 약 25초.
+- **구글 시트** "stock-score"(사용자 드라이브. 공유 링크·ID는 공개 저장소에 적지 않음): 탭 `한국`, `미국`(열: 시장·코드·이름·종류·시총·시총단위·최근종가·10이평·전달종가·전달10이평·신호(매수/매도/위/아래)·기준일·개월수, O1=갱신 시각), `로그`.
+- **사이트(GitHub Pages)**: doGet JSON을 받아 매수·매도 목록 표시.
+
+## 데이터 출처 (모두 무료, 키 없음, 2026-11 동작 확인)
+
+| 용도 | 주소 |
+|---|---|
+| 한국 시총 순위 | m.stock.naver.com/api/stocks/marketValue/KOSPI?page=1&pageSize=100 (marketValue 단위 억원, stockEndType stock/etf/etn) |
+| 한국 월봉 | fchart.stock.naver.com/sise.nhn?symbol=005930&timeframe=month&count=13&requestType=0 (EUC-KR XML, 이번 달 봉 = 최근 거래일) |
+| 미국 시총 순위 | api.nasdaq.com/api/screener/stocks?tableonly=true&limit=550&sortcolumn=marketCap&sortorder=desc (BRK/B → 야후 BRK-B) |
+| 미국 월봉 | query1.finance.yahoo.com/v8/finance/chart/AAPL?range=13mo&interval=1mo (이번 달이 두 번 나올 수 있음 → 달별 마지막 값. 봉 시각은 gmtoffset+6시간으로 달 판정) |
+| 미국 예비 | api.nasdaq.com/api/quote/AAPL/historical?assetclass=stocks&fromdate=..&todate=..&limit=400 (야후와 50종목 비교 일치) |
+
+- stooq는 브라우저 확인 화면이 떠서 못 씀.
+- 클라우드 개발 환경 "stock-score"에 위 호스트가 열려 있음. 로컬 검증은 Apps Script 함수를 흉내 내는 node 장치로 Code.gs를 그대로 돌려 봄.
 
 ## 점수 기준
 
@@ -32,4 +57,5 @@
 
 ## 다음에 할 것
 
-- 점수 기준 듣기 → 필요한 데이터·출처 확정 → 시트·Apps Script → 사이트.
+- 사이트 화면(미리보기 이미지 먼저 확인) → 웹 앱 URL 연결 → GitHub Pages 켜기.
+- 이후 점수 기준 듣고 정렬을 점수 순으로.
