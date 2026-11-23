@@ -228,6 +228,8 @@ function fetchAll_(urls) {
 function writeRows_(name, rows) {
   var sh = SpreadsheetApp.getActive().getSheetByName(name) || SpreadsheetApp.getActive().insertSheet(name);
   sh.clearContents();
+  // 코드(005930)·기준일·갱신 시각이 숫자·날짜로 바뀌지 않게 텍스트로
+  ['B:D', 'F:F', 'K:L', 'N1:O1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
   sh.getRange(1, 1, 1, HEAD.length).setValues([HEAD]);
   if (rows.length) sh.getRange(2, 1, rows.length, HEAD.length).setValues(rows);
   sh.getRange('N1').setValue('갱신');
