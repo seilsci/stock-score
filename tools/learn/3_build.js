@@ -24,7 +24,9 @@ let MACRO = {}; try { MACRO = JSON.parse(fs.readFileSync(path.join(DATA, 'macro.
 const MF = ['cpi_yoy', 'unrate', 'unrate_chg12', 'ff', 'ff_chg12', 'y10', 'y10_chg12', 't10y2y', 'krw_chg12', 'usd_chg12', 'vix', 'hy'];
 const F0 = ['gap', 'slope1', 'slope3', 'cross24', 'below', 'above24', 'c_ma12', 'ma10_ma24', 'vol', 'vol3',
            'body', 'upwick', 'lowwick', 'range', 'ret1', 'ret3', 'ret12', 'high24', 'dd36', 'volat12',
-           'idx_above', 'idx_slope', 'idx_ret12', 'us', 'etf'];
+           'idx_above', 'idx_slope', 'idx_ret12', 'us', 'etf',
+           // 2차 추가 지표
+           'turn', 'up6', 'slope6', 'c_ma60', 'hi12_break', 'vol_max36', 'prev_fail', 'ma_up6', 'close_pos', 'gap_prev'];
 const F = F0.concat(MF.map(k => 'm_' + k));
 const rows = [];
 let nEv = 0, ns = 0;
@@ -69,6 +71,21 @@ for (const s of list) {
       idx_above: ix.above, idx_slope: ix.slope, idx_ret12: ix.ret12,
       us: s.mk === 'US' ? 1 : 0, etf: s.type === 'stock' ? 0 : 1
     };
+    // 2차 추가 지표
+    const vv = b.map(x => x[5]);
+    f.turn = Math.log10(avg(vv, i - 12, i - 1) * c[i] + 1);                  // 거래대금 크기(종목 규모 대신)
+    let up = 0; for (let k = i - 5; k <= i; k++) if (c[k] > c[k - 1]) up++; f.up6 = up;
+    f.slope6 = ma[i] / ma[i - 6] - 1;
+    f.c_ma60 = i >= 59 ? c[i] / avg(c, i - 59, i) - 1 : '';
+    f.hi12_break = c[i] >= Math.max(...b.slice(i - 12, i).map(x => x[2])) ? 1 : 0;   // 12개월 신고가
+    f.vol_max36 = v / (Math.max(...vv.slice(Math.max(0, i - 36), i)) || 1);
+    let pf = 0;                                                              // 최근 36개월 돌파 실패(3개월 안에 깨짐) 횟수
+    for (let k = Math.max(11, i - 36); k < i - 1; k++)
+      if (c[k - 1] <= ma[k - 1] && c[k] > ma[k]) { for (let j = k + 1; j <= Math.min(k + 3, i - 1); j++) if (!above[j]) { pf++; break; } }
+    f.prev_fail = pf;
+    let mu = 0; for (let k = i - 5; k <= i; k++) if (ma[k] > ma[k - 1]) mu++; f.ma_up6 = mu;
+    f.close_pos = (c[i] - l) / hl;
+    f.gap_prev = c[i - 1] / ma[i - 1] - 1;
     const mm = MACRO[ym] || {};
     MF.forEach(k => { f['m_' + k] = mm[k] === undefined ? '' : mm[k]; });
     rows.push([s.y, ym, label, hold, exitRet === '' ? '' : exitRet.toFixed(4)].concat(F.map(k => f[k] === '' ? '' : +(+f[k]).toFixed(5))).join(','));
