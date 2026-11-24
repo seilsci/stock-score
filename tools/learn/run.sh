@@ -46,6 +46,7 @@ PFROM=$B6 PTO=$B7 node 6_check.js | tee -a $LOG
 done_ "타이밍·종목 점검 (6/8)"; mark check
 PFROM=$B7 PTO=100 node 7_backtest.js | tee -a $LOG
 done_ "월 100만원 적립 시뮬레이션 (7/8)"; mark backtest
+node 10_traits.js > /dev/null 2>&1 || echo "이긴·진 종목 공통점 분석(10_traits.js)은 건너뜀"      # → data/traits.txt (가격 지표 + 미국 재무 지표)
 mv $D/steptimes.new $D/steptimes.txt      # 다음 실행의 진행률 계산에 씀
 echo; cat $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt; cat $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt >> $LOG
 echo; say "100% 완료 · 보고서: tools/learn/data/report.txt"
@@ -54,7 +55,7 @@ echo; say "100% 완료 · 보고서: tools/learn/data/report.txt"
 if [ -n "$LIMIT" ]; then say "시험 실행(LIMIT)이라 올리지 않아요."; exit 0; fi
 if [ $YES = 0 ]; then A=n; else A=y; fi        # 묻지 않음: 기본은 올림(--no-push면 안 올림)
 if [ "$A" = "y" ] || [ "$A" = "Y" ]; then
-  mkdir -p result; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; [ "$SCORE_MODEL" = gbm ] && [ -f $D/gbm.json ] && cp $D/gbm.json result/; for f in trades.json bars.json ledger.json; do [ -f $D/$f ] && cp $D/$f result/ || true; done
+  mkdir -p result; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; [ "$SCORE_MODEL" = gbm ] && [ -f $D/gbm.json ] && cp $D/gbm.json result/; for f in trades.json bars.json ledger.json traits.txt; do [ -f $D/$f ] && cp $D/$f result/ || true; done
   git -c core.safecrlf=false add result
   git commit -q -m "학습 결과: 월봉 10이평 매수 신호 가중치 ($(date '+%Y-%m-%d'))" && git pull --rebase --autostash -q && git push -q && say "■ 올림 끝 (8/8). Claude에게 '올렸어'라고 알려 주세요."
 else

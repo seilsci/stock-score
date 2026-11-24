@@ -931,7 +931,89 @@ if (process.env.STAGE3 !== '0') {
   progress('3단계 실험', 1); process.stdout.write('\n');
   const rr = FD.paired.fd; S3.ref = { med: quant(rr, 0.5), p90: quant(rr, 0.9) };
 }
+// ── 걸어가며 설정 고르기(STAGE4=0이면 건너뜀): "A4 tp2x트레일 금리유예2달"은 전체 기간을 보고 고른 설정이라 그 시점의 사람은 알 수 없었음.
+//    후보 설정을 모두 돌려 연도별 수익을 구한 뒤, 해마다 "그 전해까지의 성과만"으로 설정을 골라 그해 수익을 이어 붙인 값 = 현실에서 얻을 수 있는 성과.
+//    근사: 설정을 바꾸면 실제로는 보유·현금이 달라지지만, 각 설정이 자기 경로로 계속 달렸을 때의 연도별 수익을 이어 붙임. 점수 순위·첫날 체결·정수 주문·보유 제외는 모두 같게 둠.
+const WF = { cfgs: [], res: null };
+if (process.env.STAGE4 !== '0') {
+  const NS = [2, 3, 4, 6, 10], TPS = [0, 1.5, 2, 3];
+  const SELLS = [{ g: 0, r: false, n: '이탈 즉시' }, { g: 2, r: true, n: '유예2+금리' }, { g: 2, r: false, n: '유예2' }, { g: 3, r: true, n: '유예3+금리' }, { g: 3, r: false, n: '유예3' }];
+  let ci = 0; const total = NS.length * TPS.length * SELLS.length;
+  NS.forEach(N => TPS.forEach(tp => SELLS.forEach(sl => {
+    progress('설정 걸어가며 고르기', ci++ / total);
+    const opt = { lotSize: true, lotAll: true, fill: true, cand: cmpTopL, firstDay: true };
+    if (tp) opt.tpTrail = tp; if (sl.g) { opt.grace = sl.g; opt.graceRate = sl.r; }
+    const sm = summ(simulate(ym => cmpTopL(ym).slice(0, N), N, C1, opt));
+    WF.cfgs.push({ N, tp, sl, name: `N${N} · ${tp ? 'tp' + tp + 'x' : '익절없음'} · ${sl.n}`, yearly: sm.yearly, cagr: sm.cagr });
+  })));
+  progress('설정 걸어가며 고르기', 1); process.stdout.write('\n');
+  const Ys = YEARS_ALL, first = 3;                                       // 고를 때 최소 3년치 과거가 있어야 함
+  const gm = (c, ys) => ys.length ? Math.pow(ys.reduce((p, y) => p * (1 + (c.yearly[y] ?? 0)), 1), 1 / ys.length) - 1 : -9;
+  const CRIT = {
+    '확장 연평균(과거 전부)': (c, ys) => gm(c, ys),
+    '최근 5년 연평균': (c, ys) => gm(c, ys.slice(-5)),
+    '평균 − 0.5×표준편차(과거 전부)': (c, ys) => { const v = ys.map(y => c.yearly[y] ?? 0), m = v.reduce((a, b) => a + b, 0) / v.length, sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length); return m - 0.5 * sd; }
+  };
+  const oosYears = Ys.slice(first);
+  const find = (N, tp, g, r) => WF.cfgs.find(c => c.N === N && c.tp === tp && c.sl.g === g && c.sl.r === r);
+  const fixed = find(4, 2, 2, true);
+  WF.res = { oosYears, fixed, crit: {} };
+  Object.entries(CRIT).forEach(([cn, fn]) => {
+    const hist = []; let prod = 1;
+    oosYears.forEach(Y => {
+      const past = Ys.filter(y => y < Y);
+      let best = null; WF.cfgs.forEach(c => { const v = fn(c, past); if (!best || v > best.v) best = { c, v }; });
+      const r = best.c.yearly[Y] ?? 0; prod *= 1 + r; hist.push({ Y, name: best.c.name, r, pastScore: best.v });
+    });
+    WF.res.crit[cn] = { cagr: Math.pow(prod, 1 / oosYears.length) - 1, hist, distinct: new Set(hist.map(h => h.name)).size, changes: hist.filter((h, i) => i > 0 && h.name !== hist[i - 1].name).length };
+  });
+  WF.res.fixedCagr = gm(fixed, oosYears);
+  WF.res.avgCfg = WF.cfgs.reduce((a, c) => a + gm(c, oosYears), 0) / WF.cfgs.length;
+  WF.res.best = WF.cfgs.reduce((b, c) => (!b || gm(c, oosYears) > gm(b, oosYears)) ? c : b, null);
+  WF.res.sorted = [...WF.cfgs].sort((a, b) => gm(b, oosYears) - gm(a, oosYears));
+  WF.gm = gm;
+}
 // ── 점수 효과 보강 보고
+// ── 걸어가며 설정 고르기 보고
+if (WF.res) {
+  const R0 = WF.res, pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', gm = WF.gm, early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019);
+  log(''); log(`## 설정을 해마다 "그 전까지의 성과"로 고르면 (현실에서 가능한 방법). 고르는 해: ${R0.oosYears[0]}~${R0.oosYears[R0.oosYears.length - 1]} (최소 3년 과거 필요)`);
+  log(`후보 ${WF.cfgs.length}가지 = 종목 수 N 2·3·4·6·10 × 익절 트레일 없음·1.5·2·3배 × 매도(이탈 즉시·유예2·유예3, 금리 규칙 있음/없음). 점수 상위 N, 첫날 체결, 정수 주문, 보유 종목 제외, 월 100만원.`);
+  log('방법                                         연평균(같은 기간)   고른 설정 수   바꾼 횟수');
+  Object.entries(R0.crit).forEach(([cn, r]) => log(`걸어가며 고르기 · ${cn.padEnd(30)} ${pc1(r.cagr).padStart(8)}        ${String(r.distinct).padStart(4)}          ${String(r.changes).padStart(4)}`));
+  log(`지금 쓰는 고정 설정 (${R0.fixed.name})                  ${pc1(R0.fixedCagr).padStart(8)}   ← 전체 기간을 보고 고른 설정이라 사후적`);
+  log(`후보 전체 평균(아무 설정이나 골랐을 때)             ${pc1(R0.avgCfg).padStart(8)}`);
+  log(`사후 최고 (${R0.best.name})                       ${pc1(gm(R0.best, R0.oosYears)).padStart(8)}   ← 현실에서는 알 수 없음`);
+  const k0 = Object.keys(R0.crit)[0];
+  log(`\n해마다 고른 설정과 그해 실제 수익 (${k0})`);
+  R0.crit[k0].hist.forEach(h => log(`  ${h.Y}  ${h.name.padEnd(34)} 그해 ${pc1(h.r).padStart(8)}   (과거 점수 ${pc1(h.pastScore)})`));
+  log('\n후보 중 같은 기간 연평균 상위 8 / 하위 5');
+  R0.sorted.slice(0, 8).forEach(c => log(`  ${c.name.padEnd(36)} ${pc1(gm(c, R0.oosYears)).padStart(8)}  (앞쪽 ${pc1(gm(c, early.filter(y => R0.oosYears.includes(y)))).padStart(7)} · 뒤쪽 ${pc1(gm(c, late)).padStart(7)})`));
+  R0.sorted.slice(-5).forEach(c => log(`  ${c.name.padEnd(36)} ${pc1(gm(c, R0.oosYears)).padStart(8)}`));
+  // 요소별 효과: 한 요소를 바꿀 때 나머지는 모든 조합으로 평균(같은 조합끼리 짝지어 뺀 값)
+  log('\n요소별 효과 (나머지 요소는 모든 조합으로 맞춘 짝끼리 비교, 같은 기간 연평균 차이 %p · 앞쪽/뒤쪽 · 이긴 짝 비율)');
+  const grp = (label, keyFn, baseKey, others) => {
+    const keys = [...new Set(WF.cfgs.map(keyFn))];
+    keys.filter(k => k !== baseKey).forEach(k => {
+      const d = [], de = [], dl = [];
+      WF.cfgs.filter(c => keyFn(c) === k).forEach(c => {
+        const b = WF.cfgs.find(x => keyFn(x) === baseKey && others(x) === others(c)); if (!b) return;
+        d.push(gm(c, R0.oosYears) - gm(b, R0.oosYears)); de.push(gm(c, early.filter(y => R0.oosYears.includes(y))) - gm(b, early.filter(y => R0.oosYears.includes(y)))); dl.push(gm(c, late) - gm(b, late));
+      });
+      const av = a => a.reduce((x, y) => x + y, 0) / a.length;
+      log(`  ${label} ${String(k).padEnd(12)} − ${String(baseKey).padEnd(10)} ${(av(d) * 100).toFixed(1).padStart(6)}%p   (${(av(de) * 100).toFixed(1)} / ${(av(dl) * 100).toFixed(1)})   이긴 짝 ${(d.filter(v => v > 0).length / d.length * 100).toFixed(0)}%`);
+    });
+  };
+  grp('익절 트레일', c => c.tp ? c.tp + 'x' : '없음', '없음', c => c.N + '|' + c.sl.n);
+  grp('매도 방식  ', c => c.sl.n, '이탈 즉시', c => c.N + '|' + c.tp);
+  const rateNo = c => c.sl.g ? c.sl.g : 0;
+  log('  (금리 규칙) 유예2: 금리 있음 − 없음 / 유예3: 금리 있음 − 없음');
+  [2, 3].forEach(g => { const d = []; WF.cfgs.filter(c => c.sl.g === g && c.sl.r).forEach(c => { const b = find2(c, g); if (b) d.push(gm(c, R0.oosYears) - gm(b, R0.oosYears)); }); log(`    유예${g}: ${(d.reduce((a, b) => a + b, 0) / d.length * 100).toFixed(1)}%p  이긴 짝 ${(d.filter(v => v > 0).length / d.length * 100).toFixed(0)}%`); });
+  function find2(c, g) { return WF.cfgs.find(x => x.N === c.N && x.tp === c.tp && x.sl.g === g && !x.sl.r); }
+  const byN = [2, 3, 4, 6, 10].map(N => { const a = WF.cfgs.filter(c => c.N === N).map(c => gm(c, R0.oosYears)); return `N${N} ${pc1(a.reduce((x, y) => x + y, 0) / a.length)}`; });
+  log('  종목 수별 후보 평균 연평균: ' + byN.join(' · '));
+  log('※ 해석: "걸어가며 고르기"가 "고정 설정"보다 낮으면 지금 설정의 성과는 사후적으로 좋아 보인 것. 요소별 효과가 앞쪽·뒤쪽에서 같은 방향이고 이긴 짝 비율이 높을 때만 그 요소를 믿을 것.');
+}
 // ── 3단계 보고
 if (S3.rows.length) {
   const o0 = S3.rows[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', f2 = x => Number.isFinite(x) ? (x >= 0 ? '+' : '') + x.toFixed(3) : '   -  ';
