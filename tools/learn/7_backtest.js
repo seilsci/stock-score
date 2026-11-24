@@ -120,25 +120,31 @@ function krTax(C, Y) { const t = C.kr.sell_tax; let v = 0; Object.keys(t).map(Nu
 function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   // opt.tp: 익절 배수 (종가 ≥ 매수가 × tp 이면 다음달 매도). opt.tpSame: true면 당월 즉시 매도.
   let cash = 0, holds = [], prevAfter = 0, deposits = 0; const rets = [], usGain = {};
+  const trades = opt.log ? [] : null;                     // 거래 기록 (opt.log=true일 때만)
+  const snapshots = opt.log ? new Map() : null;           // ym → 보유 종목 스냅샷
   const usFee = C.us.commission + C.us.fx_spread, val = (h, k) => h.sh * h.last * (h.us ? fx(k) : 1);
-  const sellCash = (h, k) => {                         // 한 종목을 팔아 현금으로: 수수료·거래세·(미국) 손익 기록
+  const sellCash = (h, k, reason) => {                   // 한 종목을 팔아 현금으로: 수수료·거래세·(미국) 손익 기록
     const v = val(h, k);
-    if (h.us) { const pr = v * (1 - usFee), Y = yOfK(k); usGain[Y] = (usGain[Y] || 0) + pr - h.basis; return pr; }
-    return v * (1 - C.kr.commission - (h.etf && C.kr.etf_exempt ? 0 : krTax(C, yOfK(k))));
+    let got;
+    if (h.us) { const pr = v * (1 - usFee), Y = yOfK(k); usGain[Y] = (usGain[Y] || 0) + pr - h.basis; got = pr; }
+    else got = v * (1 - C.kr.commission - (h.etf && C.kr.etf_exempt ? 0 : krTax(C, yOfK(k))));
+    if (trades && h.buyYm) trades.push({ y: h.y, buyYm: h.buyYm, sellYm: ymOf(k), buyPx: h.buyPx, sellPx: h.last,
+      ret: got / h.basis - 1, score: h.buyScore, feats: h.buyFeats, reason: reason || 'ma10' });
+    return got;
   };
   const usTax = Y => C.us.cg_tax_rate * Math.max(0, (usGain[Y] || 0) - C.us.cg_exemption_krw);
   for (let k = START; k <= END; k++) {
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
-      if (!opt.grace && h.sellK !== null && h.sellK <= k) { cash += sellCash(h, k); continue; }
+      if (!opt.grace && h.sellK !== null && h.sellK <= k) { cash += sellCash(h, k, 'ma10'); continue; }
       if (opt.tp) {                                       // 익절: 종가 ≥ tp × 월10이평이면 매도
         if (h.tpSellK != null) {                          // 이미 트리거됨 → 예정 달에 매도
-          if (h.tpSellK <= k) { cash += sellCash(h, k); continue; }
+          if (h.tpSellK <= k) { cash += sellCash(h, k, 'tp'); continue; }
         } else {
           const ma = ma10(h.px, k);
           if (ma && h.last >= opt.tp * ma) {
-            if (opt.tpSame) { cash += sellCash(h, k); continue; }
+            if (opt.tpSame) { cash += sellCash(h, k, 'tp'); continue; }
             h.tpSellK = k + 1;                            // 다음 달 종가에 매도
           }
         }
@@ -147,7 +153,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         const ma = ma10(h.px, k);
         if (ma) {
           if (h.last >= opt.tpTrail * ma) h.tpTrig = true;
-          else if (h.tpTrig) { cash += sellCash(h, k); continue; }
+          else if (h.tpTrig) { cash += sellCash(h, k, 'tpTrail'); continue; }
         }
       }
       // 매도 유예: 10이평 아래로 내려와도 바로 팔지 않고 N달 연속 아래일 때만 매도
@@ -159,7 +165,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
             const ff = opt.graceRate ? ffChg12(k) : null;
             const graceN = (ff != null && ff > 0) ? 1 : opt.grace;  // 금리 인상 중→ 1달(=즉시), 아니면 N달
             h.graceCnt = (h.graceCnt || 0) + 1;
-            if (h.graceCnt >= graceN) { cash += sellCash(h, k); continue; }
+            if (h.graceCnt >= graceN) { cash += sellCash(h, k, ff != null && ff > 0 ? 'ma10-금리인상' : 'ma10-유예만료'); continue; }
           } else h.graceCnt = 0;
         }
       }
@@ -205,7 +211,9 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         } else {
           a = Math.min(per, cash); sh = a * (1 - fee) / pKrw;
         }
-        holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff });
+        holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
+          buyYm: ymOf(k), buyPx: p, buyScore: (scored[kA].get(ymOf(k)) || []).find(e => e.r.y === r.y)?.s ?? 0,
+          buyFeats: r.x });
         cash -= a;
       }
     } else if (holds.length && cash > 0) {
@@ -222,6 +230,8 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     let after = cash; for (const h of holds) after += val(h, k);
     if (prevAfter > 0) rets.push({ k, r: (after - dep) / prevAfter - 1 });
     prevAfter = after;
+    // 보유 스냅샷 (opt.log)
+    if (snapshots) snapshots.set(ymOf(k), holds.map(h => ({ y: h.y, buyYm: h.buyYm, buyPx: h.buyPx, curPx: h.last, basis: h.basis, score: h.buyScore })));
   }
   // 현재(진행 중인 달): 가장 최근 종가로 평가. 올해 이미 실현한 미국 손익의 세금은 미리 뺌
   const kNow = mi(CUR), curY = Math.floor(CUR / 100);
@@ -237,7 +247,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   }
   liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, deposits, depAmt: dep, val: nowV, liq };
+  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots };
 }
 function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };
@@ -421,3 +431,23 @@ log('전략                          누적     연평균   최대낙폭   청�
 const ksY = ksS ? summ(ksS).yearly : null;
 R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).padStart(8)} ${pc(r.s.mdd).padStart(9)} ${won(r.s.liq).padStart(14)} ${pc(r.s.irr).padStart(8)}   ${ksY ? Ys.filter(Y => r.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + Ys.length : ''}`));
 fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
+
+// ── 매매일지(trades.json): A4 tp2x트레일+금리유예2달, 월 100만원
+progress('매매일지', 0);
+const journalSim = simulate(A4pk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, log: true });
+const listData = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
+const nameMap = new Map(listData.map(s => [s.y, { name: s.name, market: s.mk, code: s.code }]));
+const journal = {
+  meta: { strategy: 'A4 tp2x트레일+금리유예2달', dep: 1000000, made: new Date().toISOString() },
+  features: F,
+  trades: (journalSim.trades || []).map(t => ({
+    y: t.y, name: nameMap.get(t.y)?.name || t.y, market: nameMap.get(t.y)?.market || '',
+    code: nameMap.get(t.y)?.code || '',
+    buyYm: t.buyYm, sellYm: t.sellYm, buyPx: t.buyPx, sellPx: t.sellPx,
+    ret: +t.ret.toFixed(4), score: +t.score.toFixed(4), reason: t.reason,
+    feats: t.feats ? F.map((f, i) => [f, +((t.feats[i] || 0)).toFixed(4)]) : []
+  })),
+  snapshots: journalSim.snapshots ? Object.fromEntries([...journalSim.snapshots].map(([ym, h]) => [ym, h.map(x => ({ y: x.y, name: nameMap.get(x.y)?.name || x.y, code: nameMap.get(x.y)?.code || '', buyYm: x.buyYm, buyPx: x.buyPx, curPx: x.curPx, ret: x.curPx ? +((x.curPx / x.buyPx - 1)).toFixed(4) : 0, score: +x.score.toFixed(4) }))])) : {}
+};
+fs.writeFileSync(path.join(DATA, 'trades.json'), JSON.stringify(journal));
+progress('매매일지', 1); process.stdout.write('\n');
