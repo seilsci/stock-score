@@ -25,7 +25,7 @@ var CFG = {
 };
 
 var HEAD = ['시장', '코드', '이름', '종류', '시총', '시총단위', '최근종가', '10이평',
-            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수'];
+            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수', '확인'];
 
 /* ───────── 처음 한 번 실행 ───────── */
 function setup() {
@@ -352,7 +352,9 @@ function scoreMonthly_(mon, s) {
 /* ───────── 신호 계산 ───────── */
 // 미국 기준금리(FEDFUNDS)가 오르는 중인지: (전월 값) - (13개월 전 값) > 0, 매도 유예를 건너뛰는 조건. 못 받으면 false
 var FF = null;
-function rateUp_() {
+function rateUp_() { return rateAt_(0); }
+// 이번 달에서 back개월 전 시점의 '기준금리 1년 전보다 상승 중' 판단(확인 매수의 가상 포지션 유예 계산용)
+function rateAt_(back0) {
   if (FF === null) {
     FF = {};
     try {
@@ -365,11 +367,47 @@ function rateUp_() {
   }
   var now = new Date(Utilities.formatDate(new Date(), 'Asia/Seoul', "yyyy-MM-dd'T'12:00:00"));
   var key = function (back) {
-    var d = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    var d = new Date(now.getFullYear(), now.getMonth() - back - back0, 1);
     return d.getFullYear() + '-' + pad_(d.getMonth() + 1);
   };
   var a = FF[key(1)], b = FF[key(13)];
   return a !== undefined && b !== undefined && a - b > 0;
+}
+
+/* ───────── 확인 매수 후보 ─────────
+ * 돌파 달(전달 종가 ≤ 10이평, 그달 종가 > 10이평)의 다음 달 시가에 샀다고 가정한 가상 포지션이
+ * (익절 트레일 2배·유예 2달(금리 상승 중이면 1달)로 안 팔린 채) 이번 달 최근 종가 기준 +10% 이상이고 5>10>20 정배열이 "처음" 된 달이면 후보.
+ * 점수 = 돌파 달 시점의 점수. 후보가 여러 돌파에서 나오면 점수가 가장 높은 것 하나. 돌려주는 값: 'YYYYMM|점수' 또는 ''
+ * tools/learn/7_backtest.js confirmTrig와 같은 규칙으로 유지할 것 */
+function confirmInfo_(s, mon) {
+  var n = mon.length, M = CFG.MONTHS, c = mon.map(function (x) { return x.close; });
+  var maAt = function (k, len) { return k >= len - 1 ? avg_(c.slice(k - len + 1, k + 1)) : null; };
+  var best = null, up = null;
+  for (var b = Math.max(M, 24); b <= n - 2; b++) {
+    var mb = maAt(b, M), pm = maAt(b - 1, M);
+    if (!(c[b - 1] <= pm && c[b] > mb)) continue;                       // 돌파 달
+    var p0 = mon[b + 1].open; if (!(p0 > 0)) continue;
+    var tp = false, cnt = 0, alive = true, trig = false;
+    for (var j = b + 1; j <= n - 1 && alive; j++) {
+      var ma = maAt(j, M), p = c[j];
+      if (ma != null) {
+        if (p >= 2 * ma) tp = true; else if (tp) { alive = false; break; }
+        if (p < ma) {
+          cnt++;
+          if (up === null) up = {};
+          var back = n - 1 - j; if (up[back] === undefined) up[back] = rateAt_(back);
+          if (cnt >= (up[back] ? 1 : 2)) { alive = false; break; }
+        } else cnt = 0;
+      }
+      var a5 = maAt(j, 5), a20 = maAt(j, 20);
+      if (p / p0 - 1 >= 0.1 && a5 != null && a20 != null && ma != null && a5 > ma && ma > a20) { trig = (j === n - 1); break; }   // 처음 조건을 채운 달이 이번 달이어야 후보
+    }
+    if (alive && trig) {
+      var sc = scoreMonthly_(mon.slice(0, b + 1), s);
+      if (sc !== '' && (best === null || sc > best.sc)) best = { ym: mon[b].ym, sc: sc };
+    }
+  }
+  return best ? best.ym + '|' + best.sc : '';
 }
 
 function makeRow_(s, mon) {
@@ -390,8 +428,9 @@ function makeRow_(s, mon) {
   }
   // 매수·매도·유예 종목만 차트용 월봉 저장: [[YYYYMM, 시가, 고가, 저가, 종가, 거래량], ...]
   // 점수 계산에 쓴 월봉 전체를 보내야 사이트의 "점수 설명"이 시트 점수와 똑같이 계산됨
+  var conf = n >= 25 ? confirmInfo_(s, mon) : '';                              // 확인 매수 후보('돌파월|점수') — 다음 달 첫날 사는 후보
   var chart = '';
-  if (sig === '매수' || sig === '매도' || sig === '유예') {
+  if (sig === '매수' || sig === '매도' || sig === '유예' || conf) {
     chart = JSON.stringify(mon.map(function (x) {
       return [+x.ym, round_(x.open), round_(x.high), round_(x.low), round_(x.close), Math.round(x.vol || 0)];
     }));
@@ -399,7 +438,7 @@ function makeRow_(s, mon) {
   // 매수 신호 종목만 점수 계산
   var scoreVal = sig === '매수' ? scoreMonthly_(mon, s) : '';
   return [s.market, s.code, s.name, s.type, s.cap, s.capUnit, round_(cur), round_(ma), n > 1 ? round_(prev) : '',
-          round_(pma), sig, mon[n - 1].date, n, chart, scoreVal];
+          round_(pma), sig, mon[n - 1].date, n, chart, scoreVal, conf];
 }
 
 /* ───────── 사이트용 ───────── */
@@ -443,11 +482,18 @@ function doGet(e) {
     out.updated[n] = sh.getRange('R1').getValue();
     var v = sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues();
     v.forEach(function (r) {
-      if (!all && r[10] !== '매수' && r[10] !== '매도' && r[10] !== '유예') return;
+      var isSig = r[10] === '매수' || r[10] === '매도' || r[10] === '유예', cf = String(r[15] || '');
+      if (!all && !isSig && !cf) return;
       var o = {};
       HEAD.forEach(function (h, i) { o[h] = r[i] instanceof Date ? fmtDate_(r[i]) : r[i]; });
       if (o['차트']) { try { o['차트'] = JSON.parse(o['차트']); } catch (err) { o['차트'] = null; } }
-      out.rows.push(o);
+      delete o['확인'];
+      if (all || isSig) out.rows.push(o);
+      if (cf) {                                   // 확인 매수 후보는 '확인' 신호 행으로 따로 내려줌(점수 = 돌파 달 점수, 돌파월 포함)
+        var q = JSON.parse(JSON.stringify(o)), pr = cf.split('|');
+        q['신호'] = '확인'; q['돌파월'] = pr[0]; q['점수'] = +pr[1];
+        out.rows.push(q);
+      }
     });
   });
   var text = JSON.stringify(out);
