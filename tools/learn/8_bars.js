@@ -14,12 +14,13 @@ const sig = v => +(+v).toPrecision(6);        // 6자리로 줄여 파일 크기
 (async () => {
   await pool([...keys], +process.env.CONC || 6, async y => {
     let m = null;
-    try { m = JSON.parse(fs.readFileSync(file(y))); local++; } catch (e) {}
+    try { m = JSON.parse(fs.readFileSync(file(y))); } catch (e) {}
+    if (m && m.length) local++;
     if (!m || !m.length) {
       try {
         const P2 = Math.floor(Date.now() / 1000) + 86400;
         m = yahooMonthly(await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(y)}?period1=946684800&period2=${P2}&interval=1mo`));
-        if (m && m.length) { net++; local--; }
+        if (m && m.length) net++;
       } catch (e) { m = null; }
     }
     if (!m || !m.length) { miss++; return; }
