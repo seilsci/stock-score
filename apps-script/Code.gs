@@ -107,6 +107,27 @@ function updateKR() {
        Math.round((Date.now() - t0) / 1000) + '초 ' + T.text());
 }
 
+// 제외 종목: 채권·금리(CD·KOFR)·머니마켓·단기채 등 가격이 거의 안 움직이는 상품, 레버리지·인버스(음의 복리)
+// tools/learn/1_lists.js의 EXCLUDE와 같은 규칙으로 유지할 것
+var EXCLUDE_RE = /채권|국채|통안채|금리|머니마켓|레버리지|인버스|곱버스|\b[23]X\b/;
+
+function naverTop_(market, n) {
+  var out = [];
+  for (var page = 1; out.length < n; page++) {
+    var url = 'https://m.stock.naver.com/api/stocks/marketValue/' + market +
+              '?page=' + page + '&pageSize=100';
+    var d = JSON.parse(UrlFetchApp.fetch(url, { headers: CFG.UA }).getContentText());
+    if (!d.stocks || !d.stocks.length) break;
+    d.stocks.forEach(function (x) {
+      if (out.length < n && !EXCLUDE_RE.test(x.stockName)) out.push({
+        market: market, code: x.itemCode, name: x.stockName, type: x.stockEndType,
+        cap: num_(x.marketValue), capUnit: '억원'
+      });
+    });
+  }
+  return out;
+}
+
 // <item data="20261123|시가|고가|저가|종가|거래량" />
 function parseNaverMonthly_(xml) {
   if (!xml) return null;
