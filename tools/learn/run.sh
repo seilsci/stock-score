@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # 월봉 10이평 매수 신호 학습 — PC Git Bash에서:   tools/learn/run.sh
-#   시험으로 조금만:  LIMIT=60 tools/learn/run.sh        묻지 않고 올리기: tools/learn/run.sh --yes
+#   시험으로 조금만:  LIMIT=60 tools/learn/run.sh        기본이 묻지 않고 올리기, 안 올리려면: tools/learn/run.sh --no-push
 # 처음부터 0% → 끝나면 100%. 받은 월봉은 data/raw2에 남아서, 끊기면 다시 실행하면 이어서 받음.
 set -eo pipefail
 cd "$(dirname "$0")"
-YES=0; [ "$1" = "--yes" ] || [ "$1" = "-y" ] && YES=1
+YES=1   # 기본: 끝나면 묻지 않고 결과를 올림(사용자 지시). 올리지 않으려면 --no-push
+for a in "$@"; do [ "$a" = "--no-push" ] && YES=0; done
 command -v node >/dev/null || { echo "node가 없어요. https://nodejs.org 에서 LTS 설치 후 다시"; exit 1; }
 D=${DATA:-data}; mkdir -p "$D"
 export T0=$(date +%s)
@@ -44,11 +45,11 @@ echo; say "100% 완료 · 보고서: tools/learn/data/report.txt"
 
 # 결과 올리기: 가중치·보고서만 result/에 복사해 커밋·push (사이트 코드는 안 건드림)
 if [ -n "$LIMIT" ]; then say "시험 실행(LIMIT)이라 올리지 않아요."; exit 0; fi
-if [ $YES = 0 ]; then read -r -p "결과를 올릴까요? (y/N) " A </dev/tty || A=n; else A=y; fi
+if [ $YES = 0 ]; then A=n; else A=y; fi        # 묻지 않음: 기본은 올림(--no-push면 안 올림)
 if [ "$A" = "y" ] || [ "$A" = "Y" ]; then
   mkdir -p result; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; for f in trades.json bars.json ledger.json; do [ -f $D/$f ] && cp $D/$f result/ || true; done
   git -c core.safecrlf=false add result
   git commit -q -m "학습 결과: 월봉 10이평 매수 신호 가중치 ($(date '+%Y-%m-%d'))" && git pull --rebase --autostash -q && git push -q && say "■ 올림 끝 (8/8). Claude에게 '올렸어'라고 알려 주세요."
 else
-  say "올리지 않았어요. 나중에: cd tools/learn && mkdir -p result && cp data/weights.json data/report.txt result/ && git add result && git commit -m 결과 && git push"
+  say "올리지 않았어요(--no-push). 나중에: cd tools/learn && mkdir -p result && cp data/weights.json data/report.txt result/ && git add result && git commit -m 결과 && git push"
 fi
