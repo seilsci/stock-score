@@ -42,7 +42,7 @@ if [ $YES = 0 ]; then read -r -p "결과를 올릴까요? (y/N) " A </dev/tty ||
 if [ "$A" = "y" ] || [ "$A" = "Y" ]; then
   mkdir -p result; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/
   git -c core.safecrlf=false add result
-  git commit -q -m "학습 결과: 월봉 10이평 매수 신호 가중치 ($(date '+%Y-%m-%d'))" && git push -q && say "■ 올림 끝 (8/8). Claude에게 '올렸어'라고 알려 주세요."
+  git commit -q -m "학습 결과: 월봉 10이평 매수 신호 가중치 ($(date '+%Y-%m-%d'))" && git pull --rebase --autostash -q && git push -q && say "■ 올림 끝 (8/8). Claude에게 '올렸어'라고 알려 주세요."
 else
   say "올리지 않았어요. 나중에: cd tools/learn && mkdir -p result && cp data/weights.json data/report.txt result/ && git add result && git commit -m 결과 && git push"
 fi
