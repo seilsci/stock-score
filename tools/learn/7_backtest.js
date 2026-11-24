@@ -117,7 +117,7 @@ const pickUsA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 
 
 // ── 시뮬레이션
 function krTax(C, Y) { const t = C.kr.sell_tax; let v = 0; Object.keys(t).map(Number).sort().forEach(y => { if (y <= Y) v = t[y]; }); return v; }
-function simulate(pickFn, N, C, opt = {}) {
+function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   // opt.tp: 익절 배수 (종가 ≥ 매수가 × tp 이면 다음달 매도). opt.tpSame: true면 당월 즉시 매도.
   let cash = 0, holds = [], prevAfter = 0, deposits = 0; const rets = [], usGain = {};
   const usFee = C.us.commission + C.us.fx_spread, val = (h, k) => h.sh * h.last * (h.us ? fx(k) : 1);
@@ -187,14 +187,25 @@ function simulate(pickFn, N, C, opt = {}) {
         else { let hv = 0; for (const h of holds) hv += val(h, k); const f = hv > 0 ? Math.min(1, (tax - cash) / hv) : 0; for (const h of holds) h.sh *= 1 - f; cash = 0; }
       }
     }
-    cash += DEP; deposits++;
+    cash += dep; deposits++;
     const picks = pickFn(ymOf(k));
     if (picks.length) {
       const per = cash / (N || picks.length);
       for (const { r } of picks) {
         const o = px(r.y), p = o.m.get(k); if (p === undefined) continue;
-        const us = r.x[US] === 1, a = Math.min(per, cash), fee = us ? usFee : C.kr.commission;
-        holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh: a * (1 - fee) / (p * (us ? fx(k) : 1)), sellK: r.exoff === null ? null : mi(r.ym) + r.exoff });
+        const us = r.x[US] === 1, fee = us ? usFee : C.kr.commission;
+        const pKrw = p * (us ? fx(k) : 1);                // 원화 환산 주가
+        // 주식 단위 제한(opt.lotSize): 미국은 소수점 허용, 한국은 1주 단위
+        let sh, a;
+        if (opt.lotSize && !us) {
+          const lots = Math.floor(Math.min(per, cash) * (1 - fee) / pKrw);  // 살 수 있는 주 수
+          if (lots < 1) continue;                           // 1주도 못 사면 패스
+          sh = lots; a = lots * pKrw / (1 - fee);          // 실제 쓴 돈
+          a = Math.min(a, cash);
+        } else {
+          a = Math.min(per, cash); sh = a * (1 - fee) / pKrw;
+        }
+        holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff });
         cash -= a;
       }
     } else if (holds.length && cash > 0) {
@@ -209,7 +220,7 @@ function simulate(pickFn, N, C, opt = {}) {
       }
     }
     let after = cash; for (const h of holds) after += val(h, k);
-    if (prevAfter > 0) rets.push({ k, r: (after - DEP) / prevAfter - 1 });
+    if (prevAfter > 0) rets.push({ k, r: (after - dep) / prevAfter - 1 });
     prevAfter = after;
   }
   // 현재(진행 중인 달): 가장 최근 종가로 평가. 올해 이미 실현한 미국 손익의 세금은 미리 뺌
@@ -226,10 +237,10 @@ function simulate(pickFn, N, C, opt = {}) {
   }
   liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, deposits, val: nowV, liq };
+  return { rets, deposits, depAmt: dep, val: nowV, liq };
 }
-function irr(deposits, val) {                       // 월 입금 기준 연환산 내부수익률
-  const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += DEP * Math.pow(1 + r, deposits - j); return t - val; };
+function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
+  const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };
   let lo = -0.5, hi = 1; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (f(m) > 0) hi = m; else lo = m; }
   return Math.pow(1 + lo, 12) - 1;
 }
@@ -238,7 +249,7 @@ function summ(sim) {
   let idx = 1, peak = 1, mdd = 0;
   sim.rets.forEach(({ k, r }) => { const Y = ymOf(k) / 100 | 0; yearly[Y] = (yearly[Y] || 1) * (1 + r); idx *= 1 + r; peak = Math.max(peak, idx); mdd = Math.min(mdd, idx / peak - 1); });
   Object.keys(yearly).forEach(Y => yearly[Y] -= 1);
-  return { yearly, cum: idx - 1, cagr: Math.pow(idx, 12 / months) - 1, mdd, val: sim.val, liq: sim.liq, dep: sim.deposits * DEP, irr: irr(sim.deposits, sim.liq) };
+  return { yearly, cum: idx - 1, cagr: Math.pow(idx, 12 / months) - 1, mdd, val: sim.val, liq: sim.liq, dep: sim.deposits * sim.depAmt, irr: irr(sim.deposits, sim.liq, sim.depAmt) };
 }
 function avgSumm(list) {
   const o = { yearly: {} }; ['cum', 'cagr', 'mdd', 'val', 'liq', 'dep', 'irr'].forEach(k => o[k] = list.reduce((s, x) => s + x[k], 0) / list.length);
@@ -347,6 +358,24 @@ for (const g of ML_GRACE_VALS) {
 progress('ML유예 실험', 1); process.stdout.write('\n');
 progress('매도유예 실험', 1); process.stdout.write('\n');
 progress('익절 실험', 1); process.stdout.write('\n');
+
+// ── 주식 단위 제한 실험: 한국 1주 단위, 미국 소수점 허용
+// 월 투자금별(100·300·500·1000만원) × 주요 전략 3개
+const LOT_DEPOSITS = [1000000, 3000000, 5000000, 10000000];
+const lotTotal = LOT_DEPOSITS.length * 3;
+let lotStep = 0;
+for (const dep of LOT_DEPOSITS) {
+  const C1lot = C1;
+  const lk = ym => (scored[kA].get(ym) || []).slice(0, 4);
+  const dLabel = dep / 10000 + '만';
+  progress('단위제한', lotStep++ / lotTotal);
+  R.push({ n: `A4 단위제한${dLabel}`, s: summ(simulate(lk, 4, C1lot, { lotSize: true }, dep)) });
+  progress('단위제한', lotStep++ / lotTotal);
+  R.push({ n: `A4 tp2x트레일 단위제한${dLabel}`, s: summ(simulate(lk, 4, C1lot, { tpTrail: 2, lotSize: true }, dep)) });
+  progress('단위제한', lotStep++ / lotTotal);
+  R.push({ n: `A4 tp2x금리유예2달 단위제한${dLabel}`, s: summ(simulate(lk, 4, C1lot, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true }, dep)) });
+}
+progress('단위제한', 1); process.stdout.write('\n');
 progress('백테스트', 1); process.stdout.write('\n');
 
 // ── 보고서
