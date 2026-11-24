@@ -35,6 +35,7 @@ function fx(k) {
   fxC.set(k, v); return v;
 }
 const US = fi('us'), TURN = fi('turn'), ETF = fi('etf');
+const ma10 = (o, k) => { let s = 0; for (let j = k; j > k - 10; j--) { const p = o.m.get(j); if (p === undefined) return null; s += p; } return s / 10; };
 
 // ── 시험 연도마다 "그때까지 알던 것"으로 학습 → 그해 모든 신호에 점수 (미래 정보 없음)
 const scored = MODELS.map(() => new Map());                 // 모델 → Map(ym → [{r, s}] 점수 높은 순)
@@ -71,6 +72,7 @@ const pickUsA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 
 // ── 시뮬레이션
 function krTax(C, Y) { const t = C.kr.sell_tax; let v = 0; Object.keys(t).map(Number).sort().forEach(y => { if (y <= Y) v = t[y]; }); return v; }
 function simulate(pickFn, N, C, opt = {}) {
+  // opt.tp: 익절 배수 (종가 ≥ 매수가 × tp 이면 다음달 매도). opt.tpSame: true면 당월 즉시 매도.
   let cash = 0, holds = [], prevAfter = 0, deposits = 0; const rets = [], usGain = {};
   const usFee = C.us.commission + C.us.fx_spread, val = (h, k) => h.sh * h.last * (h.us ? fx(k) : 1);
   const sellCash = (h, k) => {                         // 한 종목을 팔아 현금으로: 수수료·거래세·(미국) 손익 기록
@@ -83,7 +85,19 @@ function simulate(pickFn, N, C, opt = {}) {
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
-      if (h.sellK !== null && h.sellK <= k) cash += sellCash(h, k); else keep.push(h);
+      if (h.sellK !== null && h.sellK <= k) { cash += sellCash(h, k); continue; }
+      if (opt.tp) {                                       // 익절: 종가 ≥ tp × 월10이평이면 매도
+        if (h.tpSellK != null) {                          // 이미 트리거됨 → 예정 달에 매도
+          if (h.tpSellK <= k) { cash += sellCash(h, k); continue; }
+        } else {
+          const ma = ma10(h.px, k);
+          if (ma && h.last >= opt.tp * ma) {
+            if (opt.tpSame) { cash += sellCash(h, k); continue; }
+            h.tpSellK = k + 1;                            // 다음 달 종가에 매도
+          }
+        }
+      }
+      keep.push(h);
     }
     holds = keep;
     if ((k - 1) % 12 === 11) {                          // 12월 말: 그해 미국 주식 실현 손익에 양도세(기본공제 후)를 냄
@@ -192,6 +206,27 @@ tick(); R.push({ n: 'A10 한국만', s: summ(simulate(pickKrA(10), 10, C1)) });
 tick(); R.push({ n: 'A10 미국만', s: summ(simulate(pickUsA(10), 10, C1)) });
 tick(); R.push({ n: 'A10 신호없을때보유재투자', s: summ(simulate(ym => (scored[kA].get(ym) || []).slice(0, 10), 10, C1, { reinvest: true })) });
 tick(); R.push({ n: '전부 보유재투자', s: summ(simulate(pickAll, null, C1, { reinvest: true })) });
+
+// ── 익절 실험: A5·A10·B5·B10 × tp(1.5·2·2.5·3·4배) × 당월/다음달
+const TP_MODELS = [
+  { mk: kA, n: 'A5',  N: 5 },
+  { mk: kA, n: 'A10', N: 10 },
+  { mk: MODELS.findIndex(M => M.n[0] === 'B'), n: 'B5',  N: 5 },
+  { mk: MODELS.findIndex(M => M.n[0] === 'B'), n: 'B10', N: 10 },
+];
+const TP_VALS = [1.5, 2, 2.5, 3, 4];
+const tpTotal = TP_MODELS.length * TP_VALS.length * 2;
+let tpStep = 0;
+for (const tm of TP_MODELS) {
+  const pk = ym => (scored[tm.mk].get(ym) || []).slice(0, tm.N);
+  for (const tp of TP_VALS) {
+    progress('익절 실험', tpStep++ / tpTotal);
+    R.push({ n: `${tm.n} tp${tp}x다음달`, s: summ(simulate(pk, tm.N, C1, { tp })) });
+    progress('익절 실험', tpStep++ / tpTotal);
+    R.push({ n: `${tm.n} tp${tp}x당월`, s: summ(simulate(pk, tm.N, C1, { tp, tpSame: true })) });
+  }
+}
+progress('익절 실험', 1); process.stdout.write('\n');
 progress('백테스트', 1); process.stdout.write('\n');
 
 // ── 보고서
