@@ -114,7 +114,10 @@ canvas{display:block;width:100%;height:200px}
 .lr.tax .lr-k{background:#16a34a;color:#fff}
 .lr.dep .lr-k{background:var(--mut);color:var(--bg)}
 .lr-n{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lr-s{font-size:11px;color:var(--mut);margin-top:1px;font-variant-numeric:tabular-nums}
+.lr-s{font-size:11.5px;color:var(--mut);margin-top:2px;line-height:1.55;font-variant-numeric:tabular-nums}
+.lr-s b{color:var(--fg)}
+.lr-d{padding:0 11px 10px 11px}
+.lr.clk .lr-d{cursor:pointer}
 .lr-a{text-align:right;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lr-b{font-size:11px;color:var(--mut);font-weight:400}
 .lr-c{display:none;padding:0 11px 11px}
@@ -529,7 +532,7 @@ document.getElementById('sc-modal').onclick=function(e){ if(e.target===this) thi
 /* ── 월 요약 · 장부(거래 내역) ── */
 function won(n){ return Math.round(n).toLocaleString()+'원'; }
 function signWon(n){ return (n>=0?'+':'−')+Math.abs(Math.round(n)).toLocaleString()+'원'; }
-function qtyS(sh,us){ return (us ? String(+(+sh).toFixed(2)) : Math.round(sh).toLocaleString())+'주'; }
+function qtyS(sh,us){ return (+sh).toLocaleString(undefined,{maximumFractionDigits:2})+'주'; }
 function pxS(v,us){ return us ? '$'+(+v).toFixed(2) : Math.round(v).toLocaleString()+'원'; }
 function prevYmOf(ym){ ym=+ym; return String(ym%100===1 ? ym-89 : ym-1); }
 
@@ -563,8 +566,9 @@ function renderLedger(){
     rows.push(drawArgs||null);
     html+='<div class="lr '+cls+(drawArgs?' clk':'')+'"><div class="lr-h"'+(drawArgs?' data-r="'+(rows.length-1)+'"':'')+'>'
       +'<span class="lr-k">'+k+'</span>'
-      +'<div style="min-width:0"><div class="lr-n">'+name+'</div>'+(sub?'<div class="lr-s">'+sub+'</div>':'')+'</div>'
+      +'<div style="min-width:0"><div class="lr-n">'+name+'</div></div>'
       +'<div class="lr-a">'+amt+'<div class="lr-b">잔액 '+won(after)+'</div></div></div>'
+      +(sub?'<div class="lr-s lr-d"'+(drawArgs?' data-r="'+(rows.length-1)+'"':'')+'>'+sub+'</div>':'')
       +(drawArgs?'<div class="lr-c"><canvas></canvas></div>':'')+'</div>';
   };
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">전달 이월 현금</div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
@@ -572,17 +576,24 @@ function renderLedger(){
   m.sells.forEach(function(x){
     bal+=x.amt;
     var hm=holdMonths(x.buyYm,ym), rr=REASON[x.reason]||x.reason||'';
+    var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
+    var cost='− 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span>'
+      +(x.tax>0?' − 거래세 '+won(x.tax)+' <span class="meta">('+(x.taxRate*100).toFixed(2)+'%)</span>':'')
+      +' = <b>'+won(x.amt)+'</b>'+(x.us?'<br><span class="meta">미국 양도세는 12월에 한꺼번에 계산해 아래 "세금" 줄에서 뺍니다</span>':'');
     add('sell','판매',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+' · <span class="'+(x.ret>=0?'p':'n')+'">'+pc(x.ret)+'</span> · '+hm+'개월 · '+esc(rr),
+      calc+'<br>'+cost+'<br><span class="'+(x.ret>=0?'p':'n')+'">수익 '+pc(x.ret)+'</span> · '+hm+'개월 · '+esc(rr),
       signWon(x.amt),bal,{y:x.y,end:ym,buy:x.buyYm,sell:ym});
   });
-  if(m.tax>0){ bal-=m.tax; add('tax','세금','미국 주식 양도세','그해 실현 이익 − 250만원 공제 × 22%',signWon(-m.tax),bal); }
+  if(m.tax>0){ bal-=m.tax; add('tax','세금','미국 주식 양도세','그해 미국 주식 실현 이익에서 250만원 공제 후 22%, 12월에 한꺼번에',signWon(-m.tax),bal); }
   m.buys.forEach(function(x){
     bal-=x.amt;
     var tr=DATA.trades.filter(function(t){return t.y===x.y&&String(t.buyYm)===ym;})[0];
     var endYm=tr?tr.sellYm:Object.keys(LED.months).sort().pop();
+    var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
+    var cost='+ 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span> = <b>'+won(x.amt)+'</b>';
+    var scv=(function(){ var v=scoreOf(x.y,ym); return v!=null?v:Math.round(x.score*100); })();
     add('buy','구매',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+' · <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+ym+'" data-sn="'+esc(x.name)+'" data-sp="'+x.score+'">점수 '+(function(){ var v=scoreOf(x.y,ym); return v!=null?v:Math.round(x.score*100); })()+'</span>',
+      calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+ym+'" data-sn="'+esc(x.name)+'" data-sp="'+x.score+'">'+scv+'</span>',
       signWon(-x.amt),bal,{y:x.y,end:endYm,buy:ym,sell:tr?tr.sellYm:null});
   });
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">월말 현금</div></div><div class="lr-a">'+won(m.cash)+'</div></div></div>';
@@ -590,9 +601,9 @@ function renderLedger(){
   list.querySelectorAll('.lr-sc').forEach(function(c){
     c.onclick=function(ev){ ev.stopPropagation(); showScoreTree(c.dataset.sy,+c.dataset.sb,c.dataset.sn,+c.dataset.sp); };
   });
-  list.querySelectorAll('.lr-h[data-r]').forEach(function(h){
+  list.querySelectorAll('.lr-h[data-r], .lr-d[data-r]').forEach(function(h){
     h.onclick=function(){
-      var box=h.nextElementSibling; box.classList.toggle('open');
+      var box=h.parentNode.querySelector('.lr-c'); box.classList.toggle('open');
       if(box.classList.contains('open')){ var a=rows[+h.dataset.r]; drawChart(box.querySelector('canvas'),a.y,a.end,a.buy,a.sell); }
     };
   });

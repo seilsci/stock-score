@@ -8,6 +8,8 @@ const j = JSON.parse(fs.readFileSync(path.join(DATA, 'trades.json')));
 const C = JSON.parse(fs.readFileSync(path.join(__dirname, 'costs.json')));
 const usFee = C.us.commission + C.us.fx_spread, N = 4, dep = j.meta.dep || 1000000;
 const isUS = y => !/\.(KS|KQ)$/.test(y);
+const krTax = Y => { const t = C.kr.sell_tax; let v = 0; Object.keys(t).map(Number).sort().forEach(y => { if (y <= Y) v = t[y]; }); return v; };   // 7_backtest.js와 같은 규칙
+const isEtf = t => { const f = (t.feats || []).find(x => x[0] === 'etf'); return !!(f && f[1] === 1); };
 const yms = Object.keys(j.snapshots).sort();
 
 (async () => {
@@ -31,14 +33,24 @@ const yms = Object.keys(j.snapshots).sort();
     const b = snapOf(t.buyYm, t.y, t.buyYm); if (!b) continue;
     const us = isUS(t.y);
     const lastSnap = snapOf(prevYm(t.sellYm), t.y, t.buyYm) || b;
-    const got = b.basis * (1 + t.ret);
-    if (buys[t.buyYm]) buys[t.buyYm].push({ y: t.y, name: t.name, us, sh: b.sh, px: t.buyPx, amt: b.basis, score: t.score });
-    if (sells[t.sellYm]) sells[t.sellYm].push({ y: t.y, name: t.name, us, sh: lastSnap.sh, px: t.sellPx, amt: got, basis: b.basis, ret: t.ret, reason: t.reason, buyYm: t.buyYm });
+    const got = b.basis * (1 + t.ret), feeRate = us ? usFee : C.kr.commission;
+    // 매수: 쓴 돈(amt) = 주식값(gross) + 수수료(fee).  주식값 = 수량 × 가격 (× 환율)
+    const bFee = b.basis * feeRate, bGross = b.basis - bFee;
+    // 매도: 받은 돈(amt) = 주식값(gross) - 수수료 - 거래세(한국 일반주식만). 주식값 = amt / (1 - 수수료율 - 세율)
+    const taxRate = us ? 0 : ((isEtf(t) && C.kr.etf_exempt) ? 0 : krTax(Math.floor(t.sellYm / 100)));
+    const sGross = got / (1 - feeRate - taxRate);
+    if (buys[t.buyYm]) buys[t.buyYm].push({ y: t.y, name: t.name, us, sh: b.sh, px: t.buyPx, amt: b.basis, score: t.score,
+      gross: bGross, fee: bFee, feeRate, fxUsed: us ? bGross / (b.sh * t.buyPx) : null });
+    if (sells[t.sellYm]) sells[t.sellYm].push({ y: t.y, name: t.name, us, sh: lastSnap.sh, px: t.sellPx, amt: got, basis: b.basis, ret: t.ret, reason: t.reason, buyYm: t.buyYm,
+      gross: sGross, fee: sGross * feeRate, feeRate, tax: sGross * taxRate, taxRate, fxUsed: us ? sGross / (lastSnap.sh * t.sellPx) : null });
   }
   // 현재 보유 중(거래 기록 없음)인 매수도 매수 내역에 넣음
   const done = new Set(j.trades.map(t => t.y + '|' + t.buyYm));
   for (const ym of yms) for (const x of j.snapshots[ym]) {
-    if (x.buyYm === +ym && !done.has(x.y + '|' + x.buyYm)) buys[ym].push({ y: x.y, name: x.name, us: isUS(x.y), sh: x.sh, px: x.buyPx, amt: x.basis, score: x.score });
+    if (x.buyYm === +ym && !done.has(x.y + '|' + x.buyYm)) {
+      const us = isUS(x.y), feeRate = us ? usFee : C.kr.commission, fee = x.basis * feeRate, gross = x.basis - fee;
+      buys[ym].push({ y: x.y, name: x.name, us, sh: x.sh, px: x.buyPx, amt: x.basis, score: x.score, gross, fee, feeRate, fxUsed: us ? gross / (x.sh * x.buyPx) : null });
+    }
   }
 
   const months = {}; let cash = 0, maxDrift = 0, negative = 0; const usGain = {};
@@ -67,8 +79,10 @@ const yms = Object.keys(j.snapshots).sort();
     });
     months[ym] = {
       dep, tax: Math.round(tax), cash: Math.round(cash), holdVal: Math.round(hv), fx: +fxAt(ym).toFixed(2),
-      buys: b.map(x => ({ ...x, sh: +x.sh.toFixed(4), amt: Math.round(x.amt), score: +x.score.toFixed(4) })),
-      sells: sells[ym].map(x => ({ ...x, sh: +x.sh.toFixed(4), amt: Math.round(x.amt), basis: Math.round(x.basis) }))
+      buys: b.map(x => ({ ...x, sh: +x.sh.toFixed(4), amt: Math.round(x.amt), score: +x.score.toFixed(4),
+        gross: Math.round(x.gross), fee: Math.round(x.fee), fxUsed: x.fxUsed == null ? null : +x.fxUsed.toFixed(2) })),
+      sells: sells[ym].map(x => ({ ...x, sh: +x.sh.toFixed(4), amt: Math.round(x.amt), basis: Math.round(x.basis),
+        gross: Math.round(x.gross), fee: Math.round(x.fee), tax: Math.round(x.tax), fxUsed: x.fxUsed == null ? null : +x.fxUsed.toFixed(2) }))
     };
     for (const h of holds) { /* 평가금은 화면에서 snapshots + fx로 계산하므로 여기엔 합계만 */ }
   }
