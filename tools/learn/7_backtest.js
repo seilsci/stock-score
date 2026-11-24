@@ -1187,7 +1187,56 @@ if (process.env.STAGE11 !== '0') {
   progress('초기 구매 방식(절반)', 1); process.stdout.write('\n');
   AD5.rows = rows; AD5.events = ALL.length;
 }
+// ── 확인 매수(STAGE12=0이면 건너뜀): 10이평을 처음 돌파한 달에 "샀다고 가정"(가상 매수: 다음 달 첫날 종가)하고, 그 가상 수익이 문턱(0·10·20·30%) 이상이면서(옵션: 5>10>20 정배열) 가상 포지션이 아직 안 팔렸을 때 비로소 실제로 매수(그달 말 판단 → 다음 달 첫날).
+//    가상 포지션이 먼저 팔리는 조건(익절 트레일 2배, 유예 2달·금리 규칙)에 걸리면 그 신호는 버림. 후보 점수는 돌파 시점 점수(그때 알던 값). 이후 판매·추가 매수는 V0(지금 규칙) 또는 V1(정배열 이탈 판매 + 정배열 전부 100% 추가 매수).
+const AD6 = { rows: null };
+if (process.env.STAGE12 !== '0') {
+  const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  const B = +process.env.AD6_HALVES || 8, topL12 = ym => scored[kA].get(ym) || [];
+  const maAt = (o, k, n) => { let t = 0; for (let j = k; j > k - n; j--) { const p = o.m.get(j); if (p === undefined) return null; t += p; } return t / n; };
+  const al = (o, k) => { const a = maAt(o, k, 5), b = maAt(o, k, 10), d = maAt(o, k, 20); return (a != null && b != null && d != null) ? (a > b && b > d) : null; };
+  const alOK = (o, k) => al(o, k) === true;
+  const trigOf = (r, thr, needAlign) => {                            // 이 돌파 신호가 처음으로 "문턱 이상 + (정배열)"이 되는 달(월 인덱스), 없으면 null
+    const o = px(r.y), t0 = mi(r.ym), p0 = fdPx(r.y, t0 + 1); if (!(p0 > 0)) return null;
+    let tp = false, cnt = 0;
+    for (let j = t0 + 1; j <= END; j++) {
+      const p = o.m.get(j); if (p === undefined) return null;
+      const ma = ma10(o, j);
+      if (ma) {
+        if (p >= 2 * ma) tp = true; else if (tp) return null;        // 가상 포지션이 익절 트레일로 팔림
+        if (p < ma) { cnt++; const ff = ffChg12(j), n = (ff != null && ff > 0) ? 1 : 2; if (cnt >= n) return null; } else cnt = 0;   // 유예 2달(금리 오르면 즉시)로 팔림
+      }
+      if (p / p0 - 1 >= thr && (!needAlign || al(o, j) === true)) return j;
+    }
+    return null;
+  };
+  const buildMap = (thr, needAlign) => {
+    const m = new Map();
+    scored[kA].forEach(list => list.forEach(e => { const tk = trigOf(e.r, thr, needAlign); if (tk == null) return; const ym = ymOf(tk), r2 = Object.assign({}, e.r, { ym, exoff: null }), a = m.get(ym) || []; a.push({ r: r2, s: e.s }); m.set(ym, a); }));
+    m.forEach(a => a.sort((x, y) => y.s - x.s)); return m;
+  };
+  const V1 = { alignExit: al, alignArm: false, addFrac: 1, addGroup: 'all', addAlign: alOK };
+  const V = [{ name: '즉시 매수(돌파 달, 현재) · V0 지금 규칙', cand: topL12, o: {}, tag: 'I0' }, { name: '즉시 매수(돌파 달, 현재) · V1 정배열 묶음', cand: topL12, o: V1, tag: 'I1' }];
+  let ci = 0; const combos = []; [0, 0.1, 0.2, 0.3].forEach(t => [true, false].forEach(a => combos.push([t, a])));
+  combos.forEach(([t, a]) => { progress('확인 매수 후보 만들기', ci++ / combos.length); const mp = buildMap(t, a), cand = ym => mp.get(ym) || [], nm = `확인 매수(가상 수익 +${t * 100}% 이상${a ? ' + 5>10>20 정배열' : ''})`; V.push({ name: `${nm} · V0 지금 규칙`, cand, o: {}, n: [...mp.values()].reduce((x, l) => x + l.length, 0), tag: 'D0' }); V.push({ name: `${nm} · V1 정배열 묶음`, cand, o: V1, tag: 'D1' }); });
+  const run12 = (v, cand) => summ(simulate(ym => cand(ym).slice(0, 4), 4, C1, { lotSize: true, lotAll: true, fill: true, cand, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, ...v.o }));
+  const rows = V.map((v, i) => { progress('확인 매수', i / V.length); const sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { lotSize: true, lotAll: true, fill: true, cand: v.cand, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, log: true, ...v.o }); const m = summ(sm), T = (sm.trades || []).filter(t => t.sellYm); return { v, full: m, trades: T.length, win: T.filter(t => t.ret > 0).length / (T.length || 1), halves: [] }; });
+  for (let b = 1; b <= B; b++) { progress('확인 매수(절반)', (b - 1) / B); rows.forEach(r => { const cand = ym => r.v.cand(ym).filter(e => hash(e.r.y + '|' + b) < 0.5); r.halves.push(run12(r.v, cand).cagr); }); }
+  progress('확인 매수(절반)', 1); process.stdout.write('\n');
+  AD6.rows = rows;
+}
 // ── 걸어가며 설정 고르기 보고
+// ── 확인 매수 보고
+if (AD6.rows) {
+  const Rr = AD6.rows, I0 = Rr[0], I1 = Rr[1], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019), mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  log(''); log('## 확인 매수: 돌파 달에 샀다고 가정 → 가상 수익이 문턱 이상(+정배열)일 때 실제 매수 (점수 상위 4, 첫날 체결, 월 100만원)');
+  log('방식                                                          전체    앞쪽    뒤쪽    낙폭    거래수 승률    즉시 매수 같은 규칙 대비(평균 · 표준편차 · 이긴 비율)');
+  Rr.forEach(r => {
+    const b = r.v.tag === 'D1' ? I1 : I0, d = r.halves.map((h, i) => h - b.halves[i]), sd = Math.sqrt(mean(d.map(x => (x - mean(d)) ** 2)));
+    log(`${r.v.name.padEnd(54)} ${pc1(r.full.cagr).padStart(7)} ${pc1(cagrOver(r.full.yearly, early)).padStart(7)} ${pc1(cagrOver(r.full.yearly, late)).padStart(7)} ${pc1(r.full.mdd).padStart(7)}   ${String(r.trades).padStart(5)} ${(r.win * 100).toFixed(0)}%    ${(r === I0 || r === I1) ? '(기준)' : `${pp(mean(d)).padStart(7)} · ${(sd * 100).toFixed(1)}%p · ${(d.filter(x => x > 0).length / d.length * 100).toFixed(0)}%`}`);
+  });
+}
 // ── 초기 구매 방식 × 정배열 추가 매수 보고
 if (AD5.rows) {
   const Rr = AD5.rows, base = Rr[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
