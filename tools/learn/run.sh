@@ -10,29 +10,35 @@ D=${DATA:-data}; mkdir -p "$D"
 export T0=$(date +%s)
 LOG=$D/run.log; : > $LOG
 say(){ echo "$1" | tee -a $LOG; }
-done_(){ echo; say "■ $1 끝 · $(TZ=Asia/Seoul date '+%H:%M' 2>/dev/null || date '+%H:%M') · 경과 $(( ($(date +%s)-T0)/60 ))분"; }
+done_(){ echo; say "■ $1 끝 · 지금 $(date '+%H:%M') · 시작 후 $(( ($(date +%s)-T0)/60 ))분"; }
+LAST=$(date +%s); : > $D/steptimes.new
+mark(){ local n=$(date +%s); echo "$1 $((n-LAST))" >> $D/steptimes.new; LAST=$n; }
 say "===== 학습 시작 $(date '+%Y-%m-%d %H:%M') ====="
 
-PFROM=0 PTO=2 node 1_lists.js | tee -a $LOG
+PFROM=0 PTO=1 node 1_lists.js | tee -a $LOG
 done_ "종목 목록 (1/8)"
+eval "$(node plan.js)"      # 진행률 구간 B1~B7 (이미 받은 월봉은 거의 0%, 지난 실행의 단계별 실측 시간 반영)
+LAST=$(date +%s)
 [ -d "$D/raw" ] && { say "옛 월봉(3개월 간격 오류) 삭제"; rm -rf "$D/raw"; }
 for k in 1 2 3; do
-  PFROM=2 PTO=60 node 2_download.js | tee $D/dl.log || true; cat $D/dl.log >> $LOG
+  PFROM=$B1 PTO=$B2 node 2_download.js | tee $D/dl.log || true; cat $D/dl.log >> $LOG
   grep -q '실패 0' $D/dl.log && break
   echo "실패한 것만 다시 받기 ($k/3)"
 done
-PFROM=60 PTO=61 node 2b_macro.js | tee -a $LOG || true
+PFROM=$B2 PTO=$B3 node 2b_macro.js | tee -a $LOG || true
 done_ "월봉·거시 지표 받기 (2/8)"
-PFROM=61 PTO=66 node 3_build.js | tee -a $LOG
-done_ "매수 신호·정답·지표 (3/8)"
-PFROM=66 PTO=70 node 4_train.js | tee -a $LOG
-done_ "학습·검증 (4/8)"
-PFROM=70 PTO=86 node 5_explore.js | tee -a $LOG
-done_ "여러 실험 (5/8)"
-PFROM=86 PTO=92 node 6_check.js | tee -a $LOG
-done_ "타이밍·종목 점검 (6/8)"
-PFROM=92 PTO=100 node 7_backtest.js | tee -a $LOG
-done_ "월 100만원 적립 시뮬레이션 (7/8)"
+LAST=$(date +%s)
+PFROM=$B3 PTO=$B4 node 3_build.js | tee -a $LOG
+done_ "매수 신호·정답·지표 (3/8)"; mark build
+PFROM=$B4 PTO=$B5 node 4_train.js | tee -a $LOG
+done_ "학습·검증 (4/8)"; mark train
+PFROM=$B5 PTO=$B6 node 5_explore.js | tee -a $LOG
+done_ "여러 실험 (5/8)"; mark explore
+PFROM=$B6 PTO=$B7 node 6_check.js | tee -a $LOG
+done_ "타이밍·종목 점검 (6/8)"; mark check
+PFROM=$B7 PTO=100 node 7_backtest.js | tee -a $LOG
+done_ "월 100만원 적립 시뮬레이션 (7/8)"; mark backtest
+mv $D/steptimes.new $D/steptimes.txt      # 다음 실행의 진행률 계산에 씀
 echo; cat $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt; cat $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt >> $LOG
 echo; say "100% 완료 · 보고서: tools/learn/data/report.txt"
 
