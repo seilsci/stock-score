@@ -26,8 +26,9 @@ for k in 1 2 3; do
   grep -q '실패 0' $D/dl.log && break
   echo "실패한 것만 다시 받기 ($k/3)"
 done
-PFROM=$B2 PTO=$B3 node 2b_macro.js | tee -a $LOG || true
-done_ "월봉·거시 지표 받기 (2/8)"
+PFROM=$B2 PTO=$B2c node 2c_firstday.js | tee -a $LOG || true
+PFROM=$B2c PTO=$B3 node 2b_macro.js | tee -a $LOG || true
+done_ "월봉·첫날 가격·거시 지표 받기 (2/8)"
 LAST=$(date +%s)
 PFROM=$B3 PTO=$B4 node 3_build.js | tee -a $LOG
 done_ "매수 신호·정답·지표 (3/8)"; mark build

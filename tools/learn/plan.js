@@ -9,6 +9,12 @@ try {
     if (!fs.existsSync(path.join(D, 'raw2', s.y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'))) need++;
   });
 } catch (e) { need = 9999; }
+let needFd = 0;
+try {
+  JSON.parse(fs.readFileSync(path.join(D, 'lists.json'))).forEach(s => {
+    if (!fs.existsSync(path.join(D, 'first', s.y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'))) needFd++;
+  });
+} catch (e) { needFd = 9999; }
 const names = ['build', 'train', 'explore', 'check', 'backtest'];
 let w = { build: 4, train: 4, explore: 70, check: 7, backtest: 15 };          // 기본 비율(실측 기준 어림값)
 try {
@@ -17,9 +23,10 @@ try {
   if (names.every(k => h[k])) w = h;
 } catch (e) {}
 const dl = need > 200 ? 45 : 1;                    // 받기 몫(%)
-const head = 1 + dl + 1;                           // 목록 1 + 받기 + 거시 1
+const fdShare = needFd > 200 ? 20 : 1;               // 첫날 가격 받기 몫(%)
+const head = 1 + dl + fdShare + 1;                           // 목록 1 + 받기 + 거시 1
 const tot = names.reduce((s, k) => s + w[k], 0);
 let acc = 1, out = { B1: 1 }, i = 2;
-acc += dl; out.B2 = acc; acc += 1; out.B3 = acc;
+acc += dl; out.B2 = acc; acc += fdShare; out.B2c = acc; acc += 1; out.B3 = acc;
 names.forEach((k, j) => { acc += (100 - head) * w[k] / tot; out['B' + (4 + j)] = j === names.length - 1 ? 100 : Math.round(acc * 10) / 10; });
 console.log(Object.entries(out).map(([k, v]) => `${k}=${v}`).join('\n'));

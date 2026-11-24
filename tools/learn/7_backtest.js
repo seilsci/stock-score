@@ -35,6 +35,13 @@ function fx(k) {
   let v = 1; for (let j = k; j > k - 8; j--) if (FX[ymOf(j)]) { v = FX[ymOf(j)]; break; }
   fxC.set(k, v); return v;
 }
+// 월별 첫 거래일 종가 (2c_firstday.js가 받음): data/first/<종목>.json = [[ym, 시가, 종가], ...]
+const FDC = new Map();
+function fdPx(y, k) {
+  let m = FDC.get(y);
+  if (!m) { m = new Map(); try { JSON.parse(fs.readFileSync(path.join(DATA, 'first', y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'))).forEach(b => { if (b[2] > 0) m.set(mi(b[0]), b[2]); }); } catch (e) {} FDC.set(y, m); }
+  return m.get(k);
+}
 const US = fi('us'), TURN = fi('turn'), ETF = fi('etf');
 const ma10 = (o, k) => { let s = 0; for (let j = k; j > k - 10; j--) { const p = o.m.get(j); if (p === undefined) return null; s += p; } return s / 10; };
 // 거시 지표 (ff_chg12 등) — ymOf(k) → ym 형태로 lookup
@@ -153,8 +160,62 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     return got;
   };
   const usTax = Y => C.us.cg_tax_rate * Math.max(0, (usGain[Y] || 0) - C.us.cg_exemption_krw);
+  const doBuys = (sigK, k, priceAt) => {      // sigK: 신호가 난 달, k: 체결하는 달, priceAt: 체결가(월말 종가 또는 다음 달 첫날 종가)
+    const picks = pickFn(ymOf(sigK));
+    // opt.fill: 점수 순위대로 후보(opt.cand)를 보며 1주도 못 사는 종목은 건너뛰고 다음 순위를 산다. 종목 수가 N에 못 미치면 있는 종목끼리 현금을 나눔
+    const fill = !!(opt.fill && opt.cand), list = fill ? opt.cand(ymOf(sigK)) : picks;
+    if (list.length) {
+      const per0 = cash / (N || picks.length);
+      let slots = N || picks.length;
+      for (let li = 0; li < list.length; li++) {
+        if (fill && slots <= 0) break;
+        const { r } = list[li];
+        const per = fill ? cash / Math.min(slots, list.length - li) : per0;      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
+        const o = px(r.y), p = priceAt(o, r); if (p === undefined || !(p > 0)) { if (opt.firstDay) fdMiss++; continue; }
+        const us = r.x[US] === 1, fee = us ? usFee : C.kr.commission;
+        const pKrw = p * (us ? fx(k) : 1);                // 원화 환산 주가
+        // 주식 단위 제한(opt.lotSize): 미국은 소수점 허용, 한국은 1주 단위
+        let sh, a;
+        if (opt.lotSize && (!us || opt.lotAll)) {           // lotAll: 미국도 정수 주만(실제 주문 가능한 수량)
+          const lots = Math.floor(Math.min(per, cash) * (1 - fee) / pKrw);  // 살 수 있는 주 수
+          if (lots < 1) { if (cur) { cur.skipped.push({ y: r.y, us, px: p, pKrw, per: Math.min(per, cash) }); cur.order.push(r.y); } continue; }   // 1주도 못 사면 건너뜀(fill이면 다음 순위로, 아니면 현금으로 남음)
+          sh = lots; a = lots * pKrw / (1 - fee);          // 실제 쓴 돈
+          a = Math.min(a, cash);
+        } else {
+          a = Math.min(per, cash);
+        // 슬리피지: 거래대금 대비 주문 비율에 따라 체결가 불리 (opt.slip = 충격계수)
+        // 충격비용 = slip × (주문금액 / 거래대금). 거래대금은 turn 역산: turn=log10(avgVol*price+1)
+        if (opt.slip && r.x[TURN] > 0) {
+          const dailyVal = (Math.pow(10, r.x[TURN]) - 1) * 20; // 월 → 일 거래대금 근사(20거래일)
+          if (dailyVal > 0) {
+            const impact = Math.min(0.05, opt.slip * a / dailyVal); // 최대 5%
+            sh = a * (1 - fee - impact) / pKrw;
+          } else { sh = a * (1 - fee) / pKrw; }
+        } else { sh = a * (1 - fee) / pKrw; }
+        }
+        const bScore = (scored[kA].get(ymOf(sigK)) || []).find(e => e.r.y === r.y)?.s ?? 0;
+        holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
+          buyYm: ymOf(k), buyPx: p, buyScore: bScore,
+          buyFeats: r.x });
+        if (cur) { cur.buys.push({ y: r.y, us, sh, px: p, fx: us ? fx(k) : null, amt: a, gross: a * (1 - fee), fee: a * fee, feeRate: fee, score: bScore }); cur.order.push(r.y); }
+        cash -= a; slots--;
+      }
+    } else if (holds.length && cash > 0) {
+      // 매수 신호 없을 때: 보유 종목에 균등 추가 매수 (reinvest 변형용 — simulate 호출 시 reinvest:true 옵션)
+      if (opt.reinvest) {
+        const per = cash / holds.length;
+        for (const h of holds) {
+          const p = h.px.m.get(k); if (!p) continue;
+          const a = Math.min(per, cash), fee = h.us ? usFee : C.kr.commission;
+          h.sh += a * (1 - fee) / (p * (h.us ? fx(k) : 1)); h.basis += a; cash -= a;
+        }
+      }
+    }
+  };
+  let pend = null, fdMiss = 0;
   for (let k = START; k <= END; k++) {
     cur = led ? { k, dep, sells: [], buys: [], skipped: [], order: [], tax: 0 } : null;
+    if (opt.firstDay && k > START) doBuys(k - 1, k, (o, r) => fdPx(r.y, k));   // 지난달 신호 → 이번 달 첫날 종가에 체결(입금·세금 처리 뒤 남은 현금)
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
@@ -222,56 +283,8 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       }
     }
     // (입금은 위에서 이미 받음)
-    const picks = pickFn(ymOf(k));
-    // opt.fill: 점수 순위대로 후보(opt.cand)를 보며 1주도 못 사는 종목은 건너뛰고 다음 순위를 산다. 종목 수가 N에 못 미치면 있는 종목끼리 현금을 나눔
-    const fill = !!(opt.fill && opt.cand), list = fill ? opt.cand(ymOf(k)) : picks;
-    if (list.length) {
-      const per0 = cash / (N || picks.length);
-      let slots = N || picks.length;
-      for (let li = 0; li < list.length; li++) {
-        if (fill && slots <= 0) break;
-        const { r } = list[li];
-        const per = fill ? cash / Math.min(slots, list.length - li) : per0;      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
-        const o = px(r.y), p = o.m.get(k); if (p === undefined) continue;
-        const us = r.x[US] === 1, fee = us ? usFee : C.kr.commission;
-        const pKrw = p * (us ? fx(k) : 1);                // 원화 환산 주가
-        // 주식 단위 제한(opt.lotSize): 미국은 소수점 허용, 한국은 1주 단위
-        let sh, a;
-        if (opt.lotSize && (!us || opt.lotAll)) {           // lotAll: 미국도 정수 주만(실제 주문 가능한 수량)
-          const lots = Math.floor(Math.min(per, cash) * (1 - fee) / pKrw);  // 살 수 있는 주 수
-          if (lots < 1) { if (cur) { cur.skipped.push({ y: r.y, us, px: p, pKrw, per: Math.min(per, cash) }); cur.order.push(r.y); } continue; }   // 1주도 못 사면 건너뜀(fill이면 다음 순위로, 아니면 현금으로 남음)
-          sh = lots; a = lots * pKrw / (1 - fee);          // 실제 쓴 돈
-          a = Math.min(a, cash);
-        } else {
-          a = Math.min(per, cash);
-        // 슬리피지: 거래대금 대비 주문 비율에 따라 체결가 불리 (opt.slip = 충격계수)
-        // 충격비용 = slip × (주문금액 / 거래대금). 거래대금은 turn 역산: turn=log10(avgVol*price+1)
-        if (opt.slip && r.x[TURN] > 0) {
-          const dailyVal = (Math.pow(10, r.x[TURN]) - 1) * 20; // 월 → 일 거래대금 근사(20거래일)
-          if (dailyVal > 0) {
-            const impact = Math.min(0.05, opt.slip * a / dailyVal); // 최대 5%
-            sh = a * (1 - fee - impact) / pKrw;
-          } else { sh = a * (1 - fee) / pKrw; }
-        } else { sh = a * (1 - fee) / pKrw; }
-        }
-        const bScore = (scored[kA].get(ymOf(k)) || []).find(e => e.r.y === r.y)?.s ?? 0;
-        holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
-          buyYm: ymOf(k), buyPx: p, buyScore: bScore,
-          buyFeats: r.x });
-        if (cur) { cur.buys.push({ y: r.y, us, sh, px: p, fx: us ? fx(k) : null, amt: a, gross: a * (1 - fee), fee: a * fee, feeRate: fee, score: bScore }); cur.order.push(r.y); }
-        cash -= a; slots--;
-      }
-    } else if (holds.length && cash > 0) {
-      // 매수 신호 없을 때: 보유 종목에 균등 추가 매수 (reinvest 변형용 — simulate 호출 시 reinvest:true 옵션)
-      if (opt.reinvest) {
-        const per = cash / holds.length;
-        for (const h of holds) {
-          const p = h.px.m.get(k); if (!p) continue;
-          const a = Math.min(per, cash), fee = h.us ? usFee : C.kr.commission;
-          h.sh += a * (1 - fee) / (p * (h.us ? fx(k) : 1)); h.basis += a; cash -= a;
-        }
-      }
-    }
+    if (!opt.firstDay) doBuys(k, k, (o) => o.m.get(k));
+    else pend = k;
     let after = cash; for (const h of holds) after += val(h, k);
     if (prevAfter > 0) rets.push({ k, r: (after - dep) / prevAfter - 1 });
     prevAfter = after;
@@ -279,6 +292,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     // 보유 스냅샷 (opt.log)
     if (snapshots) snapshots.set(ymOf(k), holds.map(h => ({ y: h.y, buyYm: h.buyYm, buyPx: h.buyPx, curPx: h.last, basis: h.basis, sh: h.sh, score: h.buyScore, feats: h.buyFeats })));
   }
+  if (opt.firstDay && pend !== null) doBuys(pend, mi(CUR), (o, r) => fdPx(r.y, mi(CUR)));   // 마지막 신호의 체결(이번 달 첫날)
   // 현재(진행 중인 달): 가장 최근 종가로 평가. 올해 이미 실현한 미국 손익의 세금은 미리 뺌
   const kNow = mi(CUR), curY = Math.floor(CUR / 100);
   holds.forEach(h => { h.last = h.px.lastK >= END ? h.px.lastC : h.last; });
@@ -293,7 +307,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   }
   liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led };
+  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss };
 }
 function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };
@@ -691,7 +705,40 @@ R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).
     log('   ※ 점수 상위 4는 설정(N·판매 규칙)을 같은 데이터로 골랐기 때문에, 이 확률은 실제보다 유리하게 나올 수 있음');
   }
 }
+// ── 체결 가정 비교: 월말 종가에 사기(지금) vs 다음 달 첫 거래일 종가에 사기 (판매는 둘 다 월말 종가). 첫날 가격이 없는 종목은 못 산 것으로 처리
+const FD = { rows: [], miss: 0, paired: [] };
+{
+  const FD_SEEDS = +process.env.FD_SEEDS || 50;
+  const cfg = [['전체', cmpAll], ['한국', ym => cmpAll(ym).filter(e => e.r.x[US] === 0)], ['미국', ym => cmpAll(ym).filter(e => e.r.x[US] === 1)]];
+  cfg.forEach(([nm, cand], i) => {
+    progress('체결가정', i / 4);
+    const a = summ(simulate(ym => cand(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand }));
+    const sf = simulate(ym => cand(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand, firstDay: true }); FD.miss += sf.fdMiss;
+    FD.rows.push({ nm: nm + ' 점수 상위 4', a, b: summ(sf) });
+  });
+  progress('체결가정', 3 / 4);
+  const dl = [], me = [], fdl = [];
+  for (let sd = 1; sd <= FD_SEEDS; sd++) {
+    const fl = ym => { const a = [...(byYm.get(ym) || [])], r = rng(sd * 7 + (ym % 997)); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    const m1 = summ(simulate(ym => fl(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand: fl }));
+    const m2 = summ(simulate(ym => fl(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand: fl, firstDay: true }));
+    me.push(m1.cagr); fdl.push(m2.cagr); dl.push(m2.cagr - m1.cagr);
+  }
+  FD.paired = { me: me.sort((x, y) => x - y), fd: fdl.sort((x, y) => x - y), d: dl.sort((x, y) => x - y) };
+  progress('체결가정', 1); process.stdout.write('\n');
+}
 // ── 점수 효과 보강 보고
+// ── 체결 가정 비교 보고
+{
+  log(''); log('## 체결 가정 비교: 월말 종가에 사기(현재) vs 다음 달 첫 거래일 종가에 사기 (판매는 모두 월말 종가, 같은 규칙·정수 주문·월 100만원)');
+  log('구분                       월말 체결     첫날 체결     차이(%p/년)   첫날 체결 최대낙폭');
+  FD.rows.forEach(r => log(`${r.nm.padEnd(22)} ${pc(r.a.cagr).padStart(9)}   ${pc(r.b.cagr).padStart(9)}   ${((r.b.cagr - r.a.cagr) * 100).toFixed(1).padStart(8)}      ${pc(r.b.mdd).padStart(9)}`));
+  const q = (a, p) => a[Math.min(a.length - 1, Math.floor(p * (a.length - 1)))], P = FD.paired;
+  log(`무작위 4 (${P.d.length}번): 월말 체결 중앙값 ${pc(q(P.me, 0.5))} → 첫날 체결 중앙값 ${pc(q(P.fd, 0.5))}, 같은 종목 짝의 차이 중앙값 ${(q(P.d, 0.5) * 100).toFixed(1)}%p (하위10% ${(q(P.d, 0.1) * 100).toFixed(1)} ~ 상위10% ${(q(P.d, 0.9) * 100).toFixed(1)})`);
+  log(`첫날 가격이 없어 못 산 건수 ${FD.miss}회`);
+  const up = FD.rows[0], top0 = up.b.cagr, beat = P.fd.filter(x => x >= top0).length;
+  log(`→ 첫날 체결에서 점수 상위 4(${top0 >= 0 ? '+' : ''}${(top0 * 100).toFixed(1)}%)보다 높았던 무작위는 ${beat}/${P.fd.length}번.`);
+}
 {
   log(''); log('## 점수 효과 보강 ① 한국·미국 따로 (각 시장 안에서만 고름, 같은 판매 규칙·정수 주문·월 100만원)');
   log('시장   점수 상위 4    점수 하위 4    시총 큰 4(현재 시총)   무작위 4(중앙값 · 하위10% ~ 상위10%)           상위 4보다 높은 무작위');
