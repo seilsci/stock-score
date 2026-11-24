@@ -411,7 +411,7 @@ function doGet(e) {
   var key = 'doGet:' + (all ? 'all' : 'sig');
   var hit = cacheGet_(key);
   if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
-  var ss = SpreadsheetApp.getActive(), out = { updated: {}, rows: [] };
+  var ss = SpreadsheetApp.getActive(), out = { updated: {}, rows: [], rateUp: rateUp_() };   // rateUp: 미국 기준금리 상승 중인지(매매일지의 매도 예정 계산용)
   ['한국', '미국'].forEach(function (n) {
     var sh = ss.getSheetByName(n);
     if (!sh || sh.getLastRow() < 2) return;
