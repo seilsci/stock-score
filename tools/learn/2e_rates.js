@@ -1,10 +1,10 @@
-// 금리 자료(하루 단위, FRED) → data/rates.json  { YYYYMM: { tgt, dff, dgs2, dgs1, dtb3, dtb6 } }  (각 달 "마지막 거래일" 값 = 그 달 말에 이미 알던 값)
+// 금리 자료(하루 단위, FRED) → data/rates.json  { YYYYMM: { tgt, dff, dgs2, dgs1, dgs10, dtb3, dtb6 } }  (각 달 "마지막 거래일" 값 = 그 달 말에 이미 알던 값)
 //   tgt  = 연준 목표금리 상단 (DFEDTARU 2008-12~, 그 전은 단일 목표 DFEDTAR) — "기준금리" 자체
-//   dff  = 실효 연방기금금리(하루)   dgs2·dgs1 = 미국 국채 2년·1년   dtb3·dtb6 = 3개월·6개월 단기국채
+//   dff  = 실효 연방기금금리(하루)   dgs2·dgs1·dgs10 = 미국 국채 2년·1년·10년   dtb3·dtb6 = 3개월·6개월 단기국채
 //   시장이 예상하는 금리 방향의 근사 = 국채 2년(또는 1년) − 실효금리: 양수면 시장이 앞으로 금리 인상을 반영(FedWatch 같은 선물 내재 확률의 과거 자료는 구하기 어려워 대신 씀)
 //   월평균값(FEDFUNDS)은 달이 끝나야 확정되지만, 이 자료는 그 달 마지막 날 값이라 한 달 빨리 알 수 있음
 const { fs, path, DATA, sleep } = require('./common');
-const S = ['DFEDTARU', 'DFEDTAR', 'DFF', 'DGS2', 'DGS1', 'DTB3', 'DTB6'];
+const S = ['DFEDTARU', 'DFEDTAR', 'DFF', 'DGS2', 'DGS1', 'DGS10', 'DTB3', 'DTB6'];
 async function csv(id) {
   for (let k = 0; k < 4; k++) {
     try {
@@ -27,7 +27,7 @@ async function csv(id) {
   [...yms].sort().forEach(ym => {
     const o = {}; const tgt = last.DFEDTARU[ym] ?? last.DFEDTAR[ym];
     if (tgt !== undefined) o.tgt = tgt; if (last.DFF[ym] !== undefined) o.dff = last.DFF[ym];
-    if (last.DGS2[ym] !== undefined) o.dgs2 = last.DGS2[ym]; if (last.DGS1[ym] !== undefined) o.dgs1 = last.DGS1[ym];
+    if (last.DGS10[ym] !== undefined) o.dgs10 = last.DGS10[ym]; if (last.DGS2[ym] !== undefined) o.dgs2 = last.DGS2[ym]; if (last.DGS1[ym] !== undefined) o.dgs1 = last.DGS1[ym];
     if (last.DTB3[ym] !== undefined) o.dtb3 = last.DTB3[ym]; if (last.DTB6[ym] !== undefined) o.dtb6 = last.DTB6[ym];
     if (Object.keys(o).length) out[ym] = o;
   });
