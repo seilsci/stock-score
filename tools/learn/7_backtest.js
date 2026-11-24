@@ -138,6 +138,11 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
       if (!opt.grace && h.sellK !== null && h.sellK <= k) { cash += sellCash(h, k, 'ma10'); continue; }
+      // 손절: 종가가 매수가 대비 opt.sl 비율 이하로 하락 시 즉시 매도
+      if (opt.sl && h.buyPx) {
+        const pKrw = h.last * (h.us ? fx(k) : 1), buyKrw = h.buyPx * (h.us ? fx(mi(h.buyYm)) : 1);
+        if (pKrw <= buyKrw * (1 - opt.sl)) { cash += sellCash(h, k, 'sl'); continue; }
+      }
       if (opt.tp) {                                       // 익절: 종가 ≥ tp × 월10이평이면 매도
         if (h.tpSellK != null) {                          // 이미 트리거됨 → 예정 달에 매도
           if (h.tpSellK <= k) { cash += sellCash(h, k, 'tp'); continue; }
@@ -209,7 +214,16 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
           sh = lots; a = lots * pKrw / (1 - fee);          // 실제 쓴 돈
           a = Math.min(a, cash);
         } else {
-          a = Math.min(per, cash); sh = a * (1 - fee) / pKrw;
+          a = Math.min(per, cash);
+        // 슬리피지: 거래대금 대비 주문 비율에 따라 체결가 불리 (opt.slip = 충격계수)
+        // 충격비용 = slip × (주문금액 / 거래대금). 거래대금은 turn 역산: turn=log10(avgVol*price+1)
+        if (opt.slip && r.x[TURN] > 0) {
+          const dailyVal = (Math.pow(10, r.x[TURN]) - 1) * 20; // 월 → 일 거래대금 근사(20거래일)
+          if (dailyVal > 0) {
+            const impact = Math.min(0.05, opt.slip * a / dailyVal); // 최대 5%
+            sh = a * (1 - fee - impact) / pKrw;
+          } else { sh = a * (1 - fee) / pKrw; }
+        } else { sh = a * (1 - fee) / pKrw; }
         }
         holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
           buyYm: ymOf(k), buyPx: p, buyScore: (scored[kA].get(ymOf(k)) || []).find(e => e.r.y === r.y)?.s ?? 0,
@@ -386,6 +400,95 @@ for (const dep of LOT_DEPOSITS) {
   R.push({ n: `A4 tp2x금리유예2달 단위제한${dLabel}`, s: summ(simulate(lk, 4, C1lot, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true }, dep)) });
 }
 progress('단위제한', 1); process.stdout.write('\n');
+
+// ── 1. 손절 실험: A4 tp2x트레일 × sl(10%·15%·20%·25% 하락 시 손절)
+const SL_VALS = [0.10, 0.15, 0.20, 0.25];
+const slTotal = SL_VALS.length * 2;
+let slStep = 0;
+for (const sl of SL_VALS) {
+  progress('손절 실험', slStep++ / slTotal);
+  R.push({ n: `A4 tp2x트레일+손절${Math.round(sl*100)}%`, s: summ(simulate(A4pk, 4, C1, { tpTrail: 2, sl })) });
+  progress('손절 실험', slStep++ / slTotal);
+  R.push({ n: `A4 tp2x금리유예2달+손절${Math.round(sl*100)}%`, s: summ(simulate(A4pk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, sl })) });
+}
+progress('손절 실험', 1); process.stdout.write('\n');
+
+// ── 2. 슬리피지 실험: A4 tp2x트레일 × slip 계수(0.5·1·2·5)
+// slip=1: 주문금액이 일 거래대금의 100%면 충격비용 1%(선형). 현실: 0.5~2 사이
+const SLIP_VALS = [0.5, 1, 2, 5];
+const slipTotal = SLIP_VALS.length * 2;
+let slipStep = 0;
+for (const slip of SLIP_VALS) {
+  progress('슬리피지 실험', slipStep++ / slipTotal);
+  R.push({ n: `A4 tp2x트레일+slip${slip}`, s: summ(simulate(A4pk, 4, C1, { tpTrail: 2, slip })) });
+  progress('슬리피지 실험', slipStep++ / slipTotal);
+  R.push({ n: `A4 tp2x금리유예2달+slip${slip}`, s: summ(simulate(A4pk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, slip })) });
+}
+progress('슬리피지 실험', 1); process.stdout.write('\n');
+
+// ── 3. 샘플 외 검증: 2011~2020 학습, 2021~2026 시험
+// BT_START=2021로 설정하고 채점·시뮬 재실행
+const OOS_START = 202101, OOS_START_Y = 2021;
+const OOS_START_K = mi(OOS_START);
+// 2021 이후만 시뮬 (scored는 그대로지만 2021 이전 채점에 미래가 안 섞임: 이미 시간 순서 검증)
+function simulateOOS(pickFn, N, C, opt = {}) {
+  let cash = 0, holds = [], prevAfter = 0, deposits = 0; const rets = [], usGain = {};
+  const usFee = C.us.commission + C.us.fx_spread, val = (h, k) => h.sh * h.last * (h.us ? fx(k) : 1);
+  const sellCashO = (h, k) => { const v = val(h,k); if(h.us){const pr=v*(1-usFee),Y=yOfK(k);usGain[Y]=(usGain[Y]||0)+pr-h.basis;return pr;} return v*(1-C.kr.commission-(h.etf&&C.kr.etf_exempt?0:krTax(C,yOfK(k)))); };
+  const usTax = Y => C.us.cg_tax_rate * Math.max(0, (usGain[Y]||0) - C.us.cg_exemption_krw);
+  for (let k = OOS_START_K; k <= END; k++) {
+    const keep = [];
+    for (const h of holds) {
+      const p = h.px.m.get(k); if (p !== undefined) h.last = p;
+      if (!opt.grace && h.sellK !== null && h.sellK <= k) { cash += sellCashO(h,k); continue; }
+      if (opt.tpTrail) { const ma=ma10(h.px,k); if(ma){if(h.last>=opt.tpTrail*ma)h.tpTrig=true;else if(h.tpTrig){cash+=sellCashO(h,k);continue;}}}
+      if (opt.grace) { const ma=ma10(h.px,k); if(ma){if(h.last<ma){const ff=opt.graceRate?ffChg12(k):null;const gN=(ff!=null&&ff>0)?1:opt.grace;h.graceCnt=(h.graceCnt||0)+1;if(h.graceCnt>=gN){cash+=sellCashO(h,k);continue;}}else h.graceCnt=0;}}
+      keep.push(h);
+    }
+    holds = keep;
+    if ((k-1)%12===11){const Y=yOfK(k),tax=usTax(Y);usGain[Y]=0;if(tax>0){if(cash>=tax)cash-=tax;else{let hv=0;for(const h of holds)hv+=val(h,k);const f=hv>0?Math.min(1,(tax-cash)/hv):0;for(const h of holds)h.sh*=1-f;cash=0;}}}
+    cash += DEP; deposits++;
+    const picks = pickFn(ymOf(k));
+    if (picks.length) {
+      const per = cash / (N || picks.length);
+      for (const { r } of picks) {
+        const o=px(r.y),p=o.m.get(k);if(p===undefined)continue;
+        const us=r.x[US]===1,fee=us?usFee:C.kr.commission,pKrw=p*(us?fx(k):1);
+        const a=Math.min(per,cash),sh=a*(1-fee)/pKrw;
+        holds.push({px:o,y:r.y,us,etf:r.x[ETF]===1,last:p,basis:a,sh,buyPx:p,buyYm:ymOf(k),sellK:r.exoff===null?null:mi(r.ym)+r.exoff});
+        cash-=a;
+      }
+    }
+    let after=cash;for(const h of holds)after+=val(h,k);
+    if(prevAfter>0)rets.push({k,r:(after-DEP)/prevAfter-1});
+    prevAfter=after;
+  }
+  const kNow=mi(CUR),curY=Math.floor(CUR/100);
+  holds.forEach(h=>{h.last=h.px.lastK>=END?h.px.lastC:h.last;});
+  let hv=0;for(const h of holds)hv+=val(h,kNow);
+  const nowV=cash+hv-usTax(curY);
+  let liq=cash,gl=usGain[curY]||0;
+  for(const h of holds){const v=val(h,kNow);if(h.us){const pr=v*(1-usFee);liq+=pr;gl+=pr-h.basis;}else liq+=v*(1-C.kr.commission-(h.etf&&C.kr.etf_exempt?0:krTax(C,curY)));}
+  liq-=C.us.cg_tax_rate*Math.max(0,gl-C.us.cg_exemption_krw);
+  rets.push({k:kNow,r:nowV/prevAfter-1,partial:true});
+  return {rets,deposits,depAmt:DEP,val:nowV,liq};
+}
+const oosStrategies = [
+  { n: 'OOS A4 원본', opt: {} },
+  { n: 'OOS A4 tp2x트레일', opt: { tpTrail: 2 } },
+  { n: 'OOS A4 tp2x금리유예2달', opt: { tpTrail: 2, grace: 2, graceRate: true } },
+  { n: 'OOS A10 tp2x트레일', opt: { tpTrail: 2 } },
+];
+const oosTotal = oosStrategies.length;
+let oosStep = 0;
+for (const st of oosStrategies) {
+  progress('샘플외검증', oosStep++ / oosTotal);
+  const isA10 = st.n.includes('A10');
+  const pk = isA10 ? ym=>(scored[kA].get(ym)||[]).slice(0,10) : A4pk;
+  const N = isA10 ? 10 : 4;
+  R.push({ n: st.n, s: summ(simulateOOS(pk, N, C1, st.opt)) });
+}
+progress('샘플외검증', 1); process.stdout.write('\n');
 progress('백테스트', 1); process.stdout.write('\n');
 
 // ── 보고서
