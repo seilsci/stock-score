@@ -7,9 +7,8 @@
  *       단, 미국 국채 10년 금리가 6개월 전 달말보다 올라 있으면(FRED DGS10) 유예 없이 하향 돌파 즉시 매도
  * 10이평 = 최근 10개월 월말 종가 평균(이번 달은 최근 종가를 그 달 종가로 씀)
  *
- * 대상(2026-11-25 변경): 그 달 거래대금 상위 — 한국(코스피+코스닥 합쳐) 500, 미국 500. 거래대금 = 직전 12개월 평균 거래량 × 최근 종가(tools/learn/3_build.js와 같은 정의).
- *   후보는 시총 순으로 넓게 받아(한국 코스피 1000 + 코스닥 900, 미국 1500; ETF·ETN·우선주 포함, 채권·금리·레버리지·인버스형은 제외) 월봉으로 거래대금 순위를 계산하고,
- *   이번 달 상위 500만 시트에 씀. 과거 돌파 달의 순위도 같은 방식으로 계산해 '확인 매수' 후보에 씀.
+ * 대상: 코스피 시총 상위 300(ETF·ETN·우선주 포함, 채권·금리·레버리지·인버스형은 제외) + 코스닥 상위 200 + 미국 상위 500 (오늘 시총 순 = 구매 시점의 시총 기준)
+ *   (선택) CFG.LIQ_N > 0이면 후보를 넓게 받아 그 달 거래대금 상위만 인정하는 방식도 코드에 남아 있음(거래대금 = 직전 12개월 평균 거래량 × 최근 종가, tools/learn/3_build.js와 같은 정의)
  * 데이터: 한국 = 네이버 시총 순위(후보) + 야후 월봉(15:30 종가, 없으면 네이버)
  *         미국 = 네이버 시총 순위(후보)·월봉(막히면 야후)
  *
@@ -17,10 +16,10 @@
  */
 
 var CFG = {
-  KOSPI_N: 1000,       // 후보 수(시총 순): 거래대금 순위는 이 후보들의 월봉으로 계산
-  KOSDAQ_N: 900,
-  US_N: 1500,
-  LIQ_N: 500,          // 그 달 거래대금 상위 몇 개까지 인정(한국·미국 각각)
+  KOSPI_N: 300,        // 종목 수(시총 순). 거래대금 상위로 거르려면 LIQ_N을 500 등으로 하고 후보를 넓게(KOSPI_N 1000·KOSDAQ_N 900·US_N 1500 정도)
+  KOSDAQ_N: 200,
+  US_N: 500,
+  LIQ_N: 0,            // 0이면 시총 순 그대로(기본). 양수면 그 달 거래대금 상위 LIQ_N개(한국 전체·미국 각각)만 인정
   MONTHS: 10,          // 이동평균 개월 수
   CHART_N: 45,         // 차트용으로 저장하는 개월 수(화면 36개월 + 10이평 계산용 9개월)
   BATCH: 40,           // 한 번에 동시에 받는 개수(100으로 올렸더니 야후 31.6→37.0초, 네이버 31.8→47.5초로 오히려 느려져 40으로 되돌림)
@@ -97,7 +96,7 @@ function updateKR() {
     T.lap('네이버대체(' + retry.length + '개)', t);
     t = new Date();
   }
-  var liq = buildLiq_(mons, CFG.LIQ_N);                                  // 매달 거래대금 상위 LIQ_N의 문턱(한국 전체 한 묶음)
+  var liq = CFG.LIQ_N ? buildLiq_(mons, CFG.LIQ_N) : null;               // LIQ_N > 0일 때만: 매달 거래대금 상위 LIQ_N의 문턱(한국 전체 한 묶음)
   var rows = [];
   list.forEach(function (s, i) { if (mons[i]) { var r = makeRow_(s, mons[i], liq); if (r) rows.push(r); } });
   T.lap('계산·점수', t);
@@ -105,7 +104,7 @@ function updateKR() {
   t = new Date();
   var wd = writeRows_('한국', rows);
   T.lap('시트쓰기', t); T.note(wd);
-  log_('updateKR', '후보 ' + list.length + ' → 거래대금 상위 ' + rows.length + '종목, 네이버 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
+  log_('updateKR', '후보 ' + list.length + ' → ' + rows.length + '종목, 네이버 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
        Math.round((Date.now() - t0) / 1000) + '초 ' + T.text());
 }
 
@@ -173,7 +172,7 @@ function updateUS() {
     T.lap('야후대체(' + retry.length + '개)', t);
     t = new Date();
   }
-  var liq = buildLiq_(mons, CFG.LIQ_N);                                  // 매달 거래대금 상위 LIQ_N의 문턱(미국 한 묶음)
+  var liq = CFG.LIQ_N ? buildLiq_(mons, CFG.LIQ_N) : null;               // LIQ_N > 0일 때만: 매달 거래대금 상위 LIQ_N의 문턱(미국 한 묶음)
   var rows = [];
   list.forEach(function (s, i) { if (mons[i]) { var r = makeRow_(s, mons[i], liq); if (r) rows.push(r); } });
   T.lap('계산·점수', t);
@@ -181,13 +180,13 @@ function updateUS() {
   t = new Date();
   var wd = writeRows_('미국', rows);
   T.lap('시트쓰기', t); T.note(wd);
-  log_('updateUS', '후보 ' + list.length + ' → 거래대금 상위 ' + rows.length + '종목, 야후 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
+  log_('updateUS', '후보 ' + list.length + ' → ' + rows.length + '종목, 야후 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
        Math.round((Date.now() - t0) / 1000) + '초 ' + T.text());
 }
 
 function naverUSTop_(n) {
   var urls = [];
-  [['NASDAQ', 9], ['NYSE', 8], ['AMEX', 3]].forEach(function (e) {
+  (n > 600 ? [['NASDAQ', 9], ['NYSE', 8], ['AMEX', 3]] : [['NASDAQ', 5], ['NYSE', 5], ['AMEX', 1]]).forEach(function (e) {
     for (var p = 1; p <= e[1]; p++)
       urls.push('https://api.stock.naver.com/stock/exchange/' + e[0] + '/marketValue?page=' + p + '&pageSize=100');
   });
