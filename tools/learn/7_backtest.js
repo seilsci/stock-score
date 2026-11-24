@@ -58,6 +58,9 @@ const ma10 = (o, k) => { let s = 0; for (let j = k; j > k - MAN; j--) { const p 
 // 거시 지표 (ff_chg12 등) — ymOf(k) → ym 형태로 lookup
 let MACRO = {}; try { MACRO = JSON.parse(fs.readFileSync(path.join(DATA, 'macro.json'))); } catch (e) {}
 const ffChg12 = k => { const m = MACRO[ymOf(k)]; return m && m.ff_chg12 != null ? m.ff_chg12 : null; };
+// 일지·장부가 쓰는 금리 판단(2026-11-25 채택): 미국 국채 10년 금리(그 달 마지막 거래일 값)가 6개월 전 달말보다 높으면 "금리 상승 중" → 유예 없이 즉시 매도. data/rates.json(2e_rates.js)이 없으면 예전 규칙(기준금리 12개월 변화)으로 대신함
+let RATES_J = null; try { RATES_J = JSON.parse(fs.readFileSync(path.join(DATA, 'rates.json'))); } catch (e) { console.log('※ data/rates.json 없음(2e_rates.js): 금리 판단을 예전 규칙(기준금리 12개월 변화)으로 대신함'); }
+const rateJ = k => { if (!RATES_J) { const f = ffChg12(k); return f == null ? null : f > 0; } const a = (RATES_J[ymOf(k)] || {}).dgs10, b = (RATES_J[ymOf(k - 6)] || {}).dgs10; return a != null && b != null ? a > b : null; };
 const krChg12 = k => { const m = MACRO[ymOf(k)]; return m && m.kr_rate_chg12 != null && m.kr_rate_chg12 !== '' ? m.kr_rate_chg12 : null; };   // 한국 금리 12개월 변화(2b_macro.js, 없으면 null)
 
 // ── 시험 연도마다 "그때까지 알던 것"으로 학습 → 그해 모든 신호에 점수 (미래 정보 없음)
@@ -1365,6 +1368,11 @@ if (process.env.STAGE14 !== '0') {
     mk('R + W3', 1, 3, 0, 0); mk('R + W4', 1, 4, 0, 0); mk('R + P', 1, 0, 1, 0); mk('W3 + P', 0, 3, 1, 0); mk('W4 + P', 0, 4, 1, 0);
     mk('R + W3 + P', 1, 3, 1, 0); mk('R + W4 + P', 1, 4, 1, 0); mk('R + W3 + P + O', 1, 3, 1, 1); mk('R + W4 + P + O', 1, 4, 1, 1);
   }
+  if (process.env.AD8_REINV === '1' && RT14) {                          // 재투자 비중: 매도한 돈(입금 포함 현금)의 신규 매수 몫 x% (0~100, 5% 단위), 나머지는 보유 종목 추가 매수(수익 중인 종목 / 전부). 금리 판단 = 지금 채택(국채10년 6개월)
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, m = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), cand = ym => m.get(ym) || [];
+    V.push({ sec: '기준', name: '신규 100% (추가 매수 없음, 지금)', cand, rule: rule10 });
+    [['win', '수익 중인 종목'], ['all', '보유 종목 전부']].forEach(([g, gn]) => { for (let x = 95; x >= 0; x -= 5) V.push({ sec: `재투자 비중 · 나머지는 ${gn}에 추가 매수`, name: `신규 ${x}% · 보유 ${100 - x}%`, cand, rule: rule10, o: { addFrac: (100 - x) / 100, addGroup: g, addThr: 0 } }); });
+  }
   const base = V[0];
   V.forEach((v, i) => { progress('후속 시험', i / V.length); v.full = run14(v); v.halves = []; });
   for (let b = 1; b <= B; b++) { progress('후속 시험(절반)', (b - 1) / B); V.forEach(v => v.halves.push(run14(v, e => hash(e.r.y + '|' + b) < 0.5).cagr)); }
@@ -1618,7 +1626,7 @@ function confirmTrig(r) {                                            // 돌파 �
   for (let j = t0 + 1; j <= END; j++) {
     const p = o.m.get(j); if (p === undefined) return null;
     const ma = ma10(o, j);
-    if (ma) { if (p >= 2 * ma) tp = true; else if (tp) return null; if (p < ma) { cnt++; const ff = ffChg12(j), n = (ff != null && ff > 0) ? 1 : 2; if (cnt >= n) return null; } else cnt = 0; }
+    if (ma) { if (p >= 2 * ma) tp = true; else if (tp) return null; if (p < ma) { cnt++; const n = rateJ(j) === true ? 1 : 2; if (cnt >= n) return null; } else cnt = 0; }
     if (p / p0 - 1 >= CONF_THR && alignJ(o, j) === true) return { j, pnl: p / p0 - 1, p0 };
   }
   return null;
@@ -1629,7 +1637,7 @@ if (JOURNAL_STRAT === 'confirm') {
   confirmMap.forEach(a => a.sort((x, y) => y.s - x.s));
 }
 const jCand = JOURNAL_STRAT === 'confirm' ? (ym => confirmMap.get(ym) || []) : (ym => scored[kA].get(ym) || []);
-const journalSim = simulate(ym => jCand(ym).slice(0, 4), 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true, fill: true, cand: jCand, firstDay: JOURNAL_STRAT === 'confirm', log: true });   // 실제 주문 가능한 정수 주(한국·미국), 못 사면 다음 점수 순위를 사고, 추천이 모자라면 있는 만큼 나눔
+const journalSim = simulate(ym => jCand(ym).slice(0, 4), 4, C1, { tpTrail: 2, grace: 2, graceRate: true, rateFn: rateJ, lotSize: true, lotAll: true, fill: true, cand: jCand, firstDay: JOURNAL_STRAT === 'confirm', log: true });   // 실제 주문 가능한 정수 주(한국·미국), 못 사면 다음 점수 순위를 사고, 추천이 모자라면 있는 만큼 나눔
 const listData = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const nameMap = new Map(listData.map(s => [s.y, { name: s.name, market: s.mk, code: s.code }]));
 const journal = {
@@ -1662,7 +1670,7 @@ progress('매매일지', 1); process.stdout.write('\n');
   for (const [ym, m] of (journalSim.ledger || new Map())) {
     months[ym] = {
       dep: m.dep, tax: r0(m.tax), cash: r0(m.cash), holdVal: r0(m.holdVal), fx: +m.fx.toFixed(2),
-      rateUp: (ffChg12(m.k) ?? 0) > 0,                    // 그달 기준금리 상승 중(판매 유예를 건너뛰는 조건): 시작 시점을 바꿔 다시 계산할 때 판매 시점을 구하는 데 씀
+      rateUp: rateJ(m.k) === true,                    // 그달 기준금리 상승 중(판매 유예를 건너뛰는 조건): 시작 시점을 바꿔 다시 계산할 때 판매 시점을 구하는 데 씀
       cands: candsOf(ym, m.k),                            // 그달 점수 상위 후보 12개: 못 사면 다음 순위로 채우는 계산(시작 시점 바꾸기)에 씀
       buys: m.buys.map(x => ({ y: x.y, name: nm(x.y), us: x.us, sh: x.sh, px: x.px, amt: r0(x.amt), gross: r0(x.gross), fee: r0(x.fee), feeRate: x.feeRate,
         fxUsed: x.fx == null ? null : +x.fx.toFixed(2), score: +x.score.toFixed(4) })),

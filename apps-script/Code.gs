@@ -4,7 +4,7 @@
  * 매수: 전달 종가 ≤ 전달 10이평  그리고  이번 달 최근 종가 > 이번 달 10이평
  * 유예: 이번 달 처음 10이평 아래로 내려옴(하향 돌파 1개월째). 다음 달에도 아래면 매도
  * 매도: 하향 돌파 후 2개월째까지 계속 10이평 아래(전전달 위 → 전달·이번 달 아래).
- *       단, 미국 기준금리가 1년 전보다 올라 있으면(FEDFUNDS 전월 - 13개월 전 > 0) 유예 없이 하향 돌파 즉시 매도
+ *       단, 미국 국채 10년 금리가 6개월 전 달말보다 올라 있으면(FRED DGS10) 유예 없이 하향 돌파 즉시 매도
  * 10이평 = 최근 10개월 월말 종가 평균(이번 달은 최근 종가를 그 달 종가로 씀)
  *
  * 대상: 코스피 시총 상위 300(ETF·ETN·우선주 포함, 채권·금리·레버리지·인버스형은 제외) + 코스닥 상위 200 + 미국 상위 500
@@ -350,28 +350,30 @@ function scoreMonthly_(mon, s) {
 }
 
 /* ───────── 신호 계산 ───────── */
-// 미국 기준금리(FEDFUNDS)가 오르는 중인지: (전월 값) - (13개월 전 값) > 0, 매도 유예를 건너뛰는 조건. 못 받으면 false
-var FF = null;
+// 금리가 오르는 중인지(매도 유예를 건너뛰는 조건): 미국 국채 10년 금리(FRED DGS10 하루 단위)가 6개월 전 달말보다 높으면 true. 못 받으면 false
+//   tools/learn/7_backtest.js rateJ와 같은 규칙으로 유지할 것(그 달 마지막 거래일 값 비교; 이번 달은 가장 최근 값)
+var FF = null;     // { 'YYYY-MM': 그 달 마지막 값 }
 function rateUp_() { return rateAt_(0); }
-// 이번 달에서 back개월 전 시점의 '기준금리 1년 전보다 상승 중' 판단(확인 매수의 가상 포지션 유예 계산용)
+// 이번 달에서 back개월 전 시점의 판단(확인 매수의 가상 포지션 유예 계산용)
 function rateAt_(back0) {
   if (FF === null) {
     FF = {};
     try {
-      UrlFetchApp.fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS', { headers: CFG.UA })
+      var d0 = new Date(); d0.setFullYear(d0.getFullYear() - 3);
+      UrlFetchApp.fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10&cosd=' + Utilities.formatDate(d0, 'Asia/Seoul', 'yyyy-MM-dd'), { headers: CFG.UA })
         .getContentText().split('\n').slice(1).forEach(function (l) {
           var p = l.trim().split(',');
-          if (p.length > 1 && p[1] && p[1] !== '.') FF[p[0].slice(0, 7)] = +p[1];
+          if (p.length > 1 && p[1] && p[1] !== '.') FF[p[0].slice(0, 7)] = +p[1];     // 날짜순이라 덮어쓰면 그 달 마지막 값
         });
     } catch (e) { FF = {}; }
   }
   var now = new Date(Utilities.formatDate(new Date(), 'Asia/Seoul', "yyyy-MM-dd'T'12:00:00"));
   var key = function (back) {
-    var d = new Date(now.getFullYear(), now.getMonth() - back - back0, 1);
+    var d = new Date(now.getFullYear(), now.getMonth() - back, 1);
     return d.getFullYear() + '-' + pad_(d.getMonth() + 1);
   };
-  var a = FF[key(1)], b = FF[key(13)];
-  return a !== undefined && b !== undefined && a - b > 0;
+  var a = FF[key(back0)], b = FF[key(back0 + 6)];
+  return a !== undefined && b !== undefined && a > b;
 }
 
 /* ───────── 확인 매수 후보 ─────────
@@ -475,7 +477,7 @@ function doGet(e) {
   var key = 'doGet:' + (all ? 'all' : 'sig');
   var hit = cacheGet_(key);
   if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
-  var ss = SpreadsheetApp.getActive(), out = { updated: {}, rows: [], rateUp: rateUp_() };   // rateUp: 미국 기준금리 상승 중인지(매매일지의 매도 예정 계산용)
+  var ss = SpreadsheetApp.getActive(), out = { updated: {}, rows: [], rateUp: rateUp_() };   // rateUp: 미국 국채 10년 금리 상승 중인지(6개월 전 달말 대비)(매매일지의 매도 예정 계산용)
   ['한국', '미국'].forEach(function (n) {
     var sh = ss.getSheetByName(n);
     if (!sh || sh.getLastRow() < 2) return;
