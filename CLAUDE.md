@@ -1,7 +1,7 @@
 # 주식 점수 사이트 — 작업 안내 (새 세션은 이 파일부터 읽음)
 
 한국·미국 주식의 "월봉 10이평 돌파" 매수·매도 대상을 보여 주고, **크게 벌 돌파에 높은 점수**를 매기는 사이트.
-사이트 https://seilsci.github.io/stock-score (main에 push하면 배포) · 작업 브랜치 `ccr-6c12b59f-23flss` · **자세한 기록은 `docs/NOTES.md`(필요할 때만, 길어서 크레딧이 듦)**.
+사이트 https://seilsci.github.io/stock-score (main에 push하면 배포) · 작업 브랜치 `ccr-6c12b59f-23flss` · **자세한 기록은 `docs/NOTES.md`, decoder-helper 때 배운 검증·과적합 교훈은 `docs/LESSONS-decoder.md`(둘 다 필요할 때만, 길어서 크레딧이 듦)**. decoder 원본은 PC의 `E:\GitHub\decoder-helper`.
 
 ## 소통·작업 방식 (사용자 선호)
 - **한국어**로, 짧고 바로 쓸 수 있게. 숫자는 표로. 다른 사람에게 설명할 글은 세부 수치를 뺀 불릿으로.
