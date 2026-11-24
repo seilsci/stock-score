@@ -139,7 +139,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   };
   const usTax = Y => C.us.cg_tax_rate * Math.max(0, (usGain[Y] || 0) - C.us.cg_exemption_krw);
   for (let k = START; k <= END; k++) {
-    cur = led ? { k, dep, sells: [], buys: [], skipped: [], tax: 0 } : null;
+    cur = led ? { k, dep, sells: [], buys: [], skipped: [], order: [], tax: 0 } : null;
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
@@ -207,9 +207,15 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     }
     cash += dep; deposits++;
     const picks = pickFn(ymOf(k));
-    if (picks.length) {
-      const per = cash / (N || picks.length);
-      for (const { r } of picks) {
+    // opt.fill: 점수 순위대로 후보(opt.cand)를 보며 1주도 못 사는 종목은 건너뛰고 다음 순위를 산다. 종목 수가 N에 못 미치면 있는 종목끼리 현금을 나눔
+    const fill = !!(opt.fill && opt.cand), list = fill ? opt.cand(ymOf(k)) : picks;
+    if (list.length) {
+      const per0 = cash / (N || picks.length);
+      let slots = N || picks.length;
+      for (let li = 0; li < list.length; li++) {
+        if (fill && slots <= 0) break;
+        const { r } = list[li];
+        const per = fill ? cash / Math.min(slots, list.length - li) : per0;      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
         const o = px(r.y), p = o.m.get(k); if (p === undefined) continue;
         const us = r.x[US] === 1, fee = us ? usFee : C.kr.commission;
         const pKrw = p * (us ? fx(k) : 1);                // 원화 환산 주가
@@ -217,7 +223,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         let sh, a;
         if (opt.lotSize && (!us || opt.lotAll)) {           // lotAll: 미국도 정수 주만(실제 주문 가능한 수량)
           const lots = Math.floor(Math.min(per, cash) * (1 - fee) / pKrw);  // 살 수 있는 주 수
-          if (lots < 1) { if (cur) cur.skipped.push({ y: r.y, us, px: p, pKrw, per: Math.min(per, cash) }); continue; }   // 1주도 못 사면 패스(현금으로 남음)
+          if (lots < 1) { if (cur) { cur.skipped.push({ y: r.y, us, px: p, pKrw, per: Math.min(per, cash) }); cur.order.push(r.y); } continue; }   // 1주도 못 사면 건너뜀(fill이면 다음 순위로, 아니면 현금으로 남음)
           sh = lots; a = lots * pKrw / (1 - fee);          // 실제 쓴 돈
           a = Math.min(a, cash);
         } else {
@@ -236,8 +242,8 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
           buyYm: ymOf(k), buyPx: p, buyScore: bScore,
           buyFeats: r.x });
-        if (cur) cur.buys.push({ y: r.y, us, sh, px: p, fx: us ? fx(k) : null, amt: a, gross: a * (1 - fee), fee: a * fee, feeRate: fee, score: bScore });
-        cash -= a;
+        if (cur) { cur.buys.push({ y: r.y, us, sh, px: p, fx: us ? fx(k) : null, amt: a, gross: a * (1 - fee), fee: a * fee, feeRate: fee, score: bScore }); cur.order.push(r.y); }
+        cash -= a; slots--;
       }
     } else if (holds.length && cash > 0) {
       // 매수 신호 없을 때: 보유 종목에 균등 추가 매수 (reinvest 변형용 — simulate 호출 시 reinvest:true 옵션)
@@ -413,24 +419,27 @@ progress('단위제한', 1); process.stdout.write('\n');
 // 실제 주문 가능한 수량(한국·미국 모두 정수 주, 못 산 몫은 현금): 매매일지와 같은 설정, 월 입금액별
 for (const dep of LOT_DEPOSITS) {
   const lk = ym => (scored[kA].get(ym) || []).slice(0, 4);
-  R.push({ n: `A4 tp2x금리유예2달 정수주문(한·미)${dep / 10000}만`, s: summ(simulate(lk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true }, dep)) });
+  R.push({ n: `A4 tp2x금리유예2달 정수주문(한·미)${dep / 10000}만`, s: summ(simulate(lk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true, fill: true, cand: ym => scored[kA].get(ym) || [] }, dep)) });
 }
 
 // ── 점수가 기여했나? 같은 판매 규칙(tp2x 트레일 + 금리 유예 2달)·정수 주문·월 100만원에서 "무엇을 사느냐"만 바꿔 비교
 //    점수 상위 4 / 중간 4 / 하위 4 / 무작위 4(여러 번 평균) / 거래대금 큰 4. 상위 4가 하위·무작위보다 확실히 좋아야 점수가 일한 것
-const CMP_OPT = { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true };
-const cmpTop = ym => (scored[kA].get(ym) || []).slice(0, 4);
-const cmpBottom = ym => { const a = scored[kA].get(ym) || []; return a.slice(Math.max(0, a.length - 4)); };
-const cmpMiddle = ym => { const a = scored[kA].get(ym) || [], m = Math.floor(a.length / 2); return a.slice(Math.max(0, m - 2), m + 2); };
-const cmpTurn = ym => [...(byYm.get(ym) || [])].sort((a, b) => b.r.x[TURN] - a.r.x[TURN]).slice(0, 4);
-const cmpRand = rnd => ym => { const a = [...(byYm.get(ym) || [])]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, 4); };
+const CMP_OPT = { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true, fill: true };
+const cmpAll = ym => scored[kA].get(ym) || [];
+const cmpTopL = cmpAll;                                                              // 점수 높은 순
+const cmpBottomL = ym => [...cmpAll(ym)].reverse();                                  // 점수 낮은 순
+const cmpMiddleL = ym => { const a = cmpAll(ym), m = (a.length - 1) / 2; return a.map((x, i) => [x, Math.abs(i - m)]).sort((p, q) => p[1] - q[1]).map(p => p[0]); };   // 가운데부터 바깥으로
+const cmpTurnL = ym => [...(byYm.get(ym) || [])].sort((a, b) => b.r.x[TURN] - a.r.x[TURN]);                                                                      // 거래대금 큰 순
+const cmpRandL = rnd => ym => { const a = [...(byYm.get(ym) || [])]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };   // 무작위 순서
+const cmpTop = ym => cmpTopL(ym).slice(0, 4), cmpBottom = ym => cmpBottomL(ym).slice(0, 4), cmpMiddle = ym => cmpMiddleL(ym).slice(0, 4), cmpTurn = ym => cmpTurnL(ym).slice(0, 4);
+const cmpRand = rnd => ym => cmpRandL(rnd)(ym).slice(0, 4);
 const CMP_NAMES = [];
 const cmpRun = (name, fn) => { progress('점수효과', CMP_NAMES.length / 5); CMP_NAMES.push(name); R.push({ n: name, s: fn() }); };
-cmpRun('점수효과 · 점수 상위 4', () => summ(simulate(cmpTop, 4, C1, CMP_OPT)));
-cmpRun('점수효과 · 점수 중간 4', () => summ(simulate(cmpMiddle, 4, C1, CMP_OPT)));
-cmpRun('점수효과 · 점수 하위 4', () => summ(simulate(cmpBottom, 4, C1, CMP_OPT)));
-cmpRun(`점수효과 · 무작위 4 (평균 ${SEEDS}회)`, () => { const l = []; for (let sd = 1; sd <= SEEDS; sd++) l.push(summ(simulate(cmpRand(rng(sd)), 4, C1, CMP_OPT))); return avgSumm(l); });
-cmpRun('점수효과 · 거래대금 큰 4', () => summ(simulate(cmpTurn, 4, C1, CMP_OPT)));
+cmpRun('점수효과 · 점수 상위 4', () => summ(simulate(cmpTop, 4, C1, { ...CMP_OPT, cand: cmpTopL })));
+cmpRun('점수효과 · 점수 중간 4', () => summ(simulate(cmpMiddle, 4, C1, { ...CMP_OPT, cand: cmpMiddleL })));
+cmpRun('점수효과 · 점수 하위 4', () => summ(simulate(cmpBottom, 4, C1, { ...CMP_OPT, cand: cmpBottomL })));
+cmpRun(`점수효과 · 무작위 4 (평균 ${SEEDS}회)`, () => { const l = []; for (let sd = 1; sd <= SEEDS; sd++) l.push(summ(simulate(cmpRand(rng(sd)), 4, C1, { ...CMP_OPT, cand: cmpRandL(rng(sd)) }))); return avgSumm(l); });
+cmpRun('점수효과 · 거래대금 큰 4', () => summ(simulate(cmpTurn, 4, C1, { ...CMP_OPT, cand: cmpTurnL })));
 progress('점수효과', 1); process.stdout.write('\n');
 
 // ── 1. 손절 실험: A4 tp2x트레일 × sl(10%·15%·20%·25% 하락 시 손절)
@@ -578,7 +587,7 @@ fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
 
 // ── 매매일지(trades.json): A4 tp2x트레일+금리유예2달, 월 100만원
 progress('매매일지', 0);
-const journalSim = simulate(A4pk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true, log: true });   // 실제 주문 가능한 정수 주(한국·미국), 못 산 몫은 현금으로 남김
+const journalSim = simulate(A4pk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true, fill: true, cand: ym => scored[kA].get(ym) || [], log: true });   // 실제 주문 가능한 정수 주(한국·미국), 못 사면 다음 점수 순위를 사고, 추천이 모자라면 있는 만큼 나눔
 const listData = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const nameMap = new Map(listData.map(s => [s.y, { name: s.name, market: s.mk, code: s.code }]));
 const journal = {
@@ -614,8 +623,9 @@ require('./8_bars.js');
         fxUsed: x.fx == null ? null : +x.fx.toFixed(2), score: +x.score.toFixed(4) })),
       sells: m.sells.map(x => ({ y: x.y, name: nm(x.y), us: x.us, sh: x.sh, px: x.px, amt: r0(x.amt), basis: r0(x.basis), gross: r0(x.gross), fee: r0(x.fee),
         feeRate: x.feeRate, tax: r0(x.tax), taxRate: x.taxRate, fxUsed: x.fx == null ? null : +x.fx.toFixed(2), ret: +x.ret.toFixed(4), reason: x.reason, buyYm: x.buyYm })),
-      skipped: m.skipped.map(x => ({ y: x.y, name: nm(x.y), us: x.us, px: x.px, one: r0(x.pKrw), per: r0(x.per) }))
+      skipped: m.skipped.map(x => ({ y: x.y, name: nm(x.y), us: x.us, px: x.px, one: r0(x.pKrw), per: r0(x.per) })),
+      order: m.order || []
     };
   }
-  fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 산 몫은 현금' }, months }));
+  fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 사면 다음 점수 순위, 추천이 모자라면 있는 만큼 나눔' }, months }));
 }                                      // 매매일지 차트용 월봉(bars.json)

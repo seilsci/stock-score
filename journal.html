@@ -638,7 +638,7 @@ function renderSummary(){
     +'<div class="sum-i"><span class="k">보유 평가금</span><b>'+won(m.holdVal)+'</b></div>'
     +'<div class="sum-i"><span class="k">이달 매도</span><b>'+(m.sells.length?m.sells.length+'건 '+won(sellSum):'없음')+'</b></div>'
     +'<div class="sum-i"><span class="k">이달 매수</span><b>'+(m.buys.length?m.buys.length+'건 '+won(buySum):'없음')+'</b></div>'
-    +'</div><div class="sum-note">매달 입금액·매도금·남은 현금을 4종목에 똑같이 나눠 배정하고, <b>실제로 주문 가능한 정수 주만</b> 삽니다(소수점 없음). 1주 값이 배정액보다 비싸면 그 종목은 건너뛰고 현금으로 남아 다음 달로 넘어갑니다. 미국 종목은 월말 환율('+Math.round(m.fx).toLocaleString()+'원/$)로 환산했고, 팔 때 드는 세금·수수료는 팔 때 반영됩니다.</div>';
+    +'</div><div class="sum-note">매달 입금액·매도금·남은 현금을 4종목에 똑같이 나눠 배정하고, <b>실제로 주문 가능한 정수 주만</b> 삽니다(소수점 없음). 1주 값이 배정액보다 비싸 못 사면 <b>다음 점수 순위 종목</b>을 삽니다. 추천이 4개가 안 되면 있는 종목끼리 현금을 나눠 삽니다. 정수 주로 사고 남는 돈은 현금으로 다음 달로 넘어갑니다. 미국 종목은 월말 환율('+Math.round(m.fx).toLocaleString()+'원/$)로 환산했고, 팔 때 드는 세금·수수료는 팔 때 반영됩니다.</div>';
 }
 
 function renderLedger(){
@@ -690,7 +690,7 @@ function renderLedger(){
   });
   (m.skipped||[]).forEach(function(x){
     add('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      '1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 현금으로 남음','0원',bal);
+      '1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김','0원',bal);
   });
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">월말 현금</div></div><div class="lr-a">'+won(m.cash)+'</div></div></div>';
   list.innerHTML=html;
@@ -869,13 +869,14 @@ function planCore(o){
     var gain=o.usGainYtd||0; sells.forEach(function(x){ if(x.us) gain+=x.amt-x.basis; });
     taxPaid=C.us.cg_tax_rate*Math.max(0,gain-C.us.cg_exemption_krw); taxPaid=Math.min(taxPaid,cash); cash-=taxPaid;
   }
-  var cash1=cash+o.dep, N=o.N||4, per=cash1/N, buys=[], skipped=[], c=cash1;
-  o.picks.forEach(function(r){
+  var cash1=cash+o.dep, N=o.N||4, buys=[], skipped=[], c=cash1, slots=N, list=o.picks;
+  for(var li=0; li<list.length && slots>0; li++){                                          // 점수 순위대로: 1주도 못 사면 건너뛰고 다음 순위를 산다
+    var r=list[li], per=c/Math.min(slots,list.length-li);                                 // 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽) → 추천이 모자라면 있는 만큼 나눔
     var fee=r.us?usFee:krFee, pKrw=r.px*(r.us?o.fx:1), lots=Math.floor(Math.min(per,c)*(1-fee)/pKrw);
-    if(lots<1){ skipped.push({y:r.y,name:r.name,us:r.us,px:r.px,one:pKrw,per:Math.min(per,c)}); return; }
-    var a=lots*pKrw/(1-fee); c-=a;
+    if(lots<1){ skipped.push({y:r.y,name:r.name,us:r.us,px:r.px,one:pKrw,per:Math.min(per,c)}); continue; }
+    var a=lots*pKrw/(1-fee); c-=a; slots--;
     buys.push({y:r.y,name:r.name,us:r.us,sh:lots,px:r.px,fxUsed:r.us?o.fx:null,gross:a*(1-fee),fee:a*fee,feeRate:fee,amt:a,score:r.score,row:r.row});
-  });
+  }
   return {sells:sells,watch:watch,buys:buys,skipped:skipped,tax:taxPaid,cash0:o.cash,cashAfterSell:cash,cash1:cash1,cashEnd:c};
 }
 
@@ -896,7 +897,7 @@ function loadPlan(){
     var api=r[2], lastYm=Object.keys(LED.months).sort().pop(), L=LED.months[lastYm];
     var picks=api.rows.filter(function(x){ return x['신호']==='매수' && x['점수']!=null && x['점수']!==''; })
       .sort(function(a,b){ return (+b['점수'])-(+a['점수']) || (+b['시총'])-(+a['시총']); })
-      .slice(0,4).map(function(x){ return {y:x['시장']==='US'?x['코드']:x['코드']+(x['시장']==='KOSPI'?'.KS':'.KQ'),name:x['이름'],us:x['시장']==='US',px:+x['최근종가'],score:+x['점수'],cap:x['시총'],row:x}; });
+      .map(function(x){ return {y:x['시장']==='US'?x['코드']:x['코드']+(x['시장']==='KOSPI'?'.KS':'.KQ'),name:x['이름'],us:x['시장']==='US',px:+x['최근종가'],score:+x['점수'],cap:x['시총'],row:x}; });
     var core=planCore({nowYm:nextYmOf(lastYm),lastYm:lastYm,holds:DATA.snapshots[lastYm]||[],cash:L.cash,dep:LED.meta.dep,fx:L.fx,rateUp:api.rateUp===true,picks:picks,N:4,usGainYtd:usGainYtdOf(nextYmOf(lastYm))});
     core.api={updated:api.updated,rateUp:api.rateUp,candidates:api.rows.filter(function(x){ return x['신호']==='매수'; }).length};
     PLAN=core; PLAN_YM=nextYmOf(lastYm); PLAN_BUSY=false; renderAll();
@@ -956,7 +957,7 @@ function renderPlanView(){
       calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-buyidx="'+P.buys.indexOf(x)+'">'+x.score+'</span> <span class="meta">(눌러서 이유 보기)</span>',signWon(-x.amt),bal,{y:x.y,end:ym,buy:ym,sell:null,raw:chartRaw(x.row)});
   });
   P.skipped.forEach(function(x){
-    row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 현금으로 남음','0원',bal);
+    row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김','0원',bal);
   });
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">예상 월말 현금</div></div><div class="lr-a">'+won(P.cashEnd)+'</div></div></div>';
   if(P.watch.length) html+='<div class="sum-note" style="margin:6px 4px 0">유예 중: '+P.watch.map(function(w){ return esc(w.name); }).join(', ')+' — 이번 달 처음 10이평 아래로 내려왔고, 월말에도 아래면 다음 달에 판매됩니다.</div>';
@@ -1009,16 +1010,18 @@ function simulateFrom(S){
     var tax=0;
     if(mo===12){ tax=C.us.cg_tax_rate*Math.max(0,(usGain[Y]||0)-C.us.cg_exemption_krw); usGain[Y]=0; cash=Math.max(0,cash-tax); }
     cash+=dep;
-    var per=cash/4, buys=[], skipped=[];
-    M0.buys.forEach(function(r){                                             // 그달 점수 상위 종목(원래 일지의 선택)을 같은 순서로
-      var fee=r.us?usFee:krFee, pKrw=r.px*(r.us?fx:1), lots=Math.floor(Math.min(per,cash)*(1-fee)/pKrw);
-      if(lots<1){ skipped.push({y:r.y,name:r.name,us:r.us,px:r.px,one:pKrw,per:Math.min(per,cash)}); return; }
-      var a=lots*pKrw/(1-fee); cash-=a;
+    var buys=[], skipped=[], slots=4;
+    var cands=(M0.order&&M0.order.length)?M0.order.map(function(y){ return M0.buys.filter(function(b){ return b.y===y; })[0]||M0.skipped.filter(function(b){ return b.y===y; })[0]; }).filter(Boolean):M0.buys.concat(M0.skipped);
+    for(var li=0; li<cands.length && slots>0; li++){                          // 원래 일지가 점수 순서대로 본 후보를 같은 규칙으로(못 사면 다음, 모자라면 있는 만큼 나눔)
+      var r=cands[li], per=cash/Math.min(slots,cands.length-li);
+      var isBuy=M0.buys.some(function(b){ return b.y===r.y; });
+      var fee=r.us?usFee:krFee, pKrw=r.px*(r.us?fx:1), lots=isBuy?Math.floor(Math.min(per,cash)*(1-fee)/pKrw):0;   // 원래도 못 산 종목은 월봉 데이터가 없어 건너뜀
+      if(lots<1){ skipped.push({y:r.y,name:r.name,us:r.us,px:r.px,one:pKrw,per:Math.min(per,cash)}); continue; }
+      var a=lots*pKrw/(1-fee); cash-=a; slots--;
       var ex=EX[r.y+'|'+ym];
       holds.push({y:r.y,name:r.name,us:r.us,etf:isEtfHold({y:r.y,buyYm:+ym}),sh:lots,buyYm:+ym,buyPx:r.px,basis:a,last:r.px,score:r.score,exit:ex?ex.ym:null,exitReason:ex?ex.reason:null});
       buys.push({y:r.y,name:r.name,us:r.us,sh:lots,px:r.px,fxUsed:r.us?fx:null,gross:a*(1-fee),fee:a*fee,feeRate:fee,amt:a,score:r.score});
-    });
-    M0.skipped.forEach(function(r){ skipped.push({y:r.y,name:r.name,us:r.us,px:r.px,one:r.one,per:Math.min(per,cash)}); });   // 원래도 못 산 종목(월봉 데이터 없음)
+    }
     var hv=0;
     holds.forEach(function(h){ h.last=closeAt(h.y,ym,h.last); hv+=h.sh*h.last*(h.us?fx:1); });
     months[ym]={dep:dep,tax:Math.round(tax),cash:Math.round(cash),holdVal:Math.round(hv),fx:fx,
