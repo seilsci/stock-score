@@ -48,6 +48,26 @@ if (LIQ.KR || LIQ.US) {
   for (const [key, a] of byKey) { const N = LIQ[key.split('|')[1]]; if (N) { a.sort((x, y) => y - x); TH.set(key, a[Math.min(N, a.length) - 1]); } }
   process.stdout.write('\n');
 }
+// 그 시점 시가총액 순위 기준 종목 범위(UNIVERSE=cap): 그때의 시총 ≈ 그 달 종가 × 오늘 주식 수 (= 오늘 시총 × 그 달 종가 ÷ 마지막 종가; 액면분할은 야후 종가가 이미 반영).
+//   매달 코스피 CAP_KOSPI·코스닥 CAP_KOSDAQ·미국 CAP_US개(기본 300·200·500, 사이트와 같은 개수)의 상위만 인정.
+//   한계: 증자·감자·자사주 소각으로 주식 수가 달라진 건 반영 못 함(유상증자를 많이 한 종목은 과거 시총이 과대 계산됨). 오늘 상장 종목만 있는 생존 편향도 그대로.
+const CAPN = { KOSPI: +process.env.CAP_KOSPI || 300, KOSDAQ: +process.env.CAP_KOSDAQ || 200, US: +process.env.CAP_US || 500 };
+const capGroup = s => s.mk === 'US' ? 'US' : s.mk;
+const capAt = (s, c, cLast) => s.cap > 0 && cLast > 0 ? s.cap * c / cLast : 0;
+const CAPTH = new Map();
+if (process.env.UNIVERSE === 'cap') {
+  const byKey = new Map(); let np = 0;
+  for (const s of list) {
+    if (++np % 200 === 0) progress('시총 순위', np / list.length);
+    const b0 = load(s.y); if (!b0 || !(s.cap > 0)) continue;
+    const b = b0.filter(x => x[4] > 0); if (!b.length) continue;
+    const cLast = b[b.length - 1][4];
+    for (let i = 0; i < b.length; i++) { const key = b[i][0] + '|' + capGroup(s); (byKey.get(key) || byKey.set(key, []).get(key)).push(capAt(s, b[i][4], cLast)); }
+  }
+  for (const [key, a] of byKey) { const N = CAPN[key.split('|')[1]]; if (N) { a.sort((x, y) => y - x); CAPTH.set(key, a[Math.min(N, a.length) - 1]); } }
+  process.stdout.write('\n');
+}
+let nCapSkip = 0;
 let nLiqSkip = 0;
 const rows = [];
 let nEv = 0, ns = 0;
@@ -109,6 +129,7 @@ for (const s of list) {
     const vv = b.map(x => x[5]);
     f.turn = Math.log10(avg(vv, i - 12, i - 1) * c[i] + 1);                  // 거래대금 크기(종목 규모 대신)
     { const th = TH.get(ym + '|' + (s.mk === 'US' ? 'US' : 'KR')); if (th !== undefined && f.turn < th) { nLiqSkip++; continue; } }   // 그달 거래대금 순위 밖
+    if (process.env.UNIVERSE === 'cap') { const th = CAPTH.get(ym + '|' + capGroup(s)), cv = capAt(s, c[i], c[n - 1]); if (th === undefined || !(cv >= th)) { nCapSkip++; continue; } }   // 그달 시총 순위 밖(또는 시총 정보 없음)
     let up = 0; for (let k = i - 5; k <= i; k++) if (c[k] > c[k - 1]) up++; f.up6 = up;
     f.slope6 = ma[i] / ma[i - 6] - 1;
     f.c_ma60 = i >= 59 ? c[i] / avg(c, i - 59, i) - 1 : '';
@@ -130,5 +151,6 @@ for (const s of list) {
 fs.writeFileSync(path.join(DATA, 'events.csv'), ['y,ym,label,hold,exitret,tgt,exitoff,' + MK.map(k => 'mk' + k).join(',') + ',' + F.join(',')].concat(rows).join('\n'));
 const T = rows.map(r => r.split(',')).filter(p => p[5] !== ''), win = T.filter(p => +p[5] > 0);
 progress('신호·지표 만들기', 1);
+if (process.env.UNIVERSE === 'cap') console.log(`\n시총 기준 범위(그 달 종가 × 오늘 주식 수 근사): 코스피 ${CAPN.KOSPI}·코스닥 ${CAPN.KOSDAQ}·미국 ${CAPN.US} (매달), 순위 밖이라 뺀 신호 ${nCapSkip}건`);
 if (LIQ.KR || LIQ.US) console.log(`\n거래대금 기준 범위: 한국 상위 ${LIQ.KR || '전체'}·미국 상위 ${LIQ.US || '전체'} (매달), 순위 밖이라 뺀 신호 ${nLiqSkip}건`);
 console.log(`\n매수 신호 ${nEv}건 (수익 확정 ${T.length}건, 그중 수익 ${win.length}건 = ${(win.length / T.length * 100).toFixed(1)}%)`);

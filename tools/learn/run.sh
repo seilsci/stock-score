@@ -8,6 +8,7 @@ YES=1   # 기본: 끝나면 묻지 않고 결과를 올림(사용자 지시). �
 for a in "$@"; do [ "$a" = "--no-push" ] && YES=0; done
 command -v node >/dev/null || { echo "node가 없어요. https://nodejs.org 에서 LTS 설치 후 다시"; exit 1; }
 # 종목 범위: 현재 시총 순 목록 대신 넓은 목록(한국 전 종목 + 미국 3000) + 매달 그 시점 거래대금 상위(한국 500·미국 500)만 인정. 예전 방식: WIDE=0 LIQ_KR=0 LIQ_US=0 tools/learn/run.sh
+# 종목 범위 방식: 기본 turnover(그 달 거래대금 상위). 그 달 시총 상위(근사)로 보려면: UNIVERSE=cap LIQ_KR=0 LIQ_US=0 tools/learn/run.sh  (코스피 300·코스닥 200·미국 500, CAP_KOSPI·CAP_KOSDAQ·CAP_US로 바꿈)
 export WIDE=${WIDE:-1} LIQ_KR=${LIQ_KR:-500} LIQ_US=${LIQ_US:-500}
 export SCORE_MODEL=${SCORE_MODEL:-ridge}    # 점수 모델: ridge(옛 선형, 기본) 또는 gbm(트리: 보유 제외 적용 뒤 이득이 사라져 채택 보류). 매매일지·장부 점수도 이것을 씀
 D=${DATA:-data}; mkdir -p "$D"
