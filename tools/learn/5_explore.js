@@ -2,10 +2,9 @@
 // 시험 연도: 2012~ 2년 간격(속도). 학습 = 그해 1월 전에 정답이 확정된 신호
 const { fs, path, DATA, progress } = require('./common');
 const { prep, z, fitRidge, score, spearman, quint } = require('./ml');
-const lines = fs.readFileSync(path.join(DATA, 'events.csv'), 'utf8').trim().split('\n');
-const F = lines[0].split(',').slice(6), fi = n => F.indexOf(n);
-const L = lines.slice(1).map(l => { const p = l.split(','); return p[5] === '' ? null :
-  { ym: +p[1], hold: +p[3], t: +p[5], x: p.slice(6).map(v => v === '' ? NaN : +v) }; }).filter(Boolean);
+const { load, trainSet } = require('./data');
+const { F, L: ALL } = load(), fi = n => F.indexOf(n);
+const L = ALL.filter(r => r.t !== null);
 const clipT = t => Math.max(-2, Math.min(3, t));
 const evalR = (sc, tg) => { const q = quint(sc, tg); return { top: q[0].ml, sp: spearman(sc, tg), q }; };
 const yrs = [...new Set(L.map(r => Math.floor(r.ym / 100)))].sort();
@@ -26,7 +25,7 @@ function feats(r, P, extra) {
 function runLR(cols, o = {}) {
   const sc = [], lab = [], keep = [];
   for (const Y of TEST) {
-    let tr = L.filter(r => r.ym + 101 <= Y * 100 + 1);
+    let tr = trainSet(ALL, Y);
     if (o.window) tr = tr.filter(r => r.ym >= (Y - o.window) * 100);
     if (o.noEtf) tr = tr.filter(r => !r.x[fi('etf')]);
     let te = L.filter(r => Math.floor(r.ym / 100) === Y);
@@ -45,7 +44,7 @@ function runLR(cols, o = {}) {
 function runGB(cols, o) {
   const sc = [], lab = [], keep = [];
   for (const Y of TEST) {
-    const tr = L.filter(r => r.ym + 101 <= Y * 100 + 1), te = L.filter(r => Math.floor(r.ym / 100) === Y);
+    const tr = trainSet(ALL, Y), te = L.filter(r => Math.floor(r.ym / 100) === Y);
     if (tr.length < 300 || !te.length) continue;
     const m = fitGB(tr, cols, o);
     te.forEach(r => { sc.push(m(r)); lab.push(r.t); });

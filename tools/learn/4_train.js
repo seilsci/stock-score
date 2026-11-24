@@ -2,10 +2,9 @@
 // 수익 = 매수 신호 달 종가에 사서 매도 신호 달 종가에 판 수익(1년 넘게 보유 중이면 지금까지)
 const { fs, path, DATA, progress } = require('./common');
 const { prep, z, fitRidge, score, spearman, quint } = require('./ml');
-const lines = fs.readFileSync(path.join(DATA, 'events.csv'), 'utf8').trim().split('\n');
-const F = lines[0].split(',').slice(6);
-const L = lines.slice(1).map(l => { const p = l.split(','); return p[5] === '' ? null :
-  { ym: +p[1], hold: +p[3], t: +p[5], x: p.slice(6).map(v => v === '' ? NaN : +v) }; }).filter(Boolean);
+const { load, trainSet } = require('./data');
+const { F, L: ALL } = load();
+const L = ALL.filter(r => r.t !== null);
 const clipT = t => Math.max(-2, Math.min(3, t));      // 학습용: 극단값 자르기(로그 −86% ~ +1900%)
 const out = [], log = s => { out.push(s); if (process.env.VERBOSE) console.log(s); };
 const pct = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
@@ -15,7 +14,7 @@ function walk(cols, lam) {
   const sc = [], tg = [];
   for (const Y of yrs) {
     if (Y < yrs[0] + 3) continue;
-    const tr = L.filter(r => r.ym + 101 <= Y * 100 + 1), te = L.filter(r => Math.floor(r.ym / 100) === Y);
+    const tr = trainSet(ALL, Y), te = L.filter(r => Math.floor(r.ym / 100) === Y);
     if (tr.length < 500 || !te.length) continue;
     const P = prep(tr, cols), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => clipT(r.t)), lam);
     te.forEach(r => { sc.push(score(w, z(r, P))); tg.push(r.t); });

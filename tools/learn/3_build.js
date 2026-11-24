@@ -4,6 +4,7 @@ const list = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const load = y => { try { return JSON.parse(fs.readFileSync(path.join(DATA, 'raw', y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'))); } catch (e) { return null; } };
 const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1;   // 이번 달(진행 중)
 const HOLD = 12;
+const MK = [3, 6, 9, 12, 18, 24, 36, 48, 60, 72, 96, 120];
 // 학습 시작: 버냉키 첫 양적완화(QE1, 2008-11-25 발표) 이후 신호만. 이전 시장은 성격이 다름
 const MIN_YM = +process.env.MIN_YM || 200812;
 
@@ -44,15 +45,24 @@ for (const s of list) {
     const [ym, o, h, l, , v] = b[i];
     if (!v) continue;                                                  // 거래 없는 달 제외
     // 정답: 다음 12개월 월말 종가가 모두 10이평 위 (이번 달은 아직 안 끝났으니 제외)
-    let label = '', hold = 0, exitRet = '';
+    let label = '', hold = 0, exitRet = '', jx = -1;
     let lastDone = n - 1; if (b[n - 1][0] >= CUR) lastDone = n - 2;
-    for (let j = i + 1; j <= lastDone; j++) { if (above[j]) hold++; else { exitRet = c[j] / c[i] - 1; break; } }
+    for (let j = i + 1; j <= lastDone; j++) { if (above[j]) hold++; else { exitRet = c[j] / c[i] - 1; jx = j; break; } }
     if (i + HOLD <= lastDone) label = hold >= HOLD ? 1 : 0;
     else if (exitRet !== '') label = 0;                                // 12개월 전에 이미 깨짐
     // 수익 목표: 매도 신호 달 종가에 판 수익. 아직 보유 중이면 12개월 이상 된 것만 지금까지 수익으로
     let tgt = '';
     if (exitRet !== '') tgt = Math.log(1 + exitRet);
     else if (lastDone - i >= HOLD) { exitRet = c[lastDone] / c[i] - 1; tgt = Math.log(1 + exitRet); }
+    // 검증용: 매도까지 몇 달 걸렸나(exitoff), k개월 시점의 수익(매도했으면 매도 수익) — 그 시점에 이미 알 수 있던 값만으로 학습하려고
+    const mi = ym => Math.floor(ym / 100) * 12 + ym % 100;
+    const exitoff = jx >= 0 ? mi(b[jx][0]) - mi(ym) : '';
+    const mk = MK.map(k => {
+      if (exitoff !== '' && exitoff <= k) return +Math.log(1 + (c[jx] / c[i] - 1)).toFixed(4);
+      const pj = i + k;
+      if (pj > lastDone || mi(b[pj][0]) - mi(ym) !== k) return '';
+      return +Math.log(c[pj] / c[i]).toFixed(4);
+    });
     // 지표
     let cross = 0, ab = 0, below = 0;
     for (let k = i - 24; k < i; k++) { if (above[k] !== above[k - 1]) cross++; if (above[k]) ab++; }
@@ -92,11 +102,11 @@ for (const s of list) {
     f.gap_prev = c[i - 1] / ma[i - 1] - 1;
     const mm = MACRO[ym] || {};
     MF.forEach(k => { f['m_' + k] = mm[k] === undefined ? '' : mm[k]; });
-    rows.push([s.y, ym, label, hold, exitRet === '' ? '' : exitRet.toFixed(4), tgt === '' ? '' : tgt.toFixed(4)].concat(F.map(k => f[k] === '' ? '' : +(+f[k]).toFixed(5))).join(','));
+    rows.push([s.y, ym, label, hold, exitRet === '' ? '' : exitRet.toFixed(4), tgt === '' ? '' : tgt.toFixed(4), exitoff].concat(mk).concat(F.map(k => f[k] === '' ? '' : +(+f[k]).toFixed(5))).join(','));
     nEv++;
   }
 }
-fs.writeFileSync(path.join(DATA, 'events.csv'), ['y,ym,label,hold,exitret,tgt,' + F.join(',')].concat(rows).join('\n'));
+fs.writeFileSync(path.join(DATA, 'events.csv'), ['y,ym,label,hold,exitret,tgt,exitoff,' + MK.map(k => 'mk' + k).join(',') + ',' + F.join(',')].concat(rows).join('\n'));
 const T = rows.map(r => r.split(',')).filter(p => p[5] !== ''), win = T.filter(p => +p[5] > 0);
 progress('신호·지표 만들기', 1);
 console.log(`\n매수 신호 ${nEv}건 (수익 확정 ${T.length}건, 그중 수익 ${win.length}건 = ${(win.length / T.length * 100).toFixed(1)}%)`);
