@@ -1377,21 +1377,21 @@ if (process.env.STAGE14 !== '0') {
     V.length = 0;
     const ENT = [['즉시 매수', null], ['확인 +3%', 0.03], ['확인 +5%', 0.05], ['확인 +10%', 0.1], ['확인 +15%', 0.15], ['확인 +20%', 0.2]];
     const RATES = [['금리 없음', null], ['기준금리12m(옛)', 'ff'], ['국채10년6m', chg('dgs10', 6)], ['국채2년12m', chg('dgs2', 12)], ['목표금리12m', chg('tgt', 12)]];
-    const TPS = [0, 2, 3], GR = [0, 2, 3], cfgs = []; let ci = 0; const total = ENT.length * TPS.length * (1 + 2 * RATES.length);
-    ENT.forEach(([en, thr]) => TPS.forEach(tp => GR.forEach(g => (g ? RATES : [['-', null]]).forEach(([rn, rv]) => {
+    const TPS = [0, 2, 3], GR = [0, 2, 3], NS = (process.env.AD8_WF_N || '4').split(',').map(Number), cfgs = []; let ci = 0; const total = NS.length * ENT.length * TPS.length * (1 + 2 * RATES.length);
+    NS.forEach(N => ENT.forEach(([en, thr]) => TPS.forEach(tp => GR.forEach(g => (g ? RATES : [['-', null]]).forEach(([rn, rv]) => {
       progress('걸어가며 고르기(확인 매수 포함)', ci++ / total);
       const rule = { tp, grace: g, rate: rv === 'ff', ...(rv && rv !== 'ff' ? { rateFn: rv } : {}) };
       const m = thr ? pool({ thr, rule, rateName: rn }) : null, cand = thr ? (ym => m.get(ym) || []) : (ym => scored[kA].get(ym) || []);
-      const sm = run14({ cand, rule }, null);
-      cfgs.push({ en, thr, tp, g, rn, name: `${en} · ${tp ? 'tp' + tp + 'x' : '익절없음'} · ${g ? '유예' + g + '달 + ' + rn : '이탈 즉시'}`, yearly: sm.yearly, cagr: sm.cagr });
-    }))));
+      const sm = run14({ cand, rule, N }, null);
+      cfgs.push({ en, thr, tp, g, rn, N, name: `N${N} · ${en} · ${tp ? 'tp' + tp + 'x' : '익절없음'} · ${g ? '유예' + g + '달 + ' + rn : '이탈 즉시'}`, yearly: sm.yearly, cagr: sm.cagr });
+    })))));
     progress('걸어가며 고르기(확인 매수 포함)', 1); process.stdout.write('\n');
     const Ys = YEARS_ALL, first = 3, oosYears = Ys.slice(first), pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
     const gm = (c, ys) => ys.length ? Math.pow(ys.reduce((p, y) => p * (1 + (c.yearly[y] ?? 0)), 1), 1 / ys.length) - 1 : -9;
     const CRIT = { '확장 연평균(과거 전부)': (c, ys) => gm(c, ys), '최근 5년 연평균': (c, ys) => gm(c, ys.slice(-5)),
       '평균 − 0.5×표준편차': (c, ys) => { const v = ys.map(y => c.yearly[y] ?? 0), mu = v.reduce((a, b) => a + b, 0) / v.length, sd = Math.sqrt(v.reduce((a, b) => a + (b - mu) ** 2, 0) / v.length); return mu - 0.5 * sd; } };
     const SPACES = [['전체(즉시 + 확인 매수)', c => true], ['즉시 매수만(예전 방식의 설정 고르기)', c => !c.thr], ['확인 매수만', c => !!c.thr]];
-    const find = (en, tp, g, rn) => cfgs.find(c => c.en === en && c.tp === tp && c.g === g && c.rn === rn);
+    const find = (en, tp, g, rn) => cfgs.find(c => c.N === 4 && c.en === en && c.tp === tp && c.g === g && c.rn === rn);
     const fixed = find('확인 +10%', 2, 2, '국채10년6m'), old = find('즉시 매수', 2, 2, '기준금리12m(옛)');
     log(''); log(`## 걸어가며 고르기(확인 매수 포함): 해마다 그 전 연도 성과만 보고 설정을 골라 그해에 씀 (${oosYears[0]}~${oosYears[oosYears.length - 1]}, 후보 ${cfgs.length}가지, 점수 상위 4, 첫날 체결, 월 100만원)`);
     log(`고정: 지금 전략(확인 +10% · tp2x · 유예2+국채10년6m) ${pc1(gm(fixed, oosYears))} · 예전 전략(즉시 · tp2x · 유예2+기준금리12m) ${pc1(gm(old, oosYears))} · 후보 평균 ${pc1(cfgs.reduce((a, c) => a + gm(c, oosYears), 0) / cfgs.length)} · 사후 최고 ${pc1(Math.max(...cfgs.map(c => gm(c, oosYears))))} (${cfgs.reduce((b, c) => gm(c, oosYears) > gm(b, oosYears) ? c : b).name})`);
