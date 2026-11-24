@@ -53,7 +53,8 @@ function fdPx(y, k) {
   return m.get(k);
 }
 const US = fi('us'), TURN = fi('turn'), ETF = fi('etf');
-const ma10 = (o, k) => { let s = 0; for (let j = k; j > k - 10; j--) { const p = o.m.get(j); if (p === undefined) return null; s += p; } return s / 10; };
+const MAN = +process.env.MA_N || 10;                                  // 이동평균 길이(달), 3_build.js와 같게
+const ma10 = (o, k) => { let s = 0; for (let j = k; j > k - MAN; j--) { const p = o.m.get(j); if (p === undefined) return null; s += p; } return s / MAN; };
 // 거시 지표 (ff_chg12 등) — ymOf(k) → ym 형태로 lookup
 let MACRO = {}; try { MACRO = JSON.parse(fs.readFileSync(path.join(DATA, 'macro.json'))); } catch (e) {}
 const ffChg12 = k => { const m = MACRO[ymOf(k)]; return m && m.ff_chg12 != null ? m.ff_chg12 : null; };
@@ -115,7 +116,7 @@ const listAll = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 for (const s of listAll) {
   const o = px(s.y); if (o.m.size < 25) continue;
   const ks = [...o.m.keys()].sort((a, b) => a - b), cs = ks.map(k => o.m.get(k)), n = cs.length;
-  const ma = cs.map((_, i) => i >= 9 ? avg(cs, i - 9, i) : null);
+  const ma = cs.map((_, i) => i >= MAN - 1 ? avg(cs, i - MAN + 1, i) : null);
   const above = cs.map((c, i) => ma[i] == null ? null : c > ma[i]);
   const ma12 = cs.map((_, i) => i >= 11 ? avg(cs, i - 11, i) : null);
   const ma24 = cs.map((_, i) => i >= 23 ? avg(cs, i - 23, i) : null);
@@ -354,6 +355,32 @@ function avgSumm(list) {
   return o;
 }
 function rng(seed) { let s = seed * 2654435761 % 4294967296 || 1; return () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296; }
+
+// ── 이동평균 길이 비교용 가벼운 실행(MA_SWEEP=1): 신호·판매·지표를 MA_N달 이평으로 만든 events.csv(3_build.js MA_N=n)에서 점수 상위 4의 성과만 재서 data/masweep_<n><TAG>.json에 저장하고 끝냄
+if (process.env.MA_SWEEP === '1') {
+  const topL = ym => scored[kA].get(ym) || [], botL = ym => [...topL(ym)].reverse();
+  const base = { lotSize: true, lotAll: true, fill: true, cand: topL, firstDay: true };
+  const CF = [['즉시+tp2x', { tpTrail: 2 }], ['즉시', {}], ['유예2+금리+tp2x(현재)', { tpTrail: 2, grace: 2, graceRate: true }], ['유예2+금리', { grace: 2, graceRate: true }]];
+  const Ys = Object.keys(summ(simulate(ym => topL(ym).slice(0, 4), 4, C1, { ...base })).yearly).map(Number).sort((a, b) => a - b);
+  const gmY = (yr, ys) => ys.length ? Math.pow(ys.reduce((p, y) => p * (1 + (yr[y] ?? 0)), 1), 1 / ys.length) - 1 : null;
+  const res = { ma: MAN, tag: process.env.MA_TAG || '', events: ALL.length, kr: ALL.filter(r => r.x[US] === 0).length, cfgs: [] };
+  CF.forEach(([name, o], i) => {
+    const sm = simulate(ym => topL(ym).slice(0, 4), 4, C1, { ...base, ...o, log: i === 0 });
+    const m = summ(sm), e = {};
+    e.name = name; e.cagr = m.cagr; e.mdd = m.mdd; e.early = gmY(m.yearly, Ys.filter(y => y <= 2019)); e.late = gmY(m.yearly, Ys.filter(y => y > 2019)); e.yearly = m.yearly;
+    if (i === 0 && sm.trades) { const T = sm.trades.filter(t => t.sellYm); e.trades = T.length; e.win = T.filter(t => t.ret > 0).length / (T.length || 1); e.hold = T.reduce((a, t) => a + ((Math.floor(t.sellYm / 100) * 12 + t.sellYm % 100) - (Math.floor(t.buyYm / 100) * 12 + t.buyYm % 100)), 0) / (T.length || 1); }
+    res.cfgs.push(e);
+  });
+  const o0 = { ...base, ...CF[0][1] };
+  const mk = us => { const c = ym => topL(ym).filter(e => (e.r.x[US] === 1) === us); return summ(simulate(ym => c(ym).slice(0, 4), 4, C1, { ...o0, cand: c })).cagr; };
+  res.kr = mk(false); res.us = mk(true);
+  res.bottom = summ(simulate(ym => botL(ym).slice(0, 4), 4, C1, { ...o0, cand: botL })).cagr;
+  const rr = []; for (let sd = 1; sd <= (+process.env.MA_SEEDS || 20); sd++) { const rnd = rng(sd); const sh = ym => { const a = [...(byYm.get(ym) || [])], r = rng(sd * 7 + (ym % 997)); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }; rr.push(summ(simulate(ym => sh(ym).slice(0, 4), 4, C1, { ...o0, cand: sh })).cagr); }
+  rr.sort((a, b) => a - b); res.rand = { med: rr[Math.floor(rr.length / 2)], p90: rr[Math.floor(rr.length * 0.9)], min: rr[0], max: rr[rr.length - 1], n: rr.length, beat: rr.filter(v => v >= res.cfgs[0].cagr).length };
+  fs.writeFileSync(path.join(DATA, `masweep_${MAN}${res.tag}.json`), JSON.stringify(res));
+  console.log(`\nMA${MAN} 끝: 즉시+tp2x ${(res.cfgs[0].cagr * 100).toFixed(1)}%, 무작위 중앙값 ${(res.rand.med * 100).toFixed(1)}%`);
+  process.exit(0);
+}
 // 지수에 같은 방식으로 적립(한국 지수는 국내 ETF처럼 거래세 없음, S&P500은 미국 ETF처럼 수수료·환전·양도세)
 function simIndex(tk, usd, C) {
   const o = px(tk); if (!o.m.size) return null;

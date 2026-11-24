@@ -4,6 +4,7 @@ const list = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const load = y => { try { return JSON.parse(fs.readFileSync(path.join(RAW, y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'))); } catch (e) { return null; } };
 const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1;   // 이번 달(진행 중)
 const HOLD = 12;
+const MAN = +process.env.MA_N || 10;                                    // 이동평균 길이(달). 기본 10. 신호·정답·지표가 모두 이 길이의 이평 기준
 const MK = [3, 6, 9, 12, 18, 24, 36, 48, 60, 72, 96, 120];
 // 학습 시작: 버냉키 첫 양적완화(QE1, 2008-11-25 발표) 이후 신호만. 이전 시장은 성격이 다름
 const MIN_YM = +process.env.MIN_YM || 200812;
@@ -12,7 +13,7 @@ const MIN_YM = +process.env.MIN_YM || 200812;
 function indexInfo(y) {
   const b = load(y) || [], c = b.map(x => x[4]), out = new Map();
   for (let i = 12; i < b.length; i++) {
-    const ma = avg(c, i - 9, i), ma3 = avg(c, i - 12, i - 3);
+    const ma = avg(c, i - MAN + 1, i), ma3 = avg(c, i - 12, i - 3);
     out.set(b[i][0], { above: c[i] > ma ? 1 : 0, slope: ma / ma3 - 1, ret12: c[i] / c[i - 12] - 1 });
   }
   return out;
@@ -77,7 +78,7 @@ for (const s of list) {
   if (!b || b.length < 30) continue;
   b = b.filter(x => x[4] > 0);
   const c = b.map(x => x[4]), n = b.length;
-  const ma = c.map((_, i) => i >= 9 ? avg(c, i - 9, i) : null);
+  const ma = c.map((_, i) => i >= MAN - 1 ? avg(c, i - MAN + 1, i) : null);
   const above = c.map((x, i) => ma[i] == null ? null : x > ma[i]);
   for (let i = 25; i < n; i++) {
     if (b[i][0] < MIN_YM) continue;

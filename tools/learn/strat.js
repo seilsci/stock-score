@@ -20,7 +20,8 @@ function firstDay(y, k) {
 }
 let MACRO = {}; try { MACRO = JSON.parse(fs.readFileSync(path.join(DATA, 'macro.json'))); } catch (e) {}
 const ffUp = k => { const m = MACRO[ymOf(k)]; return !!(m && m.ff_chg12 != null && m.ff_chg12 > 0); };
-const ma10 = (o, k) => { let s = 0; for (let j = k; j > k - 10; j--) { const p = o.get(j); if (p === undefined) return null; s += p; } return s / 10; };
+const MAN = +process.env.MA_N || 10;                                  // 이동평균 길이(달), 3_build.js와 같게
+const ma10 = (o, k) => { let s = 0; for (let j = k; j > k - MAN; j--) { const p = o.get(j); if (p === undefined) return null; s += p; } return s / MAN; };
 
 // 신호 하나의 결과: { t: 판 수익 log(1+r) | null(아직 보유·자료 끝), exoff: 신호 달부터 판 달까지 달 수 | null, mk: [k달 시점 수익(판 뒤엔 판 수익)], px0: 진입가 } 또는 null(진입가 없음)
 function label(y, ym, opt, END) {
