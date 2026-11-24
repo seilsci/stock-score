@@ -498,8 +498,29 @@ function cacheClear_() {
   });
 }
 
+/* ───────── 보유 종목 현재 월봉 ─────────
+ * ?hold=005930.KS,AAPL,... (매매일지의 보유 종목, 최대 40개): 거래대금 상위 목록 밖으로 밀린 보유 종목도 현재 가격·신호를 볼 수 있게
+ * 야후 월봉을 그때그때 받아 { rows: [{시장, 코드, 키, 최근종가, 10이평, 신호, 기준일, 차트}] }로 돌려줌(캐시 안 함, 시트 안 읽음) */
+function holdRows_(param) {
+  var ys = String(param || '').split(',').map(function (x) { return x.trim(); })
+    .filter(function (x) { return /^[A-Za-z0-9.\-]{1,14}$/.test(x); }).slice(0, 40);
+  var bodies = fetchAll_(ys.map(function (y) {
+    return 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(y) + '?range=' + (CFG.CHART_N + 2) + 'mo&interval=1mo';
+  }));
+  var rows = [];
+  ys.forEach(function (y, i) {
+    var mon = parseYahooMonthly_(bodies[i]); if (!mon || mon.length <= CFG.MONTHS) return;
+    var kr = /\.(KS|KQ)$/.test(y), mk = kr ? (/\.KS$/.test(y) ? 'KOSPI' : 'KOSDAQ') : 'US';
+    var r = makeRow_({ market: mk, code: kr ? y.slice(0, -3) : y, name: '', type: '', cap: '', capUnit: '' }, mon);   // liq 없이: 순위와 무관하게 계산
+    rows.push({ '시장': mk, '코드': r[1], '키': y, '최근종가': r[6], '10이평': r[7], '전달종가': r[8], '전달10이평': r[9], '신호': r[10], '기준일': r[11],
+      '차트': mon.map(function (x) { return [+x.ym, round_(x.open), round_(x.high), round_(x.low), round_(x.close), Math.round(x.vol || 0)]; }) });
+  });
+  return { rows: rows };
+}
+
 // ?all=1 이면 모든 종목, 아니면 매수·매도·유예 신호만
 function doGet(e) {
+  if (e && e.parameter && e.parameter.hold) return ContentService.createTextOutput(JSON.stringify(holdRows_(e.parameter.hold))).setMimeType(ContentService.MimeType.JSON);
   var all = e && e.parameter && e.parameter.all;
   var key = 'doGet:' + (all ? 'all' : 'sig');
   var hit = cacheGet_(key);

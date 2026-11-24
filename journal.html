@@ -1157,14 +1157,35 @@ function exitFor(y,buyYm){                 // 그 달에 샀다면 언제·왜 �
   return null;                               // 끝까지 보유
 }
 
+function holdLive(){                         // 보유 종목의 현재 월봉(시트 목록 밖으로 밀려난 종목도 최신 가격으로 판매 예정 계산). 실패해도 계속(저장된 월봉 사용)
+  try {
+    var lastYm=Object.keys(LED.months).sort().pop(), seen={}, ys=[];
+    (DATA.snapshots[lastYm]||[]).forEach(function(h){ if(!seen[h.y]){ seen[h.y]=1; ys.push(h.y); } });
+    if(!ys.length) return Promise.resolve(null);
+    return fetch(API+'?hold='+encodeURIComponent(ys.join(','))).then(function(r){ return r.json(); }).catch(function(){ return null; });
+  } catch(e){ return Promise.resolve(null); }
+}
+function mergeLiveBars(live){                // 저장된 월봉(bars.json)에 받아 온 최신 월봉을 덮어쓰고 새 달은 덧붙임
+  if(!live||!live.rows) return;
+  live.rows.forEach(function(r){
+    var u=barsFor(r['키']), ch=r['차트']; if(!u||!ch||!ch.length) return;
+    ch.forEach(function(x){
+      var ym=+x[0], c=+x[4], o=+x[1]||c, h=Math.max(+x[2]||0,o,c), l=Math.min(+x[3]||Infinity,o,c), v=+x[5]||0, i=u.pos[ym];
+      if(i!=null){ u.o[i]=o; u.h[i]=h; u.l[i]=l; u.c[i]=c; u.v[i]=v; }
+      else if(!u.yms.length||ym>u.yms[u.yms.length-1]){ u.pos[ym]=u.yms.length; u.yms.push(ym); u.o.push(o); u.h.push(h); u.l.push(l); u.c.push(c); u.v.push(v); }
+    });
+  });
+}
 function loadPlan(){
   if(PLAN_BUSY||PLAN) return; PLAN_BUSY=true; PLAN_ERR=null;
   var ps=[
     new Promise(function(res){ loadBars(res); }),
     fetch('tools/learn/costs.json').then(function(r){ return r.json(); }).then(function(c){ COSTS=c; }),
-    fetch(API).then(function(r){ return r.json(); })
+    fetch(API).then(function(r){ return r.json(); }),
+    holdLive()
   ];
   Promise.all(ps).then(function(r){
+    mergeLiveBars(r[3]);
     var api=r[2], lastYm=Object.keys(LED.months).sort().pop(), L=LED.months[lastYm];
     var picks=api.rows.filter(function(x){ return x['신호']==='매수' && x['점수']!=null && x['점수']!==''; })
       .sort(function(a,b){ return (+b['점수'])-(+a['점수']) || (+b['시총'])-(+a['시총']); })
