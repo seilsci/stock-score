@@ -37,6 +37,9 @@ function fx(k) {
 }
 const US = fi('us'), TURN = fi('turn'), ETF = fi('etf');
 const ma10 = (o, k) => { let s = 0; for (let j = k; j > k - 10; j--) { const p = o.m.get(j); if (p === undefined) return null; s += p; } return s / 10; };
+// 거시 지표 (ff_chg12 등) — ymOf(k) → ym 형태로 lookup
+let MACRO = {}; try { MACRO = JSON.parse(fs.readFileSync(path.join(DATA, 'macro.json'))); } catch (e) {}
+const ffChg12 = k => { const m = MACRO[ymOf(k)]; return m && m.ff_chg12 != null ? m.ff_chg12 : null; };
 
 // ── 시험 연도마다 "그때까지 알던 것"으로 학습 → 그해 모든 신호에 점수 (미래 정보 없음)
 const scored = MODELS.map(() => new Map());                 // 모델 → Map(ym → [{r, s}] 점수 높은 순)
@@ -151,8 +154,13 @@ function simulate(pickFn, N, C, opt = {}) {
       if (opt.grace) {                                    // grace 모드: sellK 무시하고 연속 이탈 카운트로 매도
         const ma = ma10(h.px, k);
         if (ma) {
-          if (h.last < ma) { h.graceCnt = (h.graceCnt || 0) + 1; if (h.graceCnt >= opt.grace) { cash += sellCash(h, k); continue; } }
-          else h.graceCnt = 0;
+          if (h.last < ma) {
+            // opt.graceRate: 금리 조건부 유예 — 금리 인상 중(ff_chg12>0)이면 유예 없이 바로 매도
+            const ff = opt.graceRate ? ffChg12(k) : null;
+            const graceN = (ff != null && ff > 0) ? 1 : opt.grace;  // 금리 인상 중→ 1달(=즉시), 아니면 N달
+            h.graceCnt = (h.graceCnt || 0) + 1;
+            if (h.graceCnt >= graceN) { cash += sellCash(h, k); continue; }
+          } else h.graceCnt = 0;
         }
       }
       // ML 조건부 유예: 매도 신호 달에 sellScored 점수 ≥ 임계값이면 최대 opt.graceML달 유예
@@ -318,6 +326,13 @@ for (const g of GRACE_VALS) {
   R.push({ n: `A4 유예${g}달`, s: summ(simulate(A4pk, 4, C1, { grace: g })) });
   progress('매도유예 실험', graceStep++ / graceTotal);
   R.push({ n: `A4 tp2x트레일+유예${g}달`, s: summ(simulate(A4pk, 4, C1, { tpTrail: 2, grace: g })) });
+}
+// 금리 조건부 유예: 금리 인상 중이면 즉시 매도, 아니면 N달 유예
+for (const g of [2, 3]) {
+  progress('매도유예 실험', graceStep++ / (graceTotal + 4));
+  R.push({ n: `A4 금리유예${g}달`, s: summ(simulate(A4pk, 4, C1, { grace: g, graceRate: true })) });
+  progress('매도유예 실험', graceStep++ / (graceTotal + 4));
+  R.push({ n: `A4 tp2x트레일+금리유예${g}달`, s: summ(simulate(A4pk, 4, C1, { tpTrail: 2, grace: g, graceRate: true })) });
 }
 // ML 조건부 유예 실험: A4·A4 tp2x트레일 × 유예1달/2달
 const ML_GRACE_VALS = [1, 2];
