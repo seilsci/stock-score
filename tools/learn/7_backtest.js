@@ -245,7 +245,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (prevAfter > 0) rets.push({ k, r: (after - dep) / prevAfter - 1 });
     prevAfter = after;
     // 보유 스냅샷 (opt.log)
-    if (snapshots) snapshots.set(ymOf(k), holds.map(h => ({ y: h.y, buyYm: h.buyYm, buyPx: h.buyPx, curPx: h.last, basis: h.basis, score: h.buyScore })));
+    if (snapshots) snapshots.set(ymOf(k), holds.map(h => ({ y: h.y, buyYm: h.buyYm, buyPx: h.buyPx, curPx: h.last, basis: h.basis, sh: h.sh, score: h.buyScore })));
   }
   // 현재(진행 중인 달): 가장 최근 종가로 평가. 올해 이미 실현한 미국 손익의 세금은 미리 뺌
   const kNow = mi(CUR), curY = Math.floor(CUR / 100);
