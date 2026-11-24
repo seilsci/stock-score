@@ -55,6 +55,19 @@ years.forEach((Y, yi) => {
 });
 scored.forEach(m => m.forEach(a => a.sort((x, y) => y.s - x.s)));
 
+const kA = MODELS.findIndex(M => M.n[0] === 'A');
+// 유동성 필터: 각 달 신호 중 turn 하위 pct 비율 제외 후 점수 상위 N
+const pickLiqA = (pct, N) => ym => {
+  const all = byYm.get(ym) || [];
+  if (!all.length) return [];
+  const turns = all.map(x => x.r.x[TURN]).sort((a, b) => a - b);
+  const thr = turns[Math.floor(turns.length * pct) - 1] ?? -Infinity;
+  return (scored[kA].get(ym) || []).filter(x => x.r.x[TURN] > thr).slice(0, N);
+};
+// 한국·미국 따로
+const pickKrA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 0).slice(0, N);
+const pickUsA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 1).slice(0, N);
+
 // ── 시뮬레이션
 function krTax(C, Y) { const t = C.kr.sell_tax; let v = 0; Object.keys(t).map(Number).sort().forEach(y => { if (y <= Y) v = t[y]; }); return v; }
 function simulate(pickFn, N, C) {
@@ -152,7 +165,7 @@ const pickAll = ym => byYm.get(ym) || [];
 const pickTurn = ym => [...pickAll(ym)].sort((a, b) => b.r.x[TURN] - a.r.x[TURN]).slice(0, 10);
 const randPick = rnd => ym => { const a = [...pickAll(ym)]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, 10); };
 const runRand = C => { const l = []; for (let sd = 1; sd <= SEEDS; sd++) l.push(summ(simulate(randPick(rng(sd)), 10, C))); return avgSumm(l); };
-const total = 3 + MODELS.length * 3 + 2; let step = 0;
+const total = 3 + MODELS.length * 3 + 2 + 4; let step = 0;
 const tick = () => progress('백테스트', step++ / total);
 tick(); R.push({ n: '전부 균등', s: summ(simulate(pickAll, null, C1)) }); R0['전부 균등'] = summ(simulate(pickAll, null, C0));
 tick(); R.push({ n: '거래대금 큰 순 10', s: summ(simulate(pickTurn, 10, C1)) });
@@ -163,6 +176,10 @@ MODELS.forEach((M, k) => [5, 10, 20].forEach(N => {
 }));
 const ksS = simIndex('^KS11', false, C1), spS = simIndex('^GSPC', true, C1);
 if (ksS) R.push({ n: '코스피(지수)', s: summ(ksS) }); if (spS) R.push({ n: 'S&P500(원화)', s: summ(spS) });
+tick(); R.push({ n: 'A10 유동성상위50%', s: summ(simulate(pickLiqA(0.5, 10), 10, C1)) });
+tick(); R.push({ n: 'A10 유동성상위25%', s: summ(simulate(pickLiqA(0.75, 10), 10, C1)) });
+tick(); R.push({ n: 'A10 한국만', s: summ(simulate(pickKrA(10), 10, C1)) });
+tick(); R.push({ n: 'A10 미국만', s: summ(simulate(pickUsA(10), 10, C1)) });
 progress('백테스트', 1); process.stdout.write('\n');
 
 // ── 보고서
