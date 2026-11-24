@@ -222,7 +222,9 @@ const TP_MODELS = [
   { mk: MODELS.findIndex(M => M.n[0] === 'B'), n: 'B10', N: 10 },
 ];
 const TP_VALS = [1.5, 2, 2.5, 3, 4];
-const tpTotal = TP_MODELS.length * TP_VALS.length * 3; // 당월·다음달·트레일링
+// A1~A9 tp2x트레일 추가
+const A_N_VALS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const tpTotal = TP_MODELS.length * TP_VALS.length * 3 + A_N_VALS.length;
 let tpStep = 0;
 for (const tm of TP_MODELS) {
   const pk = ym => (scored[tm.mk].get(ym) || []).slice(0, tm.N);
@@ -234,6 +236,11 @@ for (const tm of TP_MODELS) {
     progress('익절 실험', tpStep++ / tpTotal);
     R.push({ n: `${tm.n} tp${tp}x트레일`, s: summ(simulate(pk, tm.N, C1, { tpTrail: tp })) });
   }
+}
+for (const N of A_N_VALS) {
+  progress('익절 실험', tpStep++ / tpTotal);
+  const pk = ym => (scored[kA].get(ym) || []).slice(0, N);
+  R.push({ n: `A${N} tp2x트레일`, s: summ(simulate(pk, N, C1, { tpTrail: 2 })) });
 }
 progress('익절 실험', 1); process.stdout.write('\n');
 progress('백테스트', 1); process.stdout.write('\n');
