@@ -23,6 +23,9 @@ h1{font-size:20px;margin:0}
 .seg button.on.b{color:var(--buy)}.seg button.on.s{color:var(--sell)}
 .list{margin:8px 16px 16px;background:var(--card);border-radius:12px;overflow:hidden;border:1px solid var(--line)}
 .row{display:grid;grid-template-columns:28px 1fr auto;gap:8px;padding:11px 12px;border-top:1px solid var(--line);align-items:center}
+.score{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;font-size:12px;font-weight:700;background:var(--chip);color:var(--mut)}
+.score.hi{background:#fef3c7;color:#92400e}.score.md{background:#e0f2fe;color:#075985}
+@media(prefers-color-scheme:dark){.score.hi{background:#3d2800;color:#fbbf24}.score.md{background:#0c2a3d;color:#38bdf8}}
 .row:first-child{border-top:0}
 .rk{color:var(--mut);font-size:13px;text-align:right}
 .nm{font-weight:600;word-break:keep-all}
@@ -68,9 +71,10 @@ a{color:inherit}
   </div></div>
   <div class="list" id="L"><div class="msg">불러오는 중…</div></div>
   <footer>
-    매수: 전달 종가가 월 10이평 아래였다가 최근 종가가 10이평 위.<br>
+    매수: 전달 종가가 월 10이평 아래였다가 최근 종가가 10이평 위. 점수는 AI 모델(릿지 회귀)이 산출한 오래 갈 가능성 (0~100점, 높을수록 유리).<br>
     매도: 전달 종가가 월 10이평 위였다가 최근 종가가 10이평 아래.<br>
-    한국 코스피 상위 300·코스닥 상위 200, 미국 상위 500 (시가총액 순). 투자 판단의 책임은 본인에게 있습니다.
+    한국 코스피 상위 300·코스닥 상위 200, 미국 상위 500 (시가총액 순). 투자 판단의 책임은 본인에게 있습니다.<br>
+    <a href="journal.html">📒 매매일지 (백테스트 기록)</a>
   </footer>
 </main>
 <script>
@@ -101,16 +105,25 @@ function render() {
   document.getElementById('upd').textContent =
     (day ? '기준: ' + day + ' 종가' + (kr ? '' : ' (미국)') + ' · ' : '') + '매일 자동 갱신';
   var sel = rows.filter(function (r) { return r['신호'] === S; })
-                .sort(function (a, b) { return b['시총'] - a['시총']; });
+                .sort(function (a, b) {
+                  if (S === '매수') {
+                    var sa = a['점수'] != null && a['점수'] !== '' ? +a['점수'] : -1;
+                    var sb = b['점수'] != null && b['점수'] !== '' ? +b['점수'] : -1;
+                    return sb !== sa ? sb - sa : b['시총'] - a['시총'];
+                  }
+                  return b['시총'] - a['시총'];
+                });
   var cls = S === '매수' ? 'b' : 's';
   var h = sel.map(function (r, i) {
     var g = (r['최근종가'] / r['10이평'] - 1) * 100;
     var mk = r['시장'] === 'KOSPI' ? '코스피 · ' : r['시장'] === 'KOSDAQ' ? '코스닥 · ' : '';
     var tag = r['종류'] && r['종류'] !== 'stock' ? '<span class="tag">' + esc(String(r['종류']).toUpperCase()) + '</span>' : '';
+    var sc = r['점수'] != null && r['점수'] !== '' ? +r['점수'] : null;
+    var scHtml = S === '매수' && sc != null ? '<span class="score ' + (sc >= 70 ? 'hi' : sc >= 40 ? 'md' : '') + '">' + sc + '</span>' : '';
     return '<div class="row' + (SEL && SEL['코드'] === r['코드'] && SEL['시장'] === r['시장'] ? ' sel' : '') + '" data-i="' + i + '"><div class="rk">' + (i + 1) + '</div><div>' +
       '<div class="nm">' + esc(r['이름']) + '<span class="cd">' + esc(r['코드']) + '</span>' + tag + '</div>' +
       '<div class="meta">' + mk + '시총 ' + cap(r) + '</div></div>' +
-      '<div class="r"><div class="px">' + px(r, kr) + '</div>' +
+      '<div class="r">' + scHtml + '<div class="px">' + px(r, kr) + '</div>' +
       '<div class="meta gap ' + cls + '">10이평 ' + (g > 0 ? '+' : '') + g.toFixed(1) + '%</div></div></div>';
   }).join('');
   LIST = sel;
