@@ -34,8 +34,8 @@ const PXC = new Map();
 const rawFile = y => path.join(RAW, y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json');
 function px(y) {
   let o = PXC.get(y); if (o) return o;
-  o = { m: new Map(), lastK: 0, lastC: 0 };
-  try { JSON.parse(fs.readFileSync(rawFile(y))).forEach(b => { if (b[4] > 0) { const k = mi(b[0]); o.m.set(k, b[4]); if (k >= o.lastK) { o.lastK = k; o.lastC = b[4]; } } }); } catch (e) {}
+  o = { m: new Map(), op: new Map(), lastK: 0, lastC: 0 };
+  try { JSON.parse(fs.readFileSync(rawFile(y))).forEach(b => { if (b[4] > 0) { const k = mi(b[0]); o.m.set(k, b[4]); if (b[1] > 0) o.op.set(k, b[1]); if (k >= o.lastK) { o.lastK = k; o.lastC = b[4]; } } }); } catch (e) {}
   PXC.set(y, o); return o;
 }
 let FX = {}; try { FX = JSON.parse(fs.readFileSync(path.join(DATA, 'fx.json'))); } catch (e) {}
@@ -241,7 +241,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
           } else { sh = a * (1 - fee) / pKrw; }
         } else { sh = a * (1 - fee) / pKrw; }
         }
-        const bScore = (scored[kA].get(ymOf(sigK)) || []).find(e => e.r.y === r.y)?.s ?? 0;
+        const bScore = list[li].s ?? ((scored[kA].get(ymOf(sigK)) || []).find(e => e.r.y === r.y)?.s ?? 0);        // 후보 자신의 점수(확인 매수는 돌파 시점 점수)
         holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
           buyYm: ymOf(k), buyPx: p, buyScore: bScore,
           buyFeats: r.x });
@@ -346,7 +346,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     // 보유 스냅샷 (opt.log)
     if (snapshots) snapshots.set(ymOf(k), holds.map(h => ({ y: h.y, buyYm: h.buyYm, buyPx: h.buyPx, curPx: h.last, basis: h.basis, sh: h.sh, score: h.buyScore, feats: h.buyFeats })));
   }
-  if (opt.firstDay && pend !== null) doBuys(pend, mi(CUR), (o, r) => fdPx(r.y, mi(CUR)));   // 마지막 신호의 체결(이번 달 첫날)
+  if (opt.firstDay && pend !== null) { cur = null; doBuys(pend, mi(CUR), (o, r) => fdPx(r.y, mi(CUR))); }   // 이번 달 첫날 체결분은 장부에 안 넣음(아직 진행 중인 달)   // 마지막 신호의 체결(이번 달 첫날)
   // 현재(진행 중인 달): 가장 최근 종가로 평가. 올해 이미 실현한 미국 손익의 세금은 미리 뺌
   const kNow = mi(CUR), curY = Math.floor(CUR / 100);
   holds.forEach(h => { h.last = h.px.lastK >= END ? h.px.lastC : h.last; });
@@ -1507,13 +1507,34 @@ if (S3.rows.length) {
 }
 fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
 
-// ── 매매일지(trades.json): A4 tp2x트레일+금리유예2달, 월 100만원
+// ── 매매일지(trades.json): 확인 매수(돌파 달에 샀다고 가정한 가상 수익 +10% 이상 + 5>10>20 정배열일 때 다음 달 첫날 구매) + tp2x트레일·금리유예2달 판매, 월 100만원
+//    JOURNAL_STRAT=breakout 이면 예전 방식(돌파 달 월말 구매)으로 만듦. 확인 매수 후보의 점수는 돌파 시점 점수(그때 알던 값). 가상 포지션의 진입가 = 돌파 다음 달 시가(사이트가 월봉만으로 같은 판단을 하도록)
 progress('매매일지', 0);
-const journalSim = simulate(A4pk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true, fill: true, cand: ym => scored[kA].get(ym) || [], log: true });   // 실제 주문 가능한 정수 주(한국·미국), 못 사면 다음 점수 순위를 사고, 추천이 모자라면 있는 만큼 나눔
+const JOURNAL_STRAT = process.env.JOURNAL_STRAT || 'confirm', CONF_THR = +process.env.CONF_THR || 0.1;
+const maAtJ = (o, k, n) => { let t = 0; for (let j = k; j > k - n; j--) { const p = o.m.get(j); if (p === undefined) return null; t += p; } return t / n; };
+const alignJ = (o, k) => { const a = maAtJ(o, k, 5), b = maAtJ(o, k, 10), d = maAtJ(o, k, 20); return (a != null && b != null && d != null) ? (a > b && b > d) : null; };
+function confirmTrig(r) {                                            // 돌파 신호가 처음으로 "가상 수익 ≥ 문턱 + 정배열"이 되는 달(월 인덱스)과 가상 수익. 가상 포지션이 먼저 팔리면(익절 트레일·유예·금리) null
+  const o = px(r.y), t0 = mi(r.ym), p0 = o.op.get(t0 + 1) || fdPx(r.y, t0 + 1); if (!(p0 > 0)) return null;
+  let tp = false, cnt = 0;
+  for (let j = t0 + 1; j <= END; j++) {
+    const p = o.m.get(j); if (p === undefined) return null;
+    const ma = ma10(o, j);
+    if (ma) { if (p >= 2 * ma) tp = true; else if (tp) return null; if (p < ma) { cnt++; const ff = ffChg12(j), n = (ff != null && ff > 0) ? 1 : 2; if (cnt >= n) return null; } else cnt = 0; }
+    if (p / p0 - 1 >= CONF_THR && alignJ(o, j) === true) return { j, pnl: p / p0 - 1, p0 };
+  }
+  return null;
+}
+const confirmMap = new Map();
+if (JOURNAL_STRAT === 'confirm') {
+  scored[kA].forEach(list => list.forEach(e => { const t = confirmTrig(e.r); if (!t) return; const ym = ymOf(t.j), r2 = Object.assign({}, e.r, { ym, exoff: null }), a = confirmMap.get(ym) || []; a.push({ r: r2, s: e.s, pnl: t.pnl, brk: e.r.ym }); confirmMap.set(ym, a); }));
+  confirmMap.forEach(a => a.sort((x, y) => y.s - x.s));
+}
+const jCand = JOURNAL_STRAT === 'confirm' ? (ym => confirmMap.get(ym) || []) : (ym => scored[kA].get(ym) || []);
+const journalSim = simulate(ym => jCand(ym).slice(0, 4), 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true, fill: true, cand: jCand, firstDay: JOURNAL_STRAT === 'confirm', log: true });   // 실제 주문 가능한 정수 주(한국·미국), 못 사면 다음 점수 순위를 사고, 추천이 모자라면 있는 만큼 나눔
 const listData = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const nameMap = new Map(listData.map(s => [s.y, { name: s.name, market: s.mk, code: s.code }]));
 const journal = {
-  meta: { strategy: 'A4 tp2x트레일+금리유예2달', dep: 1000000, made: new Date().toISOString() },
+  meta: { strategy: JOURNAL_STRAT === 'confirm' ? '확인 매수(가상 +10% 이상 + 5>10>20) · tp2x트레일+금리유예2달 · 다음 달 첫날 구매' : 'A4 tp2x트레일+금리유예2달', firstDay: JOURNAL_STRAT === 'confirm', dep: 1000000, made: new Date().toISOString() },
   features: F,
   trades: (journalSim.trades || []).map(t => ({
     y: t.y, name: nameMap.get(t.y)?.name || t.y, market: nameMap.get(t.y)?.market || '',
@@ -1538,7 +1559,7 @@ progress('매매일지', 1); process.stdout.write('\n');
   const nm = y => nameMap.get(y)?.name || y, r0 = x => Math.round(x);
   const months = {};
   const CAND_N = 12;
-  const candsOf = (ymKey, k) => (scored[kA].get(ymKey) || []).slice(0, CAND_N).map(e => { const o = px(e.r.y), p = o.m.get(k); return p === undefined ? null : { y: e.r.y, name: nm(e.r.y), us: e.r.x[US] === 1, etf: e.r.x[ETF] === 1, px: p, score: +e.s.toFixed(4) }; }).filter(Boolean);
+  const candsOf = (ymKey, k) => jCand(ymKey).slice(0, CAND_N).map(e => { const o = px(e.r.y), p = JOURNAL_STRAT === 'confirm' ? (fdPx(e.r.y, k + 1) ?? undefined) : o.m.get(k); return p === undefined ? null : { y: e.r.y, name: nm(e.r.y), us: e.r.x[US] === 1, etf: e.r.x[ETF] === 1, px: p, score: +e.s.toFixed(4), brk: e.brk || null }; }).filter(Boolean);   // confirm이면 px = 다음 달 첫날 종가(그 달 말에 확정된 후보를 다음 달 첫날 삼)
   for (const [ym, m] of (journalSim.ledger || new Map())) {
     months[ym] = {
       dep: m.dep, tax: r0(m.tax), cash: r0(m.cash), holdVal: r0(m.holdVal), fx: +m.fx.toFixed(2),
@@ -1552,6 +1573,6 @@ progress('매매일지', 1); process.stdout.write('\n');
       order: m.order || []
     };
   }
-  fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { excludeHeld: true, dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 사면 다음 점수 순위, 추천이 모자라면 있는 만큼 나눔' }, months }));
+  fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { excludeHeld: true, firstDay: JOURNAL_STRAT === 'confirm', strategy: JOURNAL_STRAT, dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 사면 다음 점수 순위, 추천이 모자라면 있는 만큼 나눔' }, months }));
   require('./8_bars.js');                                  // 매매일지 차트용 월봉(bars.json): 거래한 종목 + 장부의 후보 종목
 }                                      // 매매일지 차트용 월봉(bars.json)
