@@ -70,7 +70,7 @@ const pickUsA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 
 
 // ── 시뮬레이션
 function krTax(C, Y) { const t = C.kr.sell_tax; let v = 0; Object.keys(t).map(Number).sort().forEach(y => { if (y <= Y) v = t[y]; }); return v; }
-function simulate(pickFn, N, C) {
+function simulate(pickFn, N, C, opt = {}) {
   let cash = 0, holds = [], prevAfter = 0, deposits = 0; const rets = [], usGain = {};
   const usFee = C.us.commission + C.us.fx_spread, val = (h, k) => h.sh * h.last * (h.us ? fx(k) : 1);
   const sellCash = (h, k) => {                         // 한 종목을 팔아 현금으로: 수수료·거래세·(미국) 손익 기록
@@ -102,6 +102,16 @@ function simulate(pickFn, N, C) {
         const us = r.x[US] === 1, a = Math.min(per, cash), fee = us ? usFee : C.kr.commission;
         holds.push({ px: o, us, etf: r.x[ETF] === 1, last: p, basis: a, sh: a * (1 - fee) / (p * (us ? fx(k) : 1)), sellK: r.exoff === null ? null : mi(r.ym) + r.exoff });
         cash -= a;
+      }
+    } else if (holds.length && cash > 0) {
+      // 매수 신호 없을 때: 보유 종목에 균등 추가 매수 (reinvest 변형용 — simulate 호출 시 reinvest:true 옵션)
+      if (opt.reinvest) {
+        const per = cash / holds.length;
+        for (const h of holds) {
+          const p = h.px.m.get(k); if (!p) continue;
+          const a = Math.min(per, cash), fee = h.us ? usFee : C.kr.commission;
+          h.sh += a * (1 - fee) / (p * (h.us ? fx(k) : 1)); h.basis += a; cash -= a;
+        }
       }
     }
     let after = cash; for (const h of holds) after += val(h, k);
@@ -165,7 +175,7 @@ const pickAll = ym => byYm.get(ym) || [];
 const pickTurn = ym => [...pickAll(ym)].sort((a, b) => b.r.x[TURN] - a.r.x[TURN]).slice(0, 10);
 const randPick = rnd => ym => { const a = [...pickAll(ym)]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, 10); };
 const runRand = C => { const l = []; for (let sd = 1; sd <= SEEDS; sd++) l.push(summ(simulate(randPick(rng(sd)), 10, C))); return avgSumm(l); };
-const total = 3 + MODELS.length * 3 + 2 + 4; let step = 0;
+const total = 3 + MODELS.length * 3 + 2 + 4 + 2; let step = 0;
 const tick = () => progress('백테스트', step++ / total);
 tick(); R.push({ n: '전부 균등', s: summ(simulate(pickAll, null, C1)) }); R0['전부 균등'] = summ(simulate(pickAll, null, C0));
 tick(); R.push({ n: '거래대금 큰 순 10', s: summ(simulate(pickTurn, 10, C1)) });
@@ -180,6 +190,8 @@ tick(); R.push({ n: 'A10 유동성상위50%', s: summ(simulate(pickLiqA(0.5, 10)
 tick(); R.push({ n: 'A10 유동성상위25%', s: summ(simulate(pickLiqA(0.75, 10), 10, C1)) });
 tick(); R.push({ n: 'A10 한국만', s: summ(simulate(pickKrA(10), 10, C1)) });
 tick(); R.push({ n: 'A10 미국만', s: summ(simulate(pickUsA(10), 10, C1)) });
+tick(); R.push({ n: 'A10 신호없을때보유재투자', s: summ(simulate(ym => (scored[kA].get(ym) || []).slice(0, 10), 10, C1, { reinvest: true })) });
+tick(); R.push({ n: '전부 보유재투자', s: summ(simulate(pickAll, null, C1, { reinvest: true })) });
 progress('백테스트', 1); process.stdout.write('\n');
 
 // ── 보고서
