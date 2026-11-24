@@ -122,6 +122,32 @@ canvas{display:block;width:100%;height:200px}
 .lr.end{background:var(--chip);border-style:dashed}
 .lr.end .lr-h{grid-template-columns:1fr auto}
 .empty{color:var(--mut);padding:14px;text-align:center;font-size:13px}
+
+/* 점수 나무 */
+.meta{color:var(--mut);font-weight:400}
+.lr-sc{display:inline-block;margin-left:2px;padding:0 7px;border-radius:10px;background:var(--chip);color:var(--fg);font-weight:700;cursor:pointer}
+.lr-sc:hover{background:var(--acc);color:#fff}
+.sc-sub{font-size:12px;color:var(--mut);margin-bottom:12px;line-height:1.5}
+.tr-root{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--chip);font-weight:700;font-size:14px}
+.tr-root .big{font-size:22px}
+.tr-kids{margin:0 0 0 14px;padding-left:12px;border-left:2px solid var(--line)}
+.tr-node{position:relative;margin-top:8px}
+.tr-node::before{content:"";position:absolute;left:-12px;top:18px;width:10px;border-top:2px solid var(--line)}
+.tr-g>summary{list-style:none;display:grid;grid-template-columns:1fr 64px 62px;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:9px;cursor:pointer;font-size:13px;font-weight:700}
+.tr-g>summary::-webkit-details-marker{display:none}
+.tr-g>summary .nm2{display:flex;align-items:center;min-width:0}
+.tr-g>summary .nm2::before{content:"▸";margin-right:6px;color:var(--mut);flex:none}
+.tr-g[open]>summary .nm2::before{content:"▾"}
+.tr-base{display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px 10px;border:1px dashed var(--line);border-radius:9px;font-size:13px}
+.tr-f{display:grid;grid-template-columns:1fr 64px 62px;gap:8px;align-items:center;padding:5px 4px;font-size:12px}
+.tr-f .fd{color:var(--mut);font-size:11px}
+.tr-f .fn{font-weight:600}
+.tr-bar{height:8px;background:var(--chip);border-radius:4px;position:relative}
+.tr-bar i{position:absolute;top:0;height:8px;border-radius:4px}
+.tr-bar i.pos{background:var(--buy);left:50%}
+.tr-bar i.neg{background:var(--sell);right:50%}
+.tr-v{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.sc-note{font-size:11px;color:var(--mut);margin-top:14px;line-height:1.6}
 </style>
 </head>
 <body>
@@ -158,7 +184,6 @@ canvas{display:block;width:100%;height:200px}
 <!-- 점수 설명 모달 -->
 <div id="sc-modal">
   <div id="sc-box">
-    <h2 id="sc-title">점수 산출 기준</h2>
     <div id="sc-content"></div>
   </div>
 </div>
@@ -238,7 +263,7 @@ function renderHoldings(){
   list.innerHTML = holds.map(function(h,i){
     var ret=h.ret, cls=ret>=0?'p':'n';
     var isSel = SEL_HOLD && SEL_HOLD.y===h.y;
-    var sc = Math.round(h.score*100);
+    var scN = scoreOf(h.y,h.buyYm), sc = scN!=null ? scN : Math.round(h.score*100);
     var hUS = !/\.(KS|KQ)$/.test(h.y), fxv = LED && LED.months[ym] ? LED.months[ym].fx : 1;
     var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx * (hUS ? fxv : 1)) : null;
     var buyAmt = h.basis ? Math.round(h.basis) : null;
@@ -267,7 +292,7 @@ function renderHoldings(){
     btn.onclick=function(e){
       e.stopPropagation();
       var i=+btn.dataset['scI'];
-      showScoreModal(holds[i]);
+      showScoreTree(holds[i].y, holds[i].buyYm, holds[i].name||holds[i].y, holds[i].score);
     };
   });
 }
@@ -393,31 +418,111 @@ function findFeats(h){
   return (DATA.open||[]).filter(function(o){ return o.y===h.y && String(o.buyYm)===String(h.buyYm); })[0] || null;
 }
 
-function showScoreModal(h){
-  var t=findFeats(h);
-  var modal=document.getElementById('sc-modal');
-  var title=document.getElementById('sc-title');
-  var content=document.getElementById('sc-content');
-  var sc=Math.round(h.score*100);
-  title.textContent=(h.name||h.y)+' 점수 '+sc+'점 — 산출 기준';
-  if(!t||!t.feats||!t.feats.length||!W){
-    content.innerHTML='<p style="color:var(--mut)">지표 데이터 없음</p>';
-  } else {
-    var cs=computeContribs(t.feats,20);
-    var maxA=Math.max.apply(null,cs.map(function(c){ return Math.abs(c.contrib); }))||1;
-    content.innerHTML='<p style="font-size:12px;color:var(--mut);margin:0 0 12px">점수는 릿지 회귀 모델이 산출합니다. 각 지표의 기여도(+ 는 점수를 올림, − 는 내림):</p>'
-      +cs.map(function(c){
-        var pct=Math.round(Math.abs(c.contrib)/maxA*45);
-        var pos=c.contrib>0;
-        return '<div class="feat-row">'
-          +'<div class="feat-name" title="'+esc(c.f)+'">'+esc(FEAT_DESC[c.f]||c.f)+'</div>'
-          +'<div class="bar-wrap"><div class="bar '+(pos?'pos':'neg')+'" style="width:'+pct+'%"></div></div>'
-          +'<div class="feat-val '+(pos?'':'n')+'">'+(pos?'+':'')+c.contrib.toFixed(3)+'</div>'
-          +'</div>';
-      }).join('')
-      +'<p style="font-size:11px;color:var(--mut);margin:12px 0 0">목록의 '+sc+'점은 매수한 해 1월 1일까지 알던 정답으로 학습한 모델의 예측값(×100)입니다. 위 기여도는 지표별 영향을 보기 위해 최신 모델 가중치로 계산한 것이라 합계가 목록 점수와 같지는 않습니다.</p>';
+var GROUPS = [
+  ['추세·이평선', ['gap', 'gap_prev', 'slope1', 'slope3', 'slope6', 'ma10_ma24', 'c_ma12', 'c_ma60', 'ma_up6', 'above24', 'cross24', 'below', 'prev_fail']],
+  ['가격 모멘텀·위치', ['ret1', 'ret3', 'ret12', 'up6', 'high24', 'dd36', 'hi12_break']],
+  ['매수 달 캔들 모양', ['body', 'upwick', 'lowwick', 'range', 'close_pos']],
+  ['거래량·거래대금', ['vol', 'vol3', 'vol_max36', 'turn']],
+  ['변동성', ['volat12']],
+  ['시장·종목 구분', ['us', 'etf', 'idx_above', 'idx_slope', 'idx_ret12']]
+];
+var FDESC = {
+  gap: '종가가 10이평보다 얼마나 위인지', gap_prev: '전달 종가가 전달 10이평 대비 어디였는지', slope1: '10이평의 1개월 기울기', slope3: '10이평의 3개월 기울기',
+  slope6: '10이평의 6개월 기울기', ma10_ma24: '10이평 ÷ 24이평', c_ma12: '종가 ÷ 12이평', c_ma60: '종가 ÷ 60이평(데이터 짧으면 12이평)',
+  ma_up6: '최근 6개월 중 10이평이 오른 달', above24: '최근 24개월 중 종가가 10이평 위였던 비율', cross24: '최근 24개월 이평 교차 횟수',
+  below: '직전까지 10이평 아래였던 연속 개월', prev_fail: '최근 3년 돌파 후 3개월 안에 깨진 횟수',
+  ret1: '최근 1개월 수익률', ret3: '최근 3개월 수익률', ret12: '최근 12개월 수익률', up6: '최근 6개월 중 오른 달',
+  high24: '24개월 고점 대비', dd36: '36개월 최고점 대비 낙폭', hi12_break: '12개월 신고가 돌파 여부',
+  body: '캔들 몸통(시가→종가)', upwick: '윗꼬리 비율', lowwick: '아랫꼬리 비율', range: '고가-저가 변동폭', close_pos: '고저 범위 중 종가 위치',
+  vol: '그달 거래량 ÷ 최근 12개월 평균', vol3: '최근 3개월 ÷ 그 전 거래량', vol_max36: '그달 거래량 ÷ 36개월 최대', turn: '월 거래대금 크기',
+  volat12: '최근 12개월 월간 변동성', us: '미국 종목 여부', etf: 'ETF·ETN 여부',
+  idx_above: '시장 지수가 10이평 위인지', idx_slope: '시장 지수 이평 기울기', idx_ret12: '시장 지수 12개월 수익'
+};
+var FNAME = {
+  gap: '이평 대비 위치', gap_prev: '전달 이평 대비', slope1: '이평 기울기(1개월)', slope3: '이평 기울기(3개월)', slope6: '이평 기울기(6개월)',
+  ma10_ma24: '10이평/24이평', c_ma12: '12이평 대비 종가', c_ma60: '60이평 대비 종가', ma_up6: '이평 상승 개월', above24: '이평 위 비율(24개월)',
+  cross24: '이평 교차 횟수', below: '이평 아래 연속', prev_fail: '돌파 실패 횟수', ret1: '1개월 수익률', ret3: '3개월 수익률', ret12: '12개월 수익률',
+  up6: '6개월 중 상승 달', high24: '24개월 고점 대비', dd36: '36개월 최고점 낙폭', hi12_break: '12개월 신고가', body: '캔들 몸통', upwick: '윗꼬리',
+  lowwick: '아랫꼬리', range: '변동폭', close_pos: '종가 위치', vol: '거래량 변화', vol3: '단기 거래량', vol_max36: '최대 거래량 대비',
+  turn: '거래대금 크기', volat12: '12개월 변동성', us: '미국 종목', etf: 'ETF 여부', idx_above: '지수 이평 위', idx_slope: '지수 기울기', idx_ret12: '지수 12개월 수익'
+};
+function rawToScore(raw){
+  var pct=W.pct, lo=0, hi=pct.length-1;
+  while(lo<hi){ var mid=(lo+hi)>>1; if(pct[mid]<raw) lo=mid+1; else hi=mid; }
+  return lo/(pct.length-1)*100;
+}
+// 항목별 점수 몫: 기준값에서 항목을 하나씩 더할 때 오른 점수를, 더하는 순서를 1500번 섞어 평균(샤플리 값). 합 = 최종 점수 - 기준 점수
+function shapleyPoints(contribs, b){
+  var n=contribs.length, phi=[], P=1500, idx=[], seed=12345, i, k;
+  for(i=0;i<n;i++){ phi.push(0); idx.push(i); }
+  var rnd=function(){ seed=(seed*1664525+1013904223)%4294967296; return seed/4294967296; };
+  for(var t=0;t<P;t++){
+    for(i=n-1;i>0;i--){ k=Math.floor(rnd()*(i+1)); var tmp=idx[i]; idx[i]=idx[k]; idx[k]=tmp; }
+    var r=b, prev=rawToScore(b);
+    for(i=0;i<n;i++){ r+=contribs[idx[i]]; var cur=rawToScore(r); phi[idx[i]]+=cur-prev; prev=cur; }
   }
-  modal.classList.add('open');
+  return phi.map(function(x){ return x/P; });
+}
+function explainFeats(feats){
+  if(!W||!feats||!feats.length) return null;
+  var fv={}; feats.forEach(function(x){ fv[x[0]]=x[1]; });
+  var raw=W.b, items=[];
+  W.feats.forEach(function(w){
+    var v=fv[w.f]; if(v==null||isNaN(v)) v=w.m;
+    var cl=Math.min(w.hi,Math.max(w.lo,v)), c=(cl-w.m)/w.sd*w.w;
+    raw+=c; items.push({f:w.f,v:v,contrib:c});
+  });
+  return {raw:raw, score:Math.round(rawToScore(raw)), base:rawToScore(W.b), b:W.b, items:items};
+}
+var SC_CACHE={};
+function scoreOf(y,buyYm){                 // 매수 시점 지표를 최신 모델로 계산한 점수(0~100). 없으면 null
+  var key=y+'|'+buyYm; if(key in SC_CACHE) return SC_CACHE[key];
+  var t=findFeats({y:y,buyYm:buyYm}), e=t?explainFeats(t.feats):null;
+  if(e) SC_CACHE[key]=e.score; return e?e.score:null;
+}
+function fmtV(f,v){
+  var P=function(x){ return (x>0?'+':'')+(x*100).toFixed(1)+'%'; };
+  if(f==='us'||f==='etf'||f==='hi12_break'||f==='idx_above') return v?'예':'아니오';
+  if(f==='cross24'||f==='prev_fail') return v+'회';
+  if(f==='below'||f==='up6'||f==='ma_up6') return v+'개월';
+  if(f==='above24'||f==='upwick'||f==='lowwick'||f==='close_pos'||f==='vol_max36') return (v*100).toFixed(0)+'%';
+  if(f==='vol'||f==='vol3') return '×'+Math.exp(v).toFixed(2);
+  if(f==='turn') return '10^'+v.toFixed(1);
+  return P(v);
+}
+function sgn(x){ return (x>0?'+':x<0?'−':'')+Math.abs(x*100).toFixed(1); }
+function sp(x){ return (x>0.05?'+':x<-0.05?'−':'')+Math.abs(x).toFixed(1)+'점'; }
+
+function showScoreTree(y,buyYm,name,oldPred){
+  var modal=document.getElementById('sc-modal'), box=document.getElementById('sc-content');
+  var t=findFeats({y:y,buyYm:buyYm}), e=t?explainFeats(t.feats):null;
+  if(!e){ box.innerHTML='<h2 style="margin:0 0 6px;font-size:15px">'+esc(name)+'</h2><div class="sc-sub">'+(W?'이 매수의 지표 데이터가 없습니다.':'점수 모델을 아직 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요.')+'</div>'; modal.classList.add('open'); return; }
+  var byF={}; e.items.forEach(function(x){ byF[x.f]=x; });
+  var pts=shapleyPoints(e.items.map(function(x){ return x.contrib; }), e.b);
+  e.items.forEach(function(x,i){ x.pts=pts[i]; });
+  var gs=GROUPS.map(function(g){
+    var its=g[1].map(function(k){ return byF[k]; }).filter(Boolean).sort(function(a,b){ return Math.abs(b.pts)-Math.abs(a.pts); });
+    return {n:g[0],items:its,sum:its.reduce(function(t,x){ return t+x.pts; },0)};
+  }).sort(function(a,b){ return Math.abs(b.sum)-Math.abs(a.sum); });
+  var maxG=Math.max.apply(null,gs.map(function(g){ return Math.abs(g.sum); }))||1;
+  var maxF=Math.max.apply(null,e.items.map(function(x){ return Math.abs(x.pts); }))||1;
+  var bar=function(x,m){ var w=Math.min(50,Math.abs(x)/m*50); return '<div class="tr-bar"><i class="'+(x>=0?'pos':'neg')+'" style="width:'+w+'%"></i></div>'; };
+  var total=e.score-Math.round(e.base);
+  var h='<h2 style="margin:0 0 4px;font-size:16px">'+esc(name)+' · '+fmt(buyYm)+' 매수, '+e.score+'점은 왜?</h2>'
+    +'<div class="sc-sub">평범한 신호의 점수(기준)에서 시작해, 항목마다 점수를 올리고 내려서 최종 점수가 됩니다. 아래 숫자가 <b>그 항목이 점수를 몇 점 올리거나 내렸는지</b>예요. 항목을 눌러 펼쳐 보세요.</div>'
+    +'<div class="tr-root"><span class="big">'+e.score+'점</span><span>= 기준 '+Math.round(e.base)+'점 '+(total>=0?'+ ':'− ')+Math.abs(total)+'점<br><span class="meta">학습 때 신호 중 상위 '+Math.max(1,100-e.score)+'%</span></span></div>'
+    +'<div class="tr-kids"><div class="tr-node"><div class="tr-base"><span><b>기준</b> <span class="meta">(평균적인 매수 신호, 예측 수익 '+sgn(e.b)+'%)</span></span><b>'+Math.round(e.base)+'점</b></div></div>';
+  gs.forEach(function(g,gi){
+    h+='<div class="tr-node"><details class="tr-g"'+(gi<2?' open':'')+'><summary><span class="nm2">'+g.n+'</span>'+bar(g.sum,maxG)+'<span class="tr-v '+(g.sum>=0?'p':'n')+'">'+sp(g.sum)+'</span></summary><div class="tr-kids">';
+    g.items.forEach(function(x){
+      h+='<div class="tr-node"><div class="tr-f"><div><div class="fn">'+FNAME[x.f]+' <span class="meta">'+fmtV(x.f,x.v)+'</span></div><div class="fd">'+FDESC[x.f]+'</div></div>'+bar(x.pts,maxF)+'<span class="tr-v '+(x.pts>=0?'p':'n')+'">'+sp(x.pts)+'</span></div></div>';
+    });
+    h+='</div></details></div>';
+  });
+  h+='</div><div class="sc-note">각 항목의 점수는 "그 항목을 더하는 순서를 모두 평균낸 몫"이라 어떤 순서로 더해도 합이 같습니다(소수점 반올림으로 ±1점 차이 가능).<br>'
+    +'이 점수는 매수 당시의 지표를 <b>최신 모델</b>로 다시 계산한 값입니다. 최신 모델은 이 거래의 결과까지 학습했기 때문에 과거 거래에는 점수가 후하게 나오는 경향이 있어요(성과를 증명하는 숫자가 아니라 "어떤 지표가 어떻게 반영되는지" 보는 용도).'
+    +(oldPred!=null?'<br>매수한 해에 종목을 실제로 고른 모델의 예측 수익은 '+(oldPred>=0?'+':'')+(oldPred*100).toFixed(1)+'%였습니다.':'')+'</div>';
+  box.innerHTML=h; modal.classList.add('open');
 }
 document.getElementById('sc-modal').onclick=function(e){ if(e.target===this) this.classList.remove('open'); };
 
@@ -477,11 +582,14 @@ function renderLedger(){
     var tr=DATA.trades.filter(function(t){return t.y===x.y&&String(t.buyYm)===ym;})[0];
     var endYm=tr?tr.sellYm:Object.keys(LED.months).sort().pop();
     add('buy','구매',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+' · 점수 '+Math.round(x.score*100),
+      qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+' · <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+ym+'" data-sn="'+esc(x.name)+'" data-sp="'+x.score+'">점수 '+(function(){ var v=scoreOf(x.y,ym); return v!=null?v:Math.round(x.score*100); })()+'</span>',
       signWon(-x.amt),bal,{y:x.y,end:endYm,buy:ym,sell:tr?tr.sellYm:null});
   });
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">월말 현금</div></div><div class="lr-a">'+won(m.cash)+'</div></div></div>';
   list.innerHTML=html;
+  list.querySelectorAll('.lr-sc').forEach(function(c){
+    c.onclick=function(ev){ ev.stopPropagation(); showScoreTree(c.dataset.sy,+c.dataset.sb,c.dataset.sn,+c.dataset.sp); };
+  });
   list.querySelectorAll('.lr-h[data-r]').forEach(function(h){
     h.onclick=function(){
       var box=h.nextElementSibling; box.classList.toggle('open');
@@ -605,7 +713,7 @@ window.addEventListener('resize',function(){ if(LED && SEL_YM) renderYearChart()
 
 function renderAll(){ renderYearChart(); renderRetChart(); renderNav(); renderSummary(); renderLedger(); renderHoldings(); document.getElementById('chart-box').style.display='none'; }
 
-fetch('tools/learn/result/weights.json').then(function(r){ return r.json(); }).then(function(w){ W=w; }).catch(function(){});
+fetch('tools/learn/result/weights.json').then(function(r){ return r.json(); }).then(function(w){ W=w; if(DATA) renderAll(); }).catch(function(){});
 fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).then(function(l){ LED=l; calcRets(); }).catch(function(){})
 .then(function(){ return fetch('tools/learn/result/trades.json'); }).then(function(r){ return r.json(); }).then(function(d){
   DATA=d;
