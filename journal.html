@@ -80,6 +80,19 @@ canvas{display:block;width:100%;height:200px}
 .rtag.rt{background:#e0f2fe;color:#075985}
 .rtag.ma{background:var(--chip);color:var(--mut)}
 
+/* 매도 완료 거래 목록 */
+#sold-ctl{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+.sd-btn{padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;font:inherit;font-size:12px;font-weight:600;color:var(--mut);cursor:pointer}
+.sd-btn.sel{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.sd-sum{font-size:12px;color:var(--mut);margin:0 0 8px}
+.sd-sum b{color:var(--fg)}
+#sold-list{display:flex;flex-direction:column;gap:1px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 12px}
+.sd-row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.sd-row:last-child{border-bottom:0}
+.sd-n{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sd-r{font-weight:800;font-size:14px;text-align:right;font-variant-numeric:tabular-nums}
+.sd-s{font-size:11.5px;color:var(--mut);grid-column:1/3;font-variant-numeric:tabular-nums}
+#sold-more{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:inherit;font-size:13px;font-weight:700;color:var(--fg);cursor:pointer}
 /* 시작 시점 */
 #start-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
 .st-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
@@ -194,6 +207,12 @@ canvas{display:block;width:100%;height:200px}
     <div id="hold-title">연도·월을 선택하면 그달 말 보유 종목이 표시됩니다.</div>
     <div id="hold-list"></div>
   </div>
+
+  <div class="sec-title" id="sold-label">매도한 거래 전체</div>
+  <div id="sold-ctl"></div>
+  <div class="sd-sum" id="sold-sum"></div>
+  <div id="sold-list"></div>
+  <button id="sold-more" hidden>더 보기</button>
 </main>
 
 <!-- 점수 설명 모달 -->
@@ -968,8 +987,46 @@ function renderStartCard(){
   card.querySelectorAll('[data-sm]').forEach(function(b){ b.onclick=function(){ if(b.dataset.sm!==START_YM) applyStart(b.dataset.sm); else renderStartCard(); }; });
 }
 
+
+/* ── 매도한 거래 전체 목록 (시작 시점부터, 구매 연월·판매 연월·수익률·구매 당시 점수) ── */
+var SOLD_SORT='buy', SOLD_LIMIT=100;
+function renderSoldList(){
+  if(!LED||!DATA) return;
+  var rows=[];
+  Object.keys(LED.months).sort().forEach(function(ym){
+    LED.months[ym].sells.forEach(function(x){
+      var sv=scoreOf(x.y,x.buyYm); rows.push({y:x.y,name:x.name,us:x.us,buyYm:String(x.buyYm),sellYm:ym,ret:x.ret,reason:x.reason,score:sv,amt:x.amt});
+    });
+  });
+  var cmp={
+    buy:function(a,b){ return a.buyYm<b.buyYm?-1:a.buyYm>b.buyYm?1:(a.sellYm<b.sellYm?-1:1); },
+    score:function(a,b){ return ((b.score==null?-1:b.score)-(a.score==null?-1:a.score))||(b.ret-a.ret); },
+    ret:function(a,b){ return b.ret-a.ret; },
+    loss:function(a,b){ return a.ret-b.ret; }
+  };
+  rows.sort(cmp[SOLD_SORT]);
+  var win=rows.filter(function(r){ return r.ret>0; }).length;
+  document.getElementById('sold-label').textContent='매도한 거래 전체 · '+fmt(START_YM||Object.keys(LED.months).sort()[0])+'부터';
+  document.getElementById('sold-sum').innerHTML='판매 완료 <b>'+rows.length+'건</b> · 수익 난 거래 <b>'+win+'건 ('+(rows.length?Math.round(win/rows.length*100):0)+'%)</b> · 점수는 구매 당시 지표를 최신 모델로 계산한 값(누르면 이유)';
+  var btn=function(k,t){ return '<button class="sd-btn'+(SOLD_SORT===k?' sel':'')+'" data-k="'+k+'">'+t+'</button>'; };
+  document.getElementById('sold-ctl').innerHTML=btn('buy','구매 순(오래된 것부터)')+btn('score','점수 높은 순')+btn('ret','수익률 높은 순')+btn('loss','수익률 낮은 순');
+  document.querySelectorAll('#sold-ctl .sd-btn').forEach(function(b){ b.onclick=function(){ SOLD_SORT=b.dataset.k; SOLD_LIMIT=100; renderSoldList(); }; });
+  var shown=rows.slice(0,SOLD_LIMIT);
+  document.getElementById('sold-list').innerHTML=shown.map(function(r){
+    var hm=holdMonths(r.buyYm,r.sellYm), cls=r.ret>=0?'p':'n';
+    return '<div class="sd-row"><div class="sd-n">'+esc(r.name)+(r.us?' <span class="lr-b">미국</span>':'')+'</div><div class="sd-r '+cls+'">'+pc(r.ret)+'</div>'
+      +'<div class="sd-s"><b>구매 '+fmt(r.buyYm)+'</b> → 판매 '+fmt(r.sellYm)+' · '+hm+'개월 · 점수 <span class="lr-sc" data-sy="'+esc(r.y)+'" data-sb="'+r.buyYm+'" data-sn="'+esc(r.name)+'" data-sp="">'+(r.score==null?'-':r.score)+'</span> · '+esc(REASON[r.reason]||r.reason||'')+'</div></div>';
+  }).join('');
+  document.querySelectorAll('#sold-list .lr-sc').forEach(function(c){
+    c.onclick=function(ev){ ev.stopPropagation(); var t=DATA.trades.filter(function(z){ return z.y===c.dataset.sy&&String(z.buyYm)===c.dataset.sb; })[0]; showScoreTree(c.dataset.sy,+c.dataset.sb,c.dataset.sn,t?t.score:null); };
+  });
+  var more=document.getElementById('sold-more');
+  more.hidden=rows.length<=SOLD_LIMIT; more.textContent='더 보기 ('+Math.min(rows.length-SOLD_LIMIT,300)+'건 더, 남은 '+(rows.length-SOLD_LIMIT)+'건)';
+  more.onclick=function(){ SOLD_LIMIT+=300; renderSoldList(); };
+}
+
 function renderAll(){
-  renderStartCard(); renderYearChart(); renderRetChart(); renderNav();
+  renderStartCard(); renderSoldList(); renderYearChart(); renderRetChart(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
     document.getElementById('hold-title').textContent='예정 주문을 반영한 보유 종목은 위 거래 내역을 기준으로 봐 주세요.'; document.getElementById('hold-list').innerHTML='';
