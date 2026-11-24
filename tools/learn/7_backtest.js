@@ -439,7 +439,9 @@ const cmpRun = (name, fn) => { progress('점수효과', CMP_NAMES.length / 5); C
 cmpRun('점수효과 · 점수 상위 4', () => summ(simulate(cmpTop, 4, C1, { ...CMP_OPT, cand: cmpTopL })));
 cmpRun('점수효과 · 점수 중간 4', () => summ(simulate(cmpMiddle, 4, C1, { ...CMP_OPT, cand: cmpMiddleL })));
 cmpRun('점수효과 · 점수 하위 4', () => summ(simulate(cmpBottom, 4, C1, { ...CMP_OPT, cand: cmpBottomL })));
-cmpRun(`점수효과 · 무작위 4 (평균 ${SEEDS}회)`, () => { const l = []; for (let sd = 1; sd <= SEEDS; sd++) l.push(summ(simulate(cmpRand(rng(sd)), 4, C1, { ...CMP_OPT, cand: cmpRandL(rng(sd)) }))); return avgSumm(l); });
+const CMP_SEEDS = Math.max(SEEDS, +process.env.CMP_SEEDS || 100);                       // 분포를 보려고 무작위는 100번(기본)
+let CMP_RAND_CAGR = [];
+cmpRun(`점수효과 · 무작위 4 (평균 ${CMP_SEEDS}회)`, () => { const l = []; for (let sd = 1; sd <= CMP_SEEDS; sd++) l.push(summ(simulate(cmpRand(rng(sd)), 4, C1, { ...CMP_OPT, cand: cmpRandL(rng(sd)) }))); CMP_RAND_CAGR = l.map(x => x.cagr); return avgSumm(l); });
 cmpRun('점수효과 · 거래대금 큰 4', () => summ(simulate(cmpTurn, 4, C1, { ...CMP_OPT, cand: cmpTurnL })));
 progress('점수효과', 1); process.stdout.write('\n');
 
@@ -584,6 +586,13 @@ R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).
   cmpRows.forEach(r => log(`${r.n.padEnd(34)} ${pc(r.s.cagr).padStart(7)} ${pc(r.s.cum).padStart(10)} ${pc(r.s.mdd).padStart(9)} ${won(r.s.liq).padStart(12)} ${pc(r.s.irr).padStart(7)}   ${ksY ? Ys.filter(Y => r.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + Ys.length : ''}`));
   const g = n => (cmpRows.find(r => r.n.includes(n)) || { s: { cagr: NaN } }).s.cagr;
   log(`→ 점수 상위 4 − 무작위 4 = ${((g('상위') - g('무작위')) * 100).toFixed(1)}%p/년,  상위 4 − 하위 4 = ${((g('상위') - g('하위')) * 100).toFixed(1)}%p/년  (0 근처이거나 음수면 점수가 수익에 기여하지 못한 것)`);
+  if (CMP_RAND_CAGR.length) {                                                        // 무작위 4 분포: 상위 4가 운이 아닌지
+    const a = [...CMP_RAND_CAGR].sort((x, y) => x - y), q = p => a[Math.min(a.length - 1, Math.floor(p * (a.length - 1)))];
+    const top = g('상위'), beat = a.filter(x => x >= top).length;
+    log(`무작위 4를 ${a.length}번 돌린 연평균 분포: 최소 ${pc(a[0])} · 하위 10% ${pc(q(0.1))} · 중앙값 ${pc(q(0.5))} · 상위 10% ${pc(q(0.9))} · 최대 ${pc(a[a.length - 1])}`);
+    log(`→ 점수 상위 4(${pc(top)})보다 높았던 무작위는 ${beat}/${a.length}번. 무작위 중 이 정도가 나올 확률 ≈ ${((beat + 1) / (a.length + 1) * 100).toFixed(1)}% (작을수록 운일 가능성이 낮음)`);
+    log('   ※ 점수 상위 4는 설정(N·판매 규칙)을 같은 데이터로 골랐기 때문에, 이 확률은 실제보다 유리하게 나올 수 있음');
+  }
 }
 fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
 
