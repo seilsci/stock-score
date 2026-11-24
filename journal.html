@@ -111,12 +111,22 @@ canvas{display:block;width:100%;height:230px}
 .st-t{font-weight:700;font-size:14px}.st-v{font-weight:800;font-size:15px;color:var(--acc)}
 .st-note{font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5}
 /* 월별 수익률 그래프 */
-#cum-card,#yr-card,#ret-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;margin-bottom:14px}
+#cum-card,#yr-card,#ret-card,#mt-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;margin-bottom:14px}
 .rc-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:2px}
 .rc-t{font-weight:700;font-size:14px}
 .rc-y{font-weight:800;font-size:18px;font-variant-numeric:tabular-nums}
 .rc-s{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--mut);margin-top:6px}
 .rc-s b{color:var(--fg)}
+.mt-tabs{display:flex;gap:6px;margin:6px 0 8px;flex-wrap:wrap}
+.mt-tabs button{border:1px solid var(--line);background:var(--chip);color:var(--fg);border-radius:14px;padding:3px 10px;font-size:12px}
+.mt-tabs button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.mt-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.mt-tb{border-collapse:collapse;font-size:11.5px;text-align:right;font-variant-numeric:tabular-nums;min-width:640px;width:100%}
+.mt-tb th{color:var(--mut);font-weight:500;padding:4px 3px;white-space:nowrap}
+.mt-tb td{padding:4px 3px;border-top:1px solid var(--line);white-space:nowrap}
+.mt-tb th:first-child,.mt-tb td:first-child{position:sticky;left:0;background:var(--card);text-align:left;font-weight:600;padding-left:2px;z-index:1}
+.mt-tb td.y{font-weight:700}
+.mt-note{font-size:11px;color:var(--mut);margin-top:6px}
 #rc,#yc,#cc{height:190px;cursor:pointer;touch-action:manipulation}
 /* 월 요약 */
 #sum-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
@@ -200,6 +210,8 @@ canvas{display:block;width:100%;height:230px}
   <div id="yr-card"></div>
 
   <div id="ret-card"></div>
+
+  <div id="mt-card"></div>
 
   <div class="nav">
     <div class="yr-row" id="yr-row"></div>
@@ -896,6 +908,36 @@ function calcRets(){
     RET[ks[i]] = (a.cash+a.holdVal-dep)/(b.cash+b.holdVal)-1;
   }
 }
+var MT_KEY='st';
+function renderMonthTable(){                 // 연도(세로) × 월(가로) 월별 수익률 표: 현재 전략 / 나스닥100 / S&P500 / 코스피
+  var card=document.getElementById('mt-card');
+  if(!LED){ card.style.display='none'; return; }
+  card.style.display='block';
+  var keys=['st'].concat(BENCH?BK:[]); if(keys.indexOf(MT_KEY)<0) MT_KEY='st';
+  var NAMES={st:'현재 전략',nq:'나스닥100',sp:'S&P500',ks:'코스피'}, order=['st','nq','sp','ks'].filter(function(k){ return keys.indexOf(k)>=0; });
+  var ks=Object.keys(LED.months).sort(), y0=+ks[0].slice(0,4), y1=+ks[ks.length-1].slice(0,4);
+  var val=function(ym){ return MT_KEY==='st'?(RET[ym]==null?null:RET[ym]):benchRet(MT_KEY,ym); };
+  var tint=function(v){ if(v==null) return ''; var a=Math.min(Math.abs(v)/0.15,1)*0.5; return 'background:'+(v>=0?'rgba(214,64,64,':'rgba(50,100,220,')+a.toFixed(2)+')'; };
+  var h='<div class="rc-h"><div class="rc-t">월별 수익률 표 (%)</div></div><div class="mt-tabs">'
+    +order.map(function(k){ return '<button class="'+(k===MT_KEY?'on':'')+'" data-k="'+k+'">'+NAMES[k]+'</button>'; }).join('')+'</div>'
+    +'<div class="mt-wrap"><table class="mt-tb"><tr><th>연도</th>';
+  for(var m=1;m<=12;m++) h+='<th>'+m+'월</th>';
+  h+='<th>연간</th></tr>';
+  for(var y=y0;y<=y1;y++){
+    var row='', prod=1, cnt=0;
+    for(m=1;m<=12;m++){
+      var ym=y+(m<10?'0':'')+m, v=val(ym);
+      if(v!=null){ prod*=1+v; cnt++; }
+      row+='<td style="'+tint(v)+(v==null?'':';color:'+(v>=0?'var(--buy)':'var(--sell)'))+'">'+(v==null?'':(v*100).toFixed(1))+'</td>';
+    }
+    if(!cnt) continue;
+    var t=prod-1;
+    h+='<tr><td>'+y+(cnt<12?'*':'')+'</td>'+row+'<td class="y" style="color:'+(t>=0?'var(--buy)':'var(--sell)')+'">'+(t*100).toFixed(1)+'</td></tr>';
+  }
+  h+='</table></div><div class="mt-note">* 12개월이 안 되는 해. 연간 = 월 수익률 복리(입금 영향 제외).'+(MT_KEY==='st'?'':' 미국 지수는 환율을 반영한 원화 기준.')+' 옆으로 밀어서 보세요.</div>';
+  card.innerHTML=h;
+  Array.prototype.forEach.call(card.querySelectorAll('.mt-tabs button'),function(b){ b.onclick=function(){ MT_KEY=b.getAttribute('data-k'); renderMonthTable(); }; });
+}
 function renderRetChart(){
   var card=document.getElementById('ret-card');
   if(!LED || !SEL_YM){ card.style.display='none'; return; }
@@ -1450,7 +1492,7 @@ function renderSoldList(){
 
 function renderAll(){
   try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) sl.textContent=DATA.meta.strategy; }catch(e){}
-  renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderNav();
+  renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
     if(PLAN) renderHoldings({holds:planHoldings(PLAN),fx:PLAN.fx});
