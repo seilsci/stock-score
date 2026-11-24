@@ -1225,7 +1225,79 @@ if (process.env.STAGE12 !== '0') {
   progress('확인 매수(절반)', 1); process.stdout.write('\n');
   AD6.rows = rows;
 }
+// ── 확인 매수 심화(STAGE13=0이면 건너뜀): ① 확인 매수 + 추가 매수 ② 정배열 정의 4가지 ③ 점수 기여(점수순 vs 무작위 vs 점수 낮은 순 vs 가상 수익순)
+const AD7 = { sec: null };
+if (process.env.STAGE13 !== '0') {
+  const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  const B = +process.env.AD7_HALVES || 8, topL13 = ym => scored[kA].get(ym) || [];
+  const maAt = (o, k, n) => { let t = 0; for (let j = k; j > k - n; j--) { const p = o.m.get(j); if (p === undefined) return null; t += p; } return t / n; };
+  const AL = {
+    '종가>5>10>20이평': (o, k) => { const c = o.m.get(k), a = maAt(o, k, 5), b = maAt(o, k, 10), d = maAt(o, k, 20); return (c != null && a != null && b != null && d != null) ? (c > a && a > b && b > d) : null; },
+    '5>10>20이평': (o, k) => { const a = maAt(o, k, 5), b = maAt(o, k, 10), d = maAt(o, k, 20); return (a != null && b != null && d != null) ? (a > b && b > d) : null; },
+    '종가>10>24이평': (o, k) => { const c = o.m.get(k), b = maAt(o, k, 10), d = maAt(o, k, 24); return (c != null && b != null && d != null) ? (c > b && b > d) : null; },
+    '10>24이평+10이평 상승': (o, k) => { const b = maAt(o, k, 10), b1 = maAt(o, k - 1, 10), d = maAt(o, k, 24); return (b != null && b1 != null && d != null) ? (b > d && b > b1) : null; }
+  };
+  const A2 = AL['5>10>20이평'], alOK = fn => (o, k) => fn(o, k) === true;
+  const trig = (r, thr, fn) => {                                      // 돌파 신호가 처음으로 "가상 수익 ≥ 문턱 + (정배열)"이 되는 달과 그때 가상 수익
+    const o = px(r.y), t0 = mi(r.ym), p0 = fdPx(r.y, t0 + 1); if (!(p0 > 0)) return null;
+    let tp = false, cnt = 0;
+    for (let j = t0 + 1; j <= END; j++) {
+      const p = o.m.get(j); if (p === undefined) return null;
+      const ma = ma10(o, j);
+      if (ma) { if (p >= 2 * ma) tp = true; else if (tp) return null; if (p < ma) { cnt++; const ff = ffChg12(j), n = (ff != null && ff > 0) ? 1 : 2; if (cnt >= n) return null; } else cnt = 0; }
+      if (p / p0 - 1 >= thr && (!fn || fn(o, j) === true)) return { j, pnl: p / p0 - 1 };
+    }
+    return null;
+  };
+  const mapCache = new Map();
+  const getMap = (thr, fnName) => {
+    const key = thr + '|' + fnName; if (mapCache.has(key)) return mapCache.get(key);
+    const fn = fnName === '없음' ? null : AL[fnName], m = new Map();
+    scored[kA].forEach(list => list.forEach(e => { const t = trig(e.r, thr, fn); if (!t) return; const ym = ymOf(t.j), r2 = Object.assign({}, e.r, { ym, exoff: null }), a = m.get(ym) || []; a.push({ r: r2, s: e.s, pnl: t.pnl }); m.set(ym, a); }));
+    m.forEach(a => a.sort((x, y) => y.s - x.s)); mapCache.set(key, m); return m;
+  };
+  const run13 = (o, cand, N) => summ(simulate(ym => cand(ym).slice(0, N || 4), N || 4, C1, { lotSize: true, lotAll: true, fill: true, cand, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, ...o }));
+  const SEC1 = '① 확인 매수 + 추가 매수', SEC2 = '② 정배열 정의', SEC3 = '③ 점수 기여';
+  const V = [];
+  [0, 0.1].forEach(t => {
+    const mp = getMap(t, '5>10>20이평'), cand = ym => mp.get(ym) || [], tn = `확인 매수(가상 +${t * 100}% 이상 + 5>10>20)`;
+    V.push({ sec: SEC1, name: `${tn} · 추가 매수 없음`, cand, o: {}, base: null });
+    V.push({ sec: SEC1, name: `${tn} · 수익 중인 종목 100% 추가 매수`, cand, o: { addFrac: 1, addGroup: 'win' }, base: `${tn} · 추가 매수 없음` });
+    V.push({ sec: SEC1, name: `${tn} · 정배열 전부 100% 추가 매수`, cand, o: { addFrac: 1, addGroup: 'all', addAlign: alOK(A2) }, base: `${tn} · 추가 매수 없음` });
+    V.push({ sec: SEC1, name: `${tn} · 정배열+수익 +10% 넘는 종목 100% 추가 매수`, cand, o: { addFrac: 1, addGroup: 'win', addThr: 0.1, addAlign: alOK(A2) }, base: `${tn} · 추가 매수 없음` });
+  });
+  [0, 0.1].forEach(t => Object.keys(AL).forEach(n => { const mp = getMap(t, n), cand = ym => mp.get(ym) || []; V.push({ sec: SEC2, name: `가상 +${t * 100}% 이상 · ${n}`, cand, o: {}, base: t === 0 ? '가상 +0% 이상 · 5>10>20이평' : '가상 +10% 이상 · 5>10>20이평' }); }));
+  const rows = V.map((v, i) => { progress('확인 매수 심화', i / V.length); return Object.assign(v, { full: run13(v.o, v.cand), halves: [] }); });
+  for (let b = 1; b <= B; b++) { progress('확인 매수 심화(절반)', (b - 1) / B); rows.forEach(r => { const cand = ym => r.cand(ym).filter(e => hash(e.r.y + '|' + b) < 0.5); r.halves.push(run13(r.o, cand).cagr); }); }
+  progress('확인 매수 심화(절반)', 1); process.stdout.write('\n');
+  // ③ 점수 기여: 같은 후보 풀(확인 매수 가상 +0%·+10% + 5>10>20)에서 고르는 순서만 바꿈
+  const s3 = [];
+  [0, 0.1].forEach(t => {
+    const mp = getMap(t, '5>10>20이평'), order = (f) => ym => f([...(mp.get(ym) || [])], ym);
+    const byScore = order(a => a), bottom = order(a => a.reverse()), pnlHi = order(a => a.sort((x, y) => y.pnl - x.pnl)), pnlLo = order(a => a.sort((x, y) => x.pnl - y.pnl));
+    const g = (cand) => run13({}, cand);
+    const rnd = []; for (let sd = 1; sd <= (+process.env.AD7_SEEDS || 20); sd++) { const rr = ym => { const a = [...(mp.get(ym) || [])], r = rng(sd * 7 + (ym % 997)); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }; rnd.push(run13({}, rr).cagr); }
+    rnd.sort((x, y) => x - y);
+    s3.push({ t, score: g(byScore), bottom: g(bottom), pnlHi: g(pnlHi), pnlLo: g(pnlLo), rnd });
+  });
+  AD7.sec = { rows, s3, B };
+}
 // ── 걸어가며 설정 고르기 보고
+// ── 확인 매수 심화 보고
+if (AD7.sec) {
+  const { rows: Rr, s3 } = AD7.sec, pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019), mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  let cur = '';
+  Rr.forEach(r => {
+    if (r.sec !== cur) { cur = r.sec; log(''); log(`## 확인 매수 심화 ${cur} (점수 상위 4, 첫날 체결, 월 100만원)`); log('방식                                                              전체    앞쪽    뒤쪽    낙폭    기준 대비(평균 · 표준편차 · 이긴 비율)'); }
+    const b = r.base ? Rr.find(x => x.name === r.base) : null; let eff = '(기준)';
+    if (b && b !== r) { const d = r.halves.map((h, i) => h - b.halves[i]), sd = Math.sqrt(mean(d.map(x => (x - mean(d)) ** 2))); eff = `${pp(mean(d)).padStart(7)} · ${(sd * 100).toFixed(1)}%p · ${(d.filter(x => x > 0).length / d.length * 100).toFixed(0)}%   vs ${b.name}`; }
+    log(`${r.name.padEnd(56)} ${pc1(r.full.cagr).padStart(7)} ${pc1(cagrOver(r.full.yearly, early)).padStart(7)} ${pc1(cagrOver(r.full.yearly, late)).padStart(7)} ${pc1(r.full.mdd).padStart(7)}    ${eff}`);
+  });
+  log(''); log('## 확인 매수 심화 ③ 점수 기여: 같은 후보 풀(확인 매수 + 5>10>20)에서 고르는 순서만 바꿈 (지금 규칙 V0, 상위 4)');
+  log('가상 수익 문턱   점수 높은 순   점수 낮은 순   가상 수익 큰 순   가상 수익 작은 순   무작위 중앙값(하위10%~상위10%)   점수순보다 높은 무작위');
+  s3.forEach(x => { const q = p => x.rnd[Math.min(x.rnd.length - 1, Math.floor(p * (x.rnd.length - 1)))], beat = x.rnd.filter(v => v >= x.score.cagr).length; log(`+${x.t * 100}% 이상        ${pc1(x.score.cagr).padStart(8)}      ${pc1(x.bottom.cagr).padStart(8)}      ${pc1(x.pnlHi.cagr).padStart(8)}        ${pc1(x.pnlLo.cagr).padStart(8)}        ${pc1(q(0.5)).padStart(7)} (${pc1(q(0.1))} ~ ${pc1(q(0.9))})        ${beat}/${x.rnd.length}`); });
+}
 // ── 확인 매수 보고
 if (AD6.rows) {
   const Rr = AD6.rows, I0 = Rr[0], I1 = Rr[1], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
