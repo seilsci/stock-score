@@ -188,6 +188,24 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   };
   const usTax = Y => C.us.cg_tax_rate * Math.max(0, (usGain[Y] || 0) - C.us.cg_exemption_krw);
   const doBuys = (sigK, k, priceAt) => {      // sigK: 신호가 난 달, k: 체결하는 달, priceAt: 체결가(월말 종가 또는 다음 달 첫날 종가)
+    // 보유 종목에 추가 매수(opt.addFrac: 현금의 몇 %를 보유 종목에, opt.addGroup: all 전체 · win 수익 중인 것만 · lose 손실 중인 것만). 대상에게 같은 금액씩, 정수 주만. 대상이 없거나 못 사는 돈은 아래 신규 매수로 감
+    if (opt.addFrac > 0 && holds.length) {
+      const grp = opt.addGroup || 'all', elig = [];
+      for (const h of holds) {
+        const p0 = priceAt(h.px, { y: h.y }); if (!(p0 > 0)) continue;
+        const pk = p0 * (h.us ? fx(k) : 1), pnl = h.sh * pk / h.basis - 1;
+        if (grp === 'win' && pnl <= 0) continue; if (grp === 'lose' && pnl >= 0) continue;
+        elig.push({ h, pk });
+      }
+      if (elig.length) {
+        const per = cash * opt.addFrac / elig.length;
+        for (const e of elig) {
+          const fee = e.h.us ? usFee : C.kr.commission, lots = Math.floor(Math.min(per, cash) * (1 - fee) / e.pk);
+          if (lots < 1) continue;
+          const a = Math.min(lots * e.pk / (1 - fee), cash); e.h.sh += lots; e.h.basis += a; cash -= a;
+        }
+      }
+    }
     const picks = pickFn(ymOf(sigK));
     // opt.fill: 점수 순위대로 후보(opt.cand)를 보며 1주도 못 사는 종목은 건너뛰고 다음 순위를 산다. 종목 수가 N에 못 미치면 있는 종목끼리 현금을 나눔
     const fill = !!(opt.fill && opt.cand), list = fill ? opt.cand(ymOf(sigK)) : picks;
@@ -1063,7 +1081,33 @@ if (process.env.STAGE6 !== '0' && fs.existsSync(path.join(DATA, 'rates.json'))) 
   progress('금리 판단 비교(절반)', 1); process.stdout.write('\n');
   RT6.rows = rows;
 }
+// ── 추가 매수 비율 비교(STAGE7=0이면 건너뜀): 매달 현금(입금 + 판 돈)의 f%를 이미 가진 종목에 더 사고 나머지를 신규 종목에 씀. 대상: 보유 전체 · 수익 중만 · 손실 중만. f=0%가 지금 방식.
+const AD = { rows: null };
+if (process.env.STAGE7 !== '0') {
+  const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  const B = +process.env.AD_HALVES || 8, topL7 = ym => scored[kA].get(ym) || [];
+  const FR = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], GR = [['all', '보유 전체'], ['win', '수익 중인 종목만'], ['lose', '손실 중인 종목만']];
+  const VAR = [{ name: '지금 방식 (신규 매수 100%)', f: 0, g: 'all' }];
+  GR.forEach(([g, gn]) => FR.forEach(f => VAR.push({ name: `${gn} ${Math.round(f * 100)}%`, f, g })));
+  const run7 = (v, cand) => summ(simulate(ym => cand(ym).slice(0, 4), 4, C1, { lotSize: true, lotAll: true, fill: true, cand, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, addFrac: v.f, addGroup: v.g }));
+  const rows = VAR.map((v, i) => { progress('추가 매수 비교', i / VAR.length); return { v, full: run7(v, topL7), halves: [] }; });
+  for (let b = 1; b <= B; b++) { progress('추가 매수 비교(절반)', (b - 1) / B); const cand = ym => topL7(ym).filter(e => hash(e.r.y + '|' + b) < 0.5); VAR.forEach((v, i) => rows[i].halves.push(run7(v, cand).cagr)); }
+  progress('추가 매수 비교(절반)', 1); process.stdout.write('\n');
+  AD.rows = rows;
+}
 // ── 걸어가며 설정 고르기 보고
+// ── 추가 매수 비율 보고
+if (AD.rows) {
+  const Rr = AD.rows, base = Rr[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019), mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  log(''); log('## 현금(입금 + 판 돈)을 보유 종목에 추가 매수하면? (점수 상위 4, 유예2+금리+tp2x, 첫날 체결, 월 100만원; 나머지는 신규 매수)');
+  log('방식                              전체    앞쪽    뒤쪽    낙폭    지금 방식 대비 효과(종목 절반 되풀이 평균 · 표준편차 · 이긴 비율)');
+  Rr.forEach(r => {
+    const d = r.halves.map((h, i) => h - base.halves[i]), sd = Math.sqrt(mean(d.map(x => (x - mean(d)) ** 2)));
+    log(`${r.v.name.padEnd(30)} ${pc1(r.full.cagr).padStart(7)} ${pc1(cagrOver(r.full.yearly, early)).padStart(7)} ${pc1(cagrOver(r.full.yearly, late)).padStart(7)} ${pc1(r.full.mdd).padStart(7)}    ${r === base ? '(기준)' : `${pp(mean(d)).padStart(7)} · ${(sd * 100).toFixed(1)}%p · ${(d.filter(x => x > 0).length / d.length * 100).toFixed(0)}%`}`);
+  });
+  log('※ 추가 매수는 보유 종목 수를 늘리지 않아 분산이 줄고 낙폭이 커질 수 있음. 평균이 표준편차보다 크고 이긴 비율이 90% 이상이며 앞·뒤 연도가 같은 방향일 때만 믿을 것. 두 종목 범위(시총·거래대금)에서 같은 방향인지 볼 것.');
+}
 // ── 금리 판단 기준 보고
 if (RT6.rows) {
   const Rr = RT6.rows, none = Rr[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
