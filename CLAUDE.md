@@ -16,7 +16,7 @@
 ## 꼭 지킬 규칙
 - Apps Script는 수정 후 **배포 → 배포 관리 → 연필(수정) → 새 버전**으로 배포(URL 유지). 웹 앱 액세스는 "모든 사용자".
 - 개인정보·API 키·시트 링크는 저장소에 넣지 않음. **apix 키는 `~/apix-key.txt`(저장소 밖)에만.** 로그·커밋에 키가 찍히지 않게.
-- 학습·시뮬레이션은 **PC에서 직접 돌림**(`tools/learn/run.sh`, 설명 `tools/learn/README-PC.md`). 출력이 길면 토큰을 먹으니 `tools/learn/run.sh --yes > tools/learn/data/run.out 2>&1`로 돌리고, 끝난 뒤 `result/*.txt`만 읽기(진행 줄이 \r로 덮어써져 로그가 지저분함).
+- 학습·시뮬레이션은 **사용자가 PC에서 bat(`tools/learn/run_learn.bat`)으로 직접 돌림(토큰 0)**. Claude는 코드 수정·결과 분석만 하고, 돌려야 할 때는 "bat을 돌려 주세요"라고 안내(설명 `tools/learn/README-PC.md`). 꼭 Claude가 돌려야 하면 `tools/learn/run.sh --yes > tools/learn/data/run.out 2>&1`로 출력을 파일로 돌리고, 끝난 뒤 `result/*.txt`만 읽기(진행 줄이 \r로 덮어써져 로그가 지저분하고 출력이 토큰을 먹음).
 - 이 PC의 Claude Code는 제3자 API(apix)라 크레딧이 한정됨: `/model`로 Sonnet, 파일은 필요한 부분만 읽기.
 
 ## 지금 상태 (2026-11-24)
