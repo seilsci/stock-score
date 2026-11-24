@@ -1170,7 +1170,35 @@ if (process.env.STAGE10 !== '0') {
   progress('정배열 심화(절반)', 1); process.stdout.write('\n');
   AD4.rows = rows;
 }
+// ── 초기 구매 방식 × 정배열 추가 매수 묶음(STAGE11=0이면 건너뜀): events.csv가 어떤 방식(돌파/이평 위/이평 위+정배열)으로 만든 것이든 같은 네 가지 규칙을 비교
+//    V1 = "5>10>20 정배열이 아니면 바로 판매 + 정배열인 보유 종목 전부에 현금 100% 추가 매수"(사용자 요청 전략)
+const AD5 = { rows: null };
+if (process.env.STAGE11 !== '0') {
+  const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  const B = +process.env.AD5_HALVES || 8, topL11 = ym => scored[kA].get(ym) || [];
+  const maAt = (o, k, n) => { let t = 0; for (let j = k; j > k - n; j--) { const p = o.m.get(j); if (p === undefined) return null; t += p; } return t / n; };
+  const al = (o, k) => { const a = maAt(o, k, 5), b = maAt(o, k, 10), d = maAt(o, k, 20); return (a != null && b != null && d != null) ? (a > b && b > d) : null; };
+  const alOK = (o, k) => al(o, k) === true;
+  const V = [['V0 지금 판매 규칙, 추가 매수 없음', {}], ['V1 정배열 아니면 바로 판매 + 정배열 전부 100% 추가 매수', { alignExit: al, alignArm: false, addFrac: 1, addGroup: 'all', addAlign: alOK }],
+    ['V2 정배열 전부 100% 추가 매수만', { addFrac: 1, addGroup: 'all', addAlign: alOK }], ['V3 정배열 아니면 바로 판매만', { alignExit: al, alignArm: false }]];
+  const run11 = (o, cand) => summ(simulate(ym => cand(ym).slice(0, 4), 4, C1, { lotSize: true, lotAll: true, fill: true, cand, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, ...o }));
+  const rows = V.map((v, i) => { progress('초기 구매 방식', i / V.length); const sm = simulate(ym => topL11(ym).slice(0, 4), 4, C1, { lotSize: true, lotAll: true, fill: true, cand: topL11, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, log: true, ...v[1] }); const m = summ(sm), T = (sm.trades || []).filter(t => t.sellYm); return { name: v[0], o: v[1], full: m, trades: T.length, win: T.filter(t => t.ret > 0).length / (T.length || 1), halves: [] }; });
+  for (let b = 1; b <= B; b++) { progress('초기 구매 방식(절반)', (b - 1) / B); const cand = ym => topL11(ym).filter(e => hash(e.r.y + '|' + b) < 0.5); rows.forEach(r => r.halves.push(run11(r.o, cand).cagr)); }
+  progress('초기 구매 방식(절반)', 1); process.stdout.write('\n');
+  AD5.rows = rows; AD5.events = ALL.length;
+}
 // ── 걸어가며 설정 고르기 보고
+// ── 초기 구매 방식 × 정배열 추가 매수 보고
+if (AD5.rows) {
+  const Rr = AD5.rows, base = Rr[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019), mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  log(''); log(`## 초기 구매 방식 × 정배열 추가 매수 (신호 방식 ENTRY=${process.env.ENTRY || 'cross'}, 신호 ${AD5.events}건; 점수 상위 4, 첫날 체결, 월 100만원)`);
+  log('규칙                                                  전체    앞쪽    뒤쪽    낙폭    거래수 승률    같은 방식 V0 대비(평균 · 표준편차 · 이긴 비율)');
+  Rr.forEach(r => {
+    const d = r.halves.map((h, i) => h - base.halves[i]), sd = Math.sqrt(mean(d.map(x => (x - mean(d)) ** 2)));
+    log(`${r.name.padEnd(48)} ${pc1(r.full.cagr).padStart(7)} ${pc1(cagrOver(r.full.yearly, early)).padStart(7)} ${pc1(cagrOver(r.full.yearly, late)).padStart(7)} ${pc1(r.full.mdd).padStart(7)}   ${String(r.trades).padStart(5)} ${(r.win * 100).toFixed(0)}%    ${r === base ? '(기준)' : `${pp(mean(d)).padStart(7)} · ${(sd * 100).toFixed(1)}%p · ${(d.filter(x => x > 0).length / d.length * 100).toFixed(0)}%`}`);
+  });
+}
 // ── 정배열 심화 보고
 if (AD4.rows) {
   const Rr = AD4.rows, base = Rr[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';

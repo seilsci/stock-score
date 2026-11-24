@@ -4,6 +4,7 @@ const list = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const load = y => { try { return JSON.parse(fs.readFileSync(path.join(RAW, y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'))); } catch (e) { return null; } };
 const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1;   // 이번 달(진행 중)
 const HOLD = 12;
+const ENTRY = process.env.ENTRY || 'cross';                            // 신규 매수 후보 방식: cross(돌파, 기본) · above(이평 위) · aligned(이평 위 + 5>10>20 정배열)
 const MAN = +process.env.MA_N || 10;                                    // 이동평균 길이(달). 기본 10. 신호·정답·지표가 모두 이 길이의 이평 기준
 const MK = [3, 6, 9, 12, 18, 24, 36, 48, 60, 72, 96, 120];
 // 학습 시작: 버냉키 첫 양적완화(QE1, 2008-11-25 발표) 이후 신호만. 이전 시장은 성격이 다름
@@ -82,7 +83,11 @@ for (const s of list) {
   const above = c.map((x, i) => ma[i] == null ? null : x > ma[i]);
   for (let i = 25; i < n; i++) {
     if (b[i][0] < MIN_YM) continue;
-    if (!(c[i - 1] <= ma[i - 1] && c[i] > ma[i])) continue;           // 매수 신호
+    // 매수 신호: 기본 = 돌파(전달 종가 ≤ 이평, 이번 달 종가 > 이평). ENTRY=above → 이평 위에 있기만 하면 후보(돌파 아님), ENTRY=aligned → 이평 위 + 5>10>20이평 정배열
+    if (ENTRY === 'above' || ENTRY === 'aligned') {
+      if (!(c[i] > ma[i])) continue;
+      if (ENTRY === 'aligned') { if (i < 20) continue; const m5 = avg(c, i - 4, i), m10 = avg(c, i - 9, i), m20 = avg(c, i - 19, i); if (!(m5 > m10 && m10 > m20)) continue; }
+    } else if (!(c[i - 1] <= ma[i - 1] && c[i] > ma[i])) continue;
     const [ym, o, h, l, , v] = b[i];
     if (!v) continue;                                                  // 거래 없는 달 제외
     // 정답: 다음 12개월 월말 종가가 모두 10이평 위 (이번 달은 아직 안 끝났으니 제외)
