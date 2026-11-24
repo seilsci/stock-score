@@ -1,7 +1,7 @@
 // 1단계-3: 거시 지표(미국 연준 FRED, 키 없음) → data/macro.json  { YYYYMM: {cpi_yoy, ...} }
 // 발표가 늦는 월간 지표(물가·실업률·기준금리)는 한 달 늦게 반영(그때는 몰랐던 값 안 쓰기)
 const { fs, path, DATA, sleep, progress } = require('./common');
-const S = ['CPIAUCSL', 'UNRATE', 'FEDFUNDS', 'DGS10', 'T10Y2Y', 'DEXKOUS', 'DTWEXBGS', 'VIXCLS', 'BAMLH0A0HYM2'];
+const S = ['CPIAUCSL', 'UNRATE', 'FEDFUNDS', 'DGS10', 'T10Y2Y', 'DEXKOUS', 'DTWEXBGS', 'VIXCLS', 'BAMLH0A0HYM2', 'IR3TIB01KRM156N'];   // 마지막: 한국 은행간 3개월 금리(기준금리와 거의 같이 움직임) — 판매 규칙 변형 시험용
 const dir = path.join(DATA, 'macro'); fs.mkdirSync(dir, { recursive: true });
 
 async function csv(id) {
@@ -46,6 +46,7 @@ const back = (ym, k) => { let y = Math.floor(ym / 100), mo = ym % 100 - k; while
       cpi_yoy: pct(g('CPIAUCSL', l1), g('CPIAUCSL', l13)),
       unrate: g('UNRATE', l1) ?? '', unrate_chg12: dif(g('UNRATE', l1), g('UNRATE', l13)),
       ff: g('FEDFUNDS', l1) ?? '', ff_chg12: dif(g('FEDFUNDS', l1), g('FEDFUNDS', l13)),
+      kr_rate: g('IR3TIB01KRM156N', l1) ?? '', kr_rate_chg12: dif(g('IR3TIB01KRM156N', l1), g('IR3TIB01KRM156N', l13)),   // 한국 금리 12개월 변화(미국 ff_chg12와 같은 규칙)
       y10: g('DGS10', ym) ?? '', y10_chg12: dif(g('DGS10', ym), g('DGS10', p12)),
       t10y2y: g('T10Y2Y', ym) ?? '',
       krw_chg12: pct(g('DEXKOUS', ym), g('DEXKOUS', p12)), usd_chg12: pct(g('DTWEXBGS', ym), g('DTWEXBGS', p12)),

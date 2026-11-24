@@ -40,6 +40,7 @@ const ma10 = (o, k) => { let s = 0; for (let j = k; j > k - 10; j--) { const p =
 // 거시 지표 (ff_chg12 등) — ymOf(k) → ym 형태로 lookup
 let MACRO = {}; try { MACRO = JSON.parse(fs.readFileSync(path.join(DATA, 'macro.json'))); } catch (e) {}
 const ffChg12 = k => { const m = MACRO[ymOf(k)]; return m && m.ff_chg12 != null ? m.ff_chg12 : null; };
+const krChg12 = k => { const m = MACRO[ymOf(k)]; return m && m.kr_rate_chg12 != null && m.kr_rate_chg12 !== '' ? m.kr_rate_chg12 : null; };   // 한국 금리 12개월 변화(2b_macro.js, 없으면 null)
 
 // ── 시험 연도마다 "그때까지 알던 것"으로 학습 → 그해 모든 신호에 점수 (미래 정보 없음)
 const scored = MODELS.map(() => new Map());                 // 모델 → Map(ym → [{r, s}] 점수 높은 순)
@@ -187,7 +188,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         if (ma) {
           if (h.last < ma) {
             // opt.graceRate: 금리 조건부 유예 — 금리 인상 중(ff_chg12>0)이면 유예 없이 바로 매도
-            const ff = opt.graceRate ? ffChg12(k) : null;
+            const ff = opt.graceRate ? ((opt.rateKR && !h.us) ? krChg12(k) : ffChg12(k)) : null;   // rateKR: 한국 종목은 한국 금리로 판단(미국 종목은 미국 금리)
             const graceN = (ff != null && ff > 0) ? 1 : opt.grace;  // 금리 인상 중→ 1달(=즉시), 아니면 N달
             h.graceCnt = (h.graceCnt || 0) + 1;
             if (h.graceCnt >= graceN) { cash += sellCash(h, k, ff != null && ff > 0 ? 'ma10-금리인상' : 'ma10-유예만료'); continue; }
@@ -520,6 +521,26 @@ for (const [mkName, isUS] of [['한국', false], ['미국', true]]) {
 }
 progress('시장별모델', 1); process.stdout.write('\n');
 
+// ── 점수 효과 보강 ④: 금리 판단 변형 — 한국 종목에 한국 금리를 쓰면?
+//    (현재) 모든 종목에 미국 금리 / (변형) 한국 종목은 한국 금리, 미국 종목은 미국 금리 / (참고) 금리 판단 없이 유예 2달만
+const RATE_VAR = [];
+{
+  const inKR = e => e.r.x[US] !== 1, krTopL = ym => cmpAll(ym).filter(inKR);
+  const runs = [
+    ['전체 · 현재 (모두 미국 금리)', cmpTop, cmpAll, { ...CMP_OPT }],
+    ['전체 · 한국 종목은 한국 금리', cmpTop, cmpAll, { ...CMP_OPT, rateKR: true }],
+    ['전체 · 금리 판단 없음 (유예 2달만)', cmpTop, cmpAll, { ...CMP_OPT, graceRate: false }],
+    ['한국만 · 현재 (미국 금리)', ym => krTopL(ym).slice(0, 4), krTopL, { ...CMP_OPT }],
+    ['한국만 · 한국 금리', ym => krTopL(ym).slice(0, 4), krTopL, { ...CMP_OPT, rateKR: true }],
+    ['한국만 · 금리 판단 없음 (유예 2달만)', ym => krTopL(ym).slice(0, 4), krTopL, { ...CMP_OPT, graceRate: false }]
+  ];
+  runs.forEach(([name, pick, cand, opt], i) => { progress('금리변형', i / runs.length); RATE_VAR.push({ name, s: summ(simulate(pick, 4, C1, { ...opt, cand })) }); });
+}
+// 금리가 "오르는 중"으로 판단된 달 비율(시뮬레이션 기간)
+const rateShare = (fn) => { let n = 0, up = 0; for (let k = START; k <= END; k++) { const v = fn(k); if (v != null) { n++; if (v > 0) up++; } } return n ? up / n : NaN; };
+const RATE_SHARE = { us: rateShare(ffChg12), kr: rateShare(krChg12) };
+progress('금리변형', 1); process.stdout.write('\n');
+
 // ── 1. 손절 실험: A4 tp2x트레일 × sl(10%·15%·20%·25% 하락 시 손절)
 const SL_VALS = [0.10, 0.15, 0.20, 0.25];
 const slTotal = SL_VALS.length * 2;
@@ -703,6 +724,15 @@ R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).
     MK_VAR.filter(v => v.mk === mk).forEach(v => log(`  ${v.name.padEnd(36)} ${pc(v.s.cagr).padStart(8)}   ${pc(cagrOver(v.s.yearly, early)).padStart(10)}      ${pc(cagrOver(v.s.yearly, late)).padStart(9)}      ${ksY ? YEARS_ALL.filter(Y => v.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + YEARS_ALL.length : ''}`));
   });
   log('→ 미국에서 현재(A 합쳐 학습)보다 무작위 상위 10%를 확실히 넘는 변형이 있으면 그 모델로 미국 점수를 바꾸는 것을 검토. 앞쪽·뒤쪽 모두에서 좋아야 믿을 만함');
+}
+// ── 점수 효과 보강 ④ 보고
+{
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019);
+  log(''); log('## 점수 효과 보강 ④ 금리 판단 변형: 한국 종목에 한국 금리(은행간 3개월 금리, FRED)를 쓰면? (점수 상위 4, 같은 판매 규칙·정수 주문·월 100만원)');
+  log(`금리가 "1년 전보다 오른 달" 비율: 미국 ${(RATE_SHARE.us * 100).toFixed(0)}% · 한국 ${(RATE_SHARE.kr * 100).toFixed(0)}%`);
+  log('변형                                     전체     앞쪽(2012~2019)  뒤쪽(2020~)   최대낙폭   이긴 해(코스피보다)');
+  RATE_VAR.forEach(v => log(`  ${v.name.padEnd(36)} ${pc(v.s.cagr).padStart(8)}   ${pc(cagrOver(v.s.yearly, early)).padStart(10)}      ${pc(cagrOver(v.s.yearly, late)).padStart(9)}   ${pc(v.s.mdd).padStart(8)}   ${ksY ? YEARS_ALL.filter(Y => v.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + YEARS_ALL.length : ''}`));
+  log('→ 한국 금리 변형이 현재보다 앞쪽·뒤쪽 모두 좋고 낙폭도 작으면 한국 종목에는 한국 금리를 쓰는 것을 검토(시트 rateUp도 한국·미국 따로 내려야 함). 비슷하면 단순한 현재 방식 유지');
 }
 fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
 
