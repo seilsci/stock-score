@@ -187,6 +187,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       for (let li = 0; li < list.length; li++) {
         if (fill && slots <= 0) break;
         const { r } = list[li];
+        if (holds.some(h => h.y === r.y)) continue;           // 이미 가진 종목은 또 사지 않음(매수 후보에서 뺌)
         const per = fill ? cash / Math.min(slots, list.length - li) : per0;      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
         const o = px(r.y), p = priceAt(o, r); if (p === undefined || !(p > 0)) { if (opt.firstDay) fdMiss++; continue; }
         const us = r.x[US] === 1, fee = us ? usFee : C.kr.commission;
@@ -1032,6 +1033,6 @@ progress('매매일지', 1); process.stdout.write('\n');
       order: m.order || []
     };
   }
-  fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 사면 다음 점수 순위, 추천이 모자라면 있는 만큼 나눔' }, months }));
+  fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { excludeHeld: true, dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 사면 다음 점수 순위, 추천이 모자라면 있는 만큼 나눔' }, months }));
   require('./8_bars.js');                                  // 매매일지 차트용 월봉(bars.json): 거래한 종목 + 장부의 후보 종목
 }                                      // 매매일지 차트용 월봉(bars.json)
