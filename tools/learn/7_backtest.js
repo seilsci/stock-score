@@ -104,6 +104,15 @@ function simulate(pickFn, N, C, opt = {}) {
           else if (h.tpTrig) { cash += sellCash(h, k); continue; }
         }
       }
+      // 매도 유예: 10이평 아래로 내려와도 바로 팔지 않고 N달 연속 아래일 때만 매도
+      // sellK(원래 매도 예정)가 있는 종목은 이미 처리됨. 여기서는 이평 이탈 감지용.
+      if (opt.grace && h.sellK === null) {                // grace=연속 N달 아래여야 매도
+        const ma = ma10(h.px, k);
+        if (ma) {
+          if (h.last < ma) { h.graceCnt = (h.graceCnt || 0) + 1; if (h.graceCnt >= opt.grace) { cash += sellCash(h, k); continue; } }
+          else h.graceCnt = 0;
+        }
+      }
       keep.push(h);
     }
     holds = keep;
@@ -242,6 +251,19 @@ for (const N of A_N_VALS) {
   const pk = ym => (scored[kA].get(ym) || []).slice(0, N);
   R.push({ n: `A${N} tp2x트레일`, s: summ(simulate(pk, N, C1, { tpTrail: 2 })) });
 }
+// ── 매도 유예 실험: A4 tp2x트레일 + grace(1~4달 연속 이탈 시 매도)
+// grace=1 = 기존(1달만 이탈해도 매도), grace=2~4 = 연속 N달 이탈해야 매도
+const A4pk = ym => (scored[kA].get(ym) || []).slice(0, 4);
+const GRACE_VALS = [1, 2, 3, 4];
+const graceTotal = GRACE_VALS.length * 2; // 유예만·tp2x트레일+유예
+let graceStep = 0;
+for (const g of GRACE_VALS) {
+  progress('매도유예 실험', graceStep++ / graceTotal);
+  R.push({ n: `A4 유예${g}달`, s: summ(simulate(A4pk, 4, C1, { grace: g })) });
+  progress('매도유예 실험', graceStep++ / graceTotal);
+  R.push({ n: `A4 tp2x트레일+유예${g}달`, s: summ(simulate(A4pk, 4, C1, { tpTrail: 2, grace: g })) });
+}
+progress('매도유예 실험', 1); process.stdout.write('\n');
 progress('익절 실험', 1); process.stdout.write('\n');
 progress('백테스트', 1); process.stdout.write('\n');
 
