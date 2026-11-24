@@ -974,7 +974,46 @@ if (process.env.STAGE4 !== '0') {
   WF.gm = gm;
 }
 // ── 점수 효과 보강 보고
+// ── 종목을 무작위 절반씩 나눠 되풀이(STAGE5=0이면 건너뜀): 설정의 효과가 몇 개 대박 종목 때문인지, 어느 종목 묶음에서나 같은 방향인지 확인.
+//    종목 키 해시로 절반을 뽑아(씨앗 b마다 다른 절반) 그 절반 안에서만 점수 상위 4를 사서, 익절 트레일·유예·금리 규칙의 효과(%p)를 구함. 효과의 평균·표준편차·양수인 비율을 봄.
+const BS = { n: 0, eff: null };
+if (process.env.STAGE5 !== '0') {
+  const B = +process.env.BS_N || 30, hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  const SELLS5 = [{ n: '이탈 즉시', g: 0, r: false }, { n: '유예2', g: 2, r: false }, { n: '유예2+금리', g: 2, r: true }, { n: '유예3+금리', g: 3, r: true }];
+  const eff = { tp2: [], g2: [], g2r: [], g3r: [], rate2: [], base: [], cfgBest: [] };
+  for (let b = 1; b <= B; b++) {
+    progress('종목 절반 되풀이', (b - 1) / B);
+    const candH = ym => cmpTopL(ym).filter(e => hash(e.r.y + '|' + b) < 0.5);
+    const cg = {};
+    [0, 2].forEach(tp => SELLS5.forEach(sl => {
+      const opt = { lotSize: true, lotAll: true, fill: true, cand: candH, firstDay: true };
+      if (tp) opt.tpTrail = tp; if (sl.g) { opt.grace = sl.g; opt.graceRate = sl.r; }
+      cg[tp + '|' + sl.n] = summ(simulate(ym => candH(ym).slice(0, 4), 4, C1, opt)).cagr;
+    }));
+    const avgOver = f => SELLS5.reduce((a, sl) => a + f(sl), 0) / SELLS5.length;
+    eff.tp2.push(avgOver(sl => cg['2|' + sl.n] - cg['0|' + sl.n]));
+    [0, 2].forEach(tp => { });
+    const tpAvg = sn => ((cg['0|' + sn] + cg['2|' + sn]) / 2);
+    eff.g2.push(tpAvg('유예2') - tpAvg('이탈 즉시')); eff.g2r.push(tpAvg('유예2+금리') - tpAvg('이탈 즉시')); eff.g3r.push(tpAvg('유예3+금리') - tpAvg('이탈 즉시')); eff.rate2.push(tpAvg('유예2+금리') - tpAvg('유예2'));
+    eff.base.push(cg['2|유예2+금리']);                                    // 지금 설정(N4·tp2x·유예2+금리)의 이 절반에서의 연평균
+    const ents = Object.entries(cg).sort((x, y) => y[1] - x[1]); eff.cfgBest.push(ents[0][0]);
+  }
+  progress('종목 절반 되풀이', 1); process.stdout.write('\n');
+  BS.n = B; BS.eff = eff;
+}
 // ── 걸어가며 설정 고르기 보고
+// ── 종목 절반 되풀이 보고
+if (BS.eff) {
+  const E = BS.eff, mean = a => a.reduce((x, y) => x + y, 0) / a.length, sd = a => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); }, med = a => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  const pp = v => (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%p';
+  log(''); log(`## 종목을 무작위 절반씩 나눠 ${BS.n}번 되풀이 (점수 상위 4, 첫날 체결, 월 100만원): 설정 효과가 어느 종목 묶음에서나 같은 방향인가?`);
+  log('요소                              평균        중앙값      표준편차    양수인 비율 (절반 중)');
+  [['익절 트레일 2배 − 없음 (매도 방식 4가지 평균)', E.tp2], ['유예2 − 이탈 즉시', E.g2], ['유예2+금리 − 이탈 즉시', E.g2r], ['유예3+금리 − 이탈 즉시', E.g3r], ['금리 규칙 (유예2+금리 − 유예2)', E.rate2]].forEach(([n, a]) => log(`${n.padEnd(40)} ${pp(mean(a)).padStart(8)}  ${pp(med(a)).padStart(8)}  ${pp(sd(a)).padStart(8)}   ${(a.filter(v => v > 0).length / a.length * 100).toFixed(0)}%`));
+  log(`지금 설정(N4·tp2x·유예2+금리)의 절반별 연평균: 평균 ${(mean(E.base) * 100).toFixed(1)}% · 최소 ${(Math.min(...E.base) * 100).toFixed(1)}% · 최대 ${(Math.max(...E.base) * 100).toFixed(1)}%`);
+  const cnt = {}; E.cfgBest.forEach(c => { cnt[c] = (cnt[c] || 0) + 1; });
+  log('절반마다 가장 좋았던 설정(8가지 중): ' + Object.entries(cnt).sort((x, y) => y[1] - x[1]).map(([c, n]) => `${c.replace('0|', '익절없음 ').replace('2|', 'tp2x ')} ${n}번`).join(' · '));
+  log('※ 표준편차가 평균보다 크고 양수 비율이 50~70%이면 그 요소의 효과는 "어느 종목이 들어 있느냐"에 달린 것(믿기 어려움). 90% 이상 한 방향이어야 안정적.');
+}
 if (WF.res) {
   const R0 = WF.res, pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', gm = WF.gm, early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019);
   log(''); log(`## 설정을 해마다 "그 전까지의 성과"로 고르면 (현실에서 가능한 방법). 고르는 해: ${R0.oosYears[0]}~${R0.oosYears[R0.oosYears.length - 1]} (최소 3년 과거 필요)`);
