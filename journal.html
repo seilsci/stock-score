@@ -111,13 +111,13 @@ canvas{display:block;width:100%;height:230px}
 .st-t{font-weight:700;font-size:14px}.st-v{font-weight:800;font-size:15px;color:var(--acc)}
 .st-note{font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5}
 /* 월별 수익률 그래프 */
-#yr-card,#ret-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;margin-bottom:14px}
+#cum-card,#yr-card,#ret-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;margin-bottom:14px}
 .rc-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:2px}
 .rc-t{font-weight:700;font-size:14px}
 .rc-y{font-weight:800;font-size:18px;font-variant-numeric:tabular-nums}
 .rc-s{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--mut);margin-top:6px}
 .rc-s b{color:var(--fg)}
-#rc,#yc{height:190px;cursor:pointer;touch-action:manipulation}
+#rc,#yc,#cc{height:190px;cursor:pointer;touch-action:manipulation}
 /* 월 요약 */
 #sum-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
 .sum-t{font-weight:700;font-size:13px;margin-bottom:8px}
@@ -194,6 +194,8 @@ canvas{display:block;width:100%;height:230px}
   <div class="sub">A4 tp2x트레일+금리유예2달 · 월 100만원 · 비용·세금 반영 · <a href="index.html">← 사이트</a></div>
 
   <div id="start-card"></div>
+
+  <div id="cum-card"></div>
 
   <div id="yr-card"></div>
 
@@ -943,6 +945,51 @@ function renderRetChart(){
 }
 window.addEventListener('resize',function(){ if(LED && SEL_YM) renderRetChart(); });
 
+/* ── 연도별 누적 수익률 꺾은선 (복리, 시간가중: 입금액 영향 제외. 전략 + 코스피·S&P500·나스닥100, 세로축은 배수의 로그 눈금) ── */
+function renderCumChart(){
+  var card=document.getElementById('cum-card');
+  if(!LED || !SEL_YM){ card.style.display='none'; return; }
+  var rk=Object.keys(RET).sort(); if(!rk.length){ card.style.display='none'; return; }
+  card.style.display='block';
+  var years=[]; rk.forEach(function(ym){ var y=ym.slice(0,4); if(years.indexOf(y)<0) years.push(y); });
+  var keys=['st'].concat(BENCH?BK:[]), cum={}, pts={};
+  keys.forEach(function(k){ cum[k]=1; pts[k]=[1]; });
+  years.forEach(function(y){
+    keys.forEach(function(k){ rk.forEach(function(ym){ if(ym.slice(0,4)!==y) return; var r=k==='st'?RET[ym]:benchRet(k,ym); if(r!=null) cum[k]*=1+r; }); pts[k].push(cum[k]); });
+  });
+  var last=rk[rk.length-1], partial=years.filter(function(y){ return rk.filter(function(ym){ return ym.slice(0,4)===y; }).length<12; });
+  var name=function(k){ return k==='st'?'전략':BN[k]; }, col=function(k){ return k==='st'?(cssv('--fg')):BC[k]; };
+  card.innerHTML='<div class="rc-h"><div class="rc-t">연도별 누적 수익률</div><div class="rc-y '+(cum.st>=1?'p':'n')+'">'+pc(cum.st-1)+'</div></div>'
+    +'<canvas id="cc"></canvas>'
+    +'<div class="rc-b">'+keys.map(function(k){ var v=cum[k]-1; return '<span><i style="background:'+col(k)+'"></i>'+name(k)+' <b class="'+(v>=0?'p':'n')+'">'+pc(v)+'</b></span>'; }).join('')+'<span class="mut">'+fmt(rk[0])+'~'+fmt(last)+' · 복리·입금 영향 제외</span></div>';
+  var cv=document.getElementById('cc'), W2=cv.clientWidth||600, H=190, dpr=window.devicePixelRatio||1;
+  cv.width=W2*dpr; cv.height=H*dpr; cv.style.height=H+'px';
+  var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W2,H);
+  var mut=cssv('--mut'), line=cssv('--line'), fg=cssv('--fg'), cardC=cssv('--card')||'#fff';
+  var mn=1, mx=1; keys.forEach(function(k){ pts[k].forEach(function(v){ mn=Math.min(mn,v); mx=Math.max(mx,v); }); });
+  var lo=Math.log(mn)-0.08, hi=Math.log(mx)+0.1, L=22, R=58, T=8, B=22, pw=W2-L-R, ph=H-T-B, n=years.length+1;
+  var X=function(i){ return L+i/(n-1)*pw; }, Yv=function(v){ return T+(hi-Math.log(v))/(hi-lo)*ph; };
+  g.font='10px -apple-system,sans-serif'; g.textBaseline='middle';
+  [0.5,1,2,3,5,10,20,50,100].forEach(function(m){                 // 눈금: 배수 → +%
+    if(Math.log(m)<lo||Math.log(m)>hi) return; var yy=Yv(m);
+    g.strokeStyle=m===1?mut:line; g.lineWidth=1; g.beginPath(); g.moveTo(L,yy); g.lineTo(L+pw,yy); g.stroke();
+    g.fillStyle=mut; g.textAlign='left'; g.fillText((m>=1?'+':'')+Math.round((m-1)*100)+'%',L+pw+4,yy);
+  });
+  g.textAlign='center';
+  for(var i=0;i<n;i++){ var lab=i===0?'시작':("'"+years[i-1].slice(2)+(partial.indexOf(years[i-1])>=0?'*':'')); g.fillStyle=mut; g.fillText(lab,X(i),H-9); }
+  keys.slice().reverse().forEach(function(k){                                            // 전략이 맨 위에 그려지게 마지막
+    g.strokeStyle=col(k); g.lineWidth=k==='st'?2.6:1.8; g.lineJoin='round'; g.beginPath();
+    pts[k].forEach(function(v,i){ var x=X(i), y=Yv(v); if(i===0) g.moveTo(x,y); else g.lineTo(x,y); }); g.stroke();
+    if(k==='st'){ pts[k].forEach(function(v,i){ g.fillStyle=col(k); g.strokeStyle=cardC; g.lineWidth=1.5; g.beginPath(); g.arc(X(i),Yv(v),3,0,6.2832); g.fill(); g.stroke(); }); }
+  });
+  cv.onclick=function(e){                                                                // 연도 점/구간을 누르면 그 해로 이동
+    var i=Math.round((e.offsetX-L)/pw*(n-1)); if(i<1||i>years.length) return;
+    var yms=Object.keys(DATA.snapshots).sort(), first=yms.filter(function(ym){ return ym.slice(0,4)===years[i-1]; })[0];
+    if(!first) return; SEL_YM=first; SEL_HOLD=null; renderAll();
+  };
+}
+window.addEventListener('resize',function(){ if(LED && SEL_YM) renderCumChart(); });
+
 /* ── 연도별 수익률 그래프 (막대를 누르면 그 해로 이동) ── */
 function renderYearChart(){
   var card=document.getElementById('yr-card');
@@ -1334,7 +1381,7 @@ function renderSoldList(){
 }
 
 function renderAll(){
-  renderStartCard(); renderSoldList(); renderYearChart(); renderRetChart(); renderNav();
+  renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
     if(PLAN) renderHoldings({holds:planHoldings(PLAN),fx:PLAN.fx});
