@@ -16,7 +16,7 @@ try {
   });
 } catch (e) { needFd = 9999; }
 const names = ['build', 'train', 'explore', 'check', 'backtest'];
-let w = { build: 4, train: 4, explore: 70, check: 7, backtest: 15 };          // 기본 비율(실측 기준 어림값)
+let w = { build: 4, train: 4, explore: 70, check: 7, backtest: 30 };          // 기본 비율(실측 기준 어림값)
 try {
   const h = {};
   fs.readFileSync(path.join(D, 'steptimes.txt'), 'utf8').trim().split('\n').forEach(l => { const [k, v] = l.split(' '); h[k] = Math.max(1, +v); });

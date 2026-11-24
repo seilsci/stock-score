@@ -3,7 +3,7 @@
 // 연도별 수익률 = 그해 마지막 거래일(12월 월봉 종가) 기준 시간가중(입금액 영향 제외), 누적 = 곱
 const { fs, path, DATA, RAW, progress } = require('./common');
 const { prep, z, fitRidge, score } = require('./ml');
-const { load, trainSet, modelDefs } = require('./data');
+const { load, trainSet, trainSetL, modelDefs } = require('./data');
 const { F, L: ALL } = load(), fi = n => F.indexOf(n);
 const { MODELS: ALLM } = modelDefs(F);
 const MODELS = ALLM.filter(M => 'ABEF'.includes(M.n[0]));
@@ -727,7 +727,159 @@ const FD = { rows: [], miss: 0, paired: [] };
   FD.paired = { me: me.sort((x, y) => x - y), fd: fdl.sort((x, y) => x - y), d: dl.sort((x, y) => x - y) };
   progress('체결가정', 1); process.stdout.write('\n');
 }
+// ── 3단계: 정답을 실제 판매 규칙으로 바꿔 점수 모델을 다시 학습하는 실험 (STAGE3=0이면 건너뜀)
+//   모든 변형은 같은 방식으로 검증: 시험 연도 Y의 점수는 Y-1년 말까지 "알 수 있던" 정답으로만 학습(data.js trainSetL), 같은 종목 범위·같은 판매 규칙·같은 정수 주문으로 점수 상위 4를 월 100만원씩 산다.
+//   비교 기준 = 'orig'(지금 사이트 모델: 정답 = 처음 10이평 이탈까지의 수익). 변형 하나씩만 바꿔서 어느 변경이 효과인지 보이게 함.
+const S3 = { rows: [], ref: null, check: null };
+if (process.env.STAGE3 !== '0') {
+  const SL = require('./strat'), DEFS = modelDefs(F), PRICE = DEFS.PRICE, MACc = DEFS.MAC, MKTc = DEFS.MKT, STOCKc = DEFS.STOCK;
+  const ffc = fi('m_ff_chg12');
+  const LAB = {                                                     // 정답 만드는 방식(진입 · 판매 규칙)
+    me:        { entry: 'me', tp: 2, grace: 2, rate: true },        // 월말 종가 진입 + 지금 판매 규칙
+    fd:        { entry: 'fd', tp: 2, grace: 2, rate: true },        // 다음 달 첫날 종가 진입 + 지금 판매 규칙
+    fd_norate: { entry: 'fd', tp: 2, grace: 2, rate: false },       // 금리 판단 없이
+    fd_notp:   { entry: 'fd', tp: 0, grace: 2, rate: true },        // 익절 트레일 없이
+    fd_g1:     { entry: 'fd', tp: 2, grace: 0, rate: false },       // 유예 없이(처음 이탈 즉시)
+    fd_g3:     { entry: 'fd', tp: 2, grace: 3, rate: true }         // 유예 3달
+  };
+  const ORIG = ALL.map(r => ({ t: r.t, exoff: r.exoff, mk: r.mk, p0: null }));
+  const labCache = new Map(); labCache.set('orig', ORIG);
+  const labsOf = n => { if (!labCache.has(n)) labCache.set(n, ALL.map(r => SL.label(r.y, r.ym, LAB[n], END))); return labCache.get(n); };
+  const quant = (a, p) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.min(b.length - 1, Math.floor(p * (b.length - 1)))] : 0; };
+  const monthGroups = tr => { const g = new Map(); tr.forEach(r => { const a = g.get(r.ym) || []; a.push(r); g.set(r.ym, a); }); return g; };
+  const TF = {                                                      // 정답 변환
+    raw: tr => tr.map(r => ({ x: r.x, t: clipT(r.t) })),
+    tight: tr => tr.map(r => ({ x: r.x, t: Math.max(-1, Math.min(1.5, r.t)) })),
+    demean: tr => { const g = monthGroups(tr), o = []; g.forEach(a => { if (a.length < 5) return; const m = a.reduce((s, r) => s + clipT(r.t), 0) / a.length; a.forEach(r => o.push({ x: r.x, t: clipT(r.t) - m })); }); return o; },
+    rank: tr => { const g = monthGroups(tr), o = []; g.forEach(a => { if (a.length < 5) return; const b = [...a].sort((p, q) => p.t - q.t); b.forEach((r, i) => o.push({ x: r.x, t: 2 * ((i + 0.5) / b.length - 0.5) })); }); return o; },
+    bin2: tr => tr.map(r => ({ x: r.x, t: r.t >= Math.log(2) ? 1 : 0 })),       // 2배 이상 났나(큰 이익 확률)
+    binpos: tr => tr.map(r => ({ x: r.x, t: r.t > 0 ? 1 : 0 }))                 // 이익이 났나
+  };
+  const inMkF = (isUS, r) => (r.x[US] === 1) === isUS;
+  function walk(spec) {                                             // 시험 연도별 학습 → Map(ym → [{r, s}] 점수 높은 순)
+    const labs = labsOf(spec.lab), out = new Map(), M = spec.mk === undefined ? null : spec.mk === 'US';
+    years.forEach(Y => {
+      let tr0 = trainSetL(ALL, labs, Y, spec.minAge || 12);
+      if (M !== null) tr0 = tr0.filter(r => inMkF(M, r));
+      const te = ALL.filter(r => Math.floor(r.ym / 100) === Y && (M === null || inMkF(M, r)));
+      if (tr0.length < (M === null ? 500 : 300) || !te.length) return;
+      const tr = TF[spec.tf || 'raw'](tr0); if (tr.length < 200) return;
+      const P = prep(tr, spec.cols), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), spec.lam || 1000);
+      te.forEach(r => { const a = out.get(r.ym) || []; a.push({ r, s: score(w, z(r, P)) }); out.set(r.ym, a); });
+    });
+    out.forEach(a => a.sort((x, y) => y.s - x.s)); return out;
+  }
+  const pctRank = (a) => { const n = a.length, o = new Map(); a.forEach((e, i) => o.set(e.r, (n - i - 0.5) / n)); return o; };   // 점수 높은 순 배열 → 순위 백분위(높을수록 좋음)
+  function mergeByRank(maps, weights) {                              // 여러 점수를 월별 순위 백분위로 합침(시장별 모델·모델 섞기)
+    const out = new Map(), yms = new Set(); maps.forEach(m => m.forEach((_, ym) => yms.add(ym)));
+    yms.forEach(ym => { const acc = new Map(); maps.forEach((m, mi_) => { const a = m.get(ym) || [], pr = pctRank(a); a.forEach(e => acc.set(e.r, (acc.get(e.r) || 0) + (weights ? weights[mi_] : 1) * pr.get(e.r))); }); out.set(ym, [...acc].map(([r, s]) => ({ r, s })).sort((x, y) => y.s - x.s)); });
+    return out;
+  }
+  function splitMarkets(spec) {                                      // 한국·미국을 따로 학습한 점수를 월·시장 안 순위 백분위로 합침
+    const kr = walk({ ...spec, mk: 'KR' }), us = walk({ ...spec, mk: 'US' }), out = new Map();
+    const yms = new Set([...kr.keys(), ...us.keys()]);
+    yms.forEach(ym => { const a = [...(kr.get(ym) ? pctOf(kr.get(ym)) : []), ...(us.get(ym) ? pctOf(us.get(ym)) : [])]; out.set(ym, a.sort((x, y) => y.s - x.s)); });
+    return out;
+    function pctOf(a) { const pr = pctRank(a); return a.map(e => ({ r: e.r, s: pr.get(e.r) })); }
+  }
+  function timingSkip(labName, q) {                                  // 시장 상황 모델: 달 평균 수익이 낮게 예측되는 달(훈련 달 예측의 하위 q)에는 사지 않음
+    const labs = labsOf(labName), cols = MKTc.concat(MACc), skip = new Set();
+    years.forEach(Y => {
+      const tr0 = trainSetL(ALL, labs, Y), te = ALL.filter(r => Math.floor(r.ym / 100) === Y);
+      if (tr0.length < 500 || !te.length) return;
+      const tr = TF.raw(tr0), P = prep(tr, cols), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), 3000);
+      const mp = rs => { const g = new Map(); rs.forEach(r => { const a = g.get(r.ym) || []; a.push(score(w, z(r, P))); g.set(r.ym, a); }); const o = new Map(); g.forEach((a, ym) => o.set(ym, a.reduce((s, v) => s + v, 0) / a.length)); return o; };
+      const trm = mp(tr0.map(r => ({ ym: r.ym, x: r.x }))), thr = quant([...trm.values()], q);
+      mp(te).forEach((v, ym) => { if (v < thr) skip.add(ym); });
+    });
+    return skip;
+  }
+  // 평가: 점수 상위 4 (전체·한국만·미국만) + 월별 순위상관(IC) — 모든 변형을 같은 잣대(첫날 진입 + 지금 규칙의 실제 결과)로 잼
+  const TGT = labsOf('fd'), idxOf = new Map(ALL.map((r, i) => [r, i]));
+  const tgtOf = r => { const l = TGT[idxOf.get(r)]; if (!l) return null; if (l.exoff !== null) return l.t; return l.mk[3]; };   // 판 수익, 아니면 12개월 시점 수익
+  const rk = a => { const o = a.map((v, i) => [v, i]).sort((p, q) => p[0] - q[0]), r = new Array(a.length); for (let i = 0; i < o.length;) { let e = i; while (e + 1 < o.length && o[e + 1][0] === o[i][0]) e++; for (let k = i; k <= e; k++) r[o[k][1]] = (i + e) / 2; i = e + 1; } return r; };
+  const corr = (a, b) => { const n = a.length, ma = a.reduce((s, v) => s + v, 0) / n, mb = b.reduce((s, v) => s + v, 0) / n; let c = 0, va = 0, vb = 0; for (let i = 0; i < n; i++) { c += (a[i] - ma) * (b[i] - mb); va += (a[i] - ma) ** 2; vb += (b[i] - mb) ** 2; } return va && vb ? c / Math.sqrt(va * vb) : null; };
+  function icOf(map) {                                               // 월별 (점수, 실제 결과) 순위상관의 평균 — 앞쪽(~2019)·뒤쪽(2020~)
+    const e = [], l = [], ex = { e: [], l: [] };
+    map.forEach((a, ym) => {
+      const rows = a.map(x => [x.s, tgtOf(x.r)]).filter(p => p[1] !== null && p[1] !== undefined); if (rows.length < 8) return;
+      const c = corr(rk(rows.map(p => p[0])), rk(rows.map(p => p[1]))); if (c === null) return;
+      const top = rows.slice(0, 4).reduce((s, p) => s + p[1], 0) / Math.min(4, rows.length), m = rows.reduce((s, p) => s + p[1], 0) / rows.length;
+      (ym < 202001 ? e : l).push(c); (ym < 202001 ? ex.e : ex.l).push(top - m);
+    });
+    const mean = v => v.length ? v.reduce((s, x) => s + x, 0) / v.length : NaN;
+    return { e: mean(e), l: mean(l), xe: mean(ex.e), xl: mean(ex.l), ne: e.length, nl: l.length };
+  }
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019);
+  function evalMap(map, skip) {
+    const get = ym => (skip && skip.has(ym)) ? [] : (map.get(ym) || []);
+    const run = (cand, entry) => summ(simulate(ym => cand(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand, firstDay: entry === 'fd' }));
+    const kr = ym => get(ym).filter(e => e.r.x[US] === 0), us = ym => get(ym).filter(e => e.r.x[US] === 1);
+    const a = run(get, 'fd');
+    return { fd: a, me: run(get, 'me'), kr: run(kr, 'fd'), us: run(us, 'fd'), ic: icOf(map), early: cagrOver(a.yearly, early), late: cagrOver(a.yearly, late) };
+  }
+  const A = { n: 'A', cols: PRICE }, base = (extra) => ({ cols: PRICE, lam: 1000, tf: 'raw', ...extra });
+  const SPECS = [   // [그룹, 이름, 점수 만드는 방법]
+    ['0 기준', 'orig · 지금 사이트 모델 (정답 = 첫 10이평 이탈까지)', () => walk(base({ lab: 'orig' }))],
+    ['1 정답을 실제 규칙 수익으로', 'me · 월말 진입 + 지금 판매 규칙', () => walk(base({ lab: 'me' }))],
+    ['1 정답을 실제 규칙 수익으로', 'fd · 첫날 진입 + 지금 판매 규칙', () => walk(base({ lab: 'fd' }))],
+    ['1 정답을 실제 규칙 수익으로', 'fd_norate · 금리 판단 없이', () => walk(base({ lab: 'fd_norate' }))],
+    ['1 정답을 실제 규칙 수익으로', 'fd_notp · 익절 트레일 없이', () => walk(base({ lab: 'fd_notp' }))],
+    ['1 정답을 실제 규칙 수익으로', 'fd_g1 · 유예 없이', () => walk(base({ lab: 'fd_g1' }))],
+    ['1 정답을 실제 규칙 수익으로', 'fd_g3 · 유예 3달', () => walk(base({ lab: 'fd_g3' }))],
+    ['2 정답 변환 (fd)', 'fd + 그달 평균 빼기', () => walk(base({ lab: 'fd', tf: 'demean' }))],
+    ['2 정답 변환 (fd)', 'fd + 그달 순위(백분위)', () => walk(base({ lab: 'fd', tf: 'rank' }))],
+    ['2 정답 변환 (fd)', 'fd + 2배 이상 났나(0/1)', () => walk(base({ lab: 'fd', tf: 'bin2' }))],
+    ['2 정답 변환 (fd)', 'fd + 이익 났나(0/1)', () => walk(base({ lab: 'fd', tf: 'binpos' }))],
+    ['2 정답 변환 (fd)', 'fd + 극값 자르기(-1~1.5)', () => walk(base({ lab: 'fd', tf: 'tight' }))],
+    ['2 정답 변환 (기존 정답)', 'orig + 그달 순위(백분위)', () => walk(base({ lab: 'orig', tf: 'rank' }))],
+    ['3 지표 구성 (fd)', 'fd + 기준금리 변화', () => walk(base({ lab: 'fd', cols: PRICE.concat([ffc]) }))],
+    ['3 지표 구성 (fd)', 'fd + 거시 전부', () => walk(base({ lab: 'fd', cols: PRICE.concat(MACc) }))],
+    ['3 지표 구성 (fd)', 'fd + 종목 지표만(그달 평균 뺀 정답)', () => walk(base({ lab: 'fd', cols: STOCKc, tf: 'demean' }))],
+    ['4 규제 세기 λ (fd)', 'fd λ=100', () => walk(base({ lab: 'fd', lam: 100 }))],
+    ['4 규제 세기 λ (fd)', 'fd λ=300', () => walk(base({ lab: 'fd', lam: 300 }))],
+    ['4 규제 세기 λ (fd)', 'fd λ=3000', () => walk(base({ lab: 'fd', lam: 3000 }))],
+    ['4 규제 세기 λ (fd)', 'fd λ=10000', () => walk(base({ lab: 'fd', lam: 10000 }))],
+    ['5 못 판 신호 쓰는 기준', 'fd · 6개월 지난 보유분도 학습', () => walk(base({ lab: 'fd', minAge: 6 }))],
+    ['5 못 판 신호 쓰는 기준', 'fd · 24개월 지난 보유분만 학습', () => walk(base({ lab: 'fd', minAge: 24 }))],
+    ['6 시장별로 따로 학습', 'fd 한국·미국 따로 (월·시장 안 순위로 합침)', () => splitMarkets(base({ lab: 'fd' }))],
+    ['6 시장별로 따로 학습', 'fd + 그달 평균 빼기, 한국·미국 따로', () => splitMarkets(base({ lab: 'fd', tf: 'demean' }))],
+    ['7 모델 섞기', 'orig + fd 순위 평균', () => mergeByRank([walk(base({ lab: 'orig' })), walk(base({ lab: 'fd' }))])],
+    ['7 모델 섞기', 'fd raw + demean + rank 순위 평균', () => mergeByRank([walk(base({ lab: 'fd' })), walk(base({ lab: 'fd', tf: 'demean' })), walk(base({ lab: 'fd', tf: 'rank' }))])],
+    ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 20% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.2) })],
+    ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 35% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.35) })]
+  ];
+  SPECS.forEach(([g, name, mk], i) => {
+    progress('3단계 실험', i / SPECS.length);
+    const res = mk(), map = res instanceof Map ? res : res.map, skip = res instanceof Map ? null : res.skip;
+    S3.rows.push({ g, name, ...evalMap(map, skip) });
+    if (i === 0) {                                                  // 검산: 기준 변형이 기존 A 점수(scored[kA])와 같아야 함(같은 정답·같은 학습 → 모순 확인)
+      let mx = 0, n = 0, miss = 0; scored[kA].forEach((a, ym) => { const b = map.get(ym) || []; const m2 = new Map(b.map(e => [e.r, e.s])); a.forEach(e => { const v = m2.get(e.r); if (v === undefined) miss++; else if (!(Number.isNaN(v) && Number.isNaN(e.s))) mx = Math.max(mx, Math.abs(v - e.s)); n++; }); });
+      S3.check = { max: mx, n, miss };
+    }
+  });
+  progress('3단계 실험', 1); process.stdout.write('\n');
+  const rr = FD.paired.fd; S3.ref = { med: quant(rr, 0.5), p90: quant(rr, 0.9) };
+}
 // ── 점수 효과 보강 보고
+// ── 3단계 보고
+if (S3.rows.length) {
+  const o0 = S3.rows[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', f2 = x => Number.isFinite(x) ? (x >= 0 ? '+' : '') + x.toFixed(3) : '   -  ';
+  log(''); log('## 3단계: 정답·학습 방식을 바꾼 점수 모델 비교 (점수 상위 4, 첫날 체결, 판매 규칙 tp2x트레일+금리유예2달, 정수 주문, 월 100만원, 비용·세금 반영)');
+  log(`검산: 기준 변형(orig)이 기존 A 모델 점수와 최대 ${S3.check ? S3.check.max.toExponential(1) : '?'} 차이 (${S3.check ? S3.check.n : 0}건 중 빠진 것 ${S3.check ? S3.check.miss : '?'}건) — 둘 다 0이어야 같은 학습·같은 정답`);
+  log(`참고: 무작위 4 (첫날 체결, 50번) 중앙값 ${pc1(S3.ref.med)} · 상위 10% ${pc1(S3.ref.p90)}`);
+  log('IC = 월별로 (점수, 실제 결과) 순위상관의 평균, 초과 = 점수 상위 4의 실제 결과 − 그달 평균(log 수익, 건당). 실제 결과 = 첫날 진입 + 지금 판매 규칙으로 판 수익(못 팔았으면 12개월 시점).');
+  log('변형                                                 전체     앞쪽    뒤쪽    한국    미국   월말체결  IC앞    IC뒤    초과앞  초과뒤   채택후보');
+  let g0 = '';
+  S3.rows.forEach(r => {
+    if (r.g !== g0) { log(`[${r.g}]`); g0 = r.g; }
+    const cand = r !== o0 && r.early >= o0.early && r.late >= o0.late && r.late > S3.ref.med && r.ic.e > 0 && r.ic.l > 0 && r.kr.cagr > 0 && r.us.cagr > 0;
+    log(`  ${r.name.padEnd(48)} ${pc1(r.fd.cagr).padStart(7)} ${pc1(r.early).padStart(7)} ${pc1(r.late).padStart(7)} ${pc1(r.kr.cagr).padStart(7)} ${pc1(r.us.cagr).padStart(7)} ${pc1(r.me.cagr).padStart(7)}  ${f2(r.ic.e)} ${f2(r.ic.l)}  ${f2(r.ic.xe)} ${f2(r.ic.xl)}   ${cand ? '★' : ''}`);
+  });
+  log('★ = 기준(orig)보다 앞쪽·뒤쪽 모두 낫고, 뒤쪽이 무작위 중앙값을 넘고, IC가 앞·뒤 모두 양수이며, 한국·미국 모두 플러스인 변형.');
+  log('※ 이 표의 변형은 같은 데이터에서 30가지 가까이 비교한 것이라 최고값은 과장됨. ★ 중에서도 (1) 앞쪽·뒤쪽에서 같이 좋고 (2) IC·초과가 같은 방향이며 (3) 한 변경이 이유로 설명되는 것만 채택할 것.');
+  log('※ 채택하면 4_train.js(사이트 weights.json)도 같은 정답·변환으로 바꿔야 점수 칩·나무가 일치함. 지금 사이트 점수는 기준(orig) 그대로.');
+}
 // ── 체결 가정 비교 보고
 {
   log(''); log('## 체결 가정 비교: 월말 종가에 사기(현재) vs 다음 달 첫 거래일 종가에 사기 (판매는 모두 월말 종가, 같은 규칙·정수 주문·월 100만원)');

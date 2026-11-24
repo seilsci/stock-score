@@ -24,6 +24,21 @@ function trainSet(L, Y) {
   }
   return out;
 }
+// 정답을 바꿔 끼운 학습 세트: labs[i]는 L[i]의 {t, exoff, mk}(strat.js). 시점 규칙은 trainSet과 같음(Y년 1월 1일에 알 수 있던 것만).
+//  minAge: 아직 못 판 신호를 "그때까지 수익"으로 쓰는 최소 나이(달, 기본 12 = trainSet과 같음)
+function trainSetL(L, labs, Y, minAge = 12) {
+  const cut = (Y - 1) * 12 + 12, out = [];
+  for (let i = 0; i < L.length; i++) {
+    const r = L[i], l = labs[i]; if (!l) continue;
+    const e = cut - (Math.floor(r.ym / 100) * 12 + r.ym % 100);
+    if (e < 1) continue;
+    let t = null;
+    if (l.exoff !== null && l.exoff <= e) t = l.t;
+    else if (e >= minAge) { for (let q = MK.length - 1; q >= 0; q--) if (MK[q] <= e && l.mk[q] !== null) { t = l.mk[q]; break; } }
+    if (t !== null) out.push({ ym: r.ym, x: r.x, t, y: r.y });
+  }
+  return out;
+}
 // 비교할 모델들(6_check·7_backtest 공통)
 function modelDefs(F) {
   const fi = n => F.indexOf(n), all = F.map((_, j) => j), MAC = all.filter(j => F[j].startsWith('m_'));
@@ -39,4 +54,4 @@ function modelDefs(F) {
   ];
   return { PRICE, MAC, MKT, STOCK, MODELS };
 }
-module.exports = { load, trainSet, MK, modelDefs };
+module.exports = { load, trainSet, trainSetL, MK, modelDefs };
