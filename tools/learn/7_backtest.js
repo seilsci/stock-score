@@ -97,6 +97,13 @@ function simulate(pickFn, N, C, opt = {}) {
           }
         }
       }
+      if (opt.tpTrail) {                                  // 트레일링 익절: tp배 위에 있으면 보유, 처음 아래로 떨어지면 매도
+        const ma = ma10(h.px, k);
+        if (ma) {
+          if (h.last >= opt.tpTrail * ma) h.tpTrig = true;
+          else if (h.tpTrig) { cash += sellCash(h, k); continue; }
+        }
+      }
       keep.push(h);
     }
     holds = keep;
@@ -215,7 +222,7 @@ const TP_MODELS = [
   { mk: MODELS.findIndex(M => M.n[0] === 'B'), n: 'B10', N: 10 },
 ];
 const TP_VALS = [1.5, 2, 2.5, 3, 4];
-const tpTotal = TP_MODELS.length * TP_VALS.length * 2;
+const tpTotal = TP_MODELS.length * TP_VALS.length * 3; // 당월·다음달·트레일링
 let tpStep = 0;
 for (const tm of TP_MODELS) {
   const pk = ym => (scored[tm.mk].get(ym) || []).slice(0, tm.N);
@@ -224,6 +231,8 @@ for (const tm of TP_MODELS) {
     R.push({ n: `${tm.n} tp${tp}x다음달`, s: summ(simulate(pk, tm.N, C1, { tp })) });
     progress('익절 실험', tpStep++ / tpTotal);
     R.push({ n: `${tm.n} tp${tp}x당월`, s: summ(simulate(pk, tm.N, C1, { tp, tpSame: true })) });
+    progress('익절 실험', tpStep++ / tpTotal);
+    R.push({ n: `${tm.n} tp${tp}x트레일`, s: summ(simulate(pk, tm.N, C1, { tpTrail: tp })) });
   }
 }
 progress('익절 실험', 1); process.stdout.write('\n');
