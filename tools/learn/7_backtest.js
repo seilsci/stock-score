@@ -1358,6 +1358,13 @@ if (process.env.STAGE14 !== '0') {
   const S7 = '⑦ 확인 시점 정보로 순서 바꾸기(같은 후보 풀)', sRank = e => e.s;
   [['점수 + 가상 수익 순위합', [sRank, e => e.pnl]], ['점수 + 돌파 후 경과 짧은 순', [sRank, e => -e.wait]], ['점수 + 돌파 후 고점 대비 위치(높은 순)', [sRank, e => e.pos]], ['점수 + 세 가지 모두', [sRank, e => e.pnl, e => -e.wait, e => e.pos]]]
     .forEach(([nm, keys]) => V.push({ sec: S7, name: nm, cand: rankOrder(mBase, keys) }));
+  if (process.env.AD8_COMBO === '1' && RT14) {                          // 합치기 시험: 금리(국채10년 6개월) R · 확인 기한 W3/W4 · 앞순위 비중 P · 점수+가상 수익 순서 O
+    V.length = 1; const SC = '합치기(각각 두 범위에서 플러스였던 것)', rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, rname = '국채10년 6개월';
+    const mk = (nm, R, W, P, O) => { const q = { thr: 0.1, ...(R ? { rule: rule10, rateName: rname } : {}), ...(W ? { maxWait: W } : {}) }, m = pool(q); V.push({ sec: SC, name: nm, cand: O ? rankOrder(m, [sRank, e => e.pnl]) : ym => m.get(ym) || [], ...(R ? { rule: rule10 } : {}), ...(P ? { o: { wRank: 1 } } : {}) }); };
+    mk('R 금리(국채10년 6개월)', 1, 0, 0, 0); mk('W3 확인 기한 3달', 0, 3, 0, 0); mk('W4 확인 기한 4달', 0, 4, 0, 0); mk('P 앞순위 비중', 0, 0, 1, 0); mk('O 점수+가상 수익 순서', 0, 0, 0, 1);
+    mk('R + W3', 1, 3, 0, 0); mk('R + W4', 1, 4, 0, 0); mk('R + P', 1, 0, 1, 0); mk('W3 + P', 0, 3, 1, 0); mk('W4 + P', 0, 4, 1, 0);
+    mk('R + W3 + P', 1, 3, 1, 0); mk('R + W4 + P', 1, 4, 1, 0); mk('R + W3 + P + O', 1, 3, 1, 1); mk('R + W4 + P + O', 1, 4, 1, 1);
+  }
   const base = V[0];
   V.forEach((v, i) => { progress('후속 시험', i / V.length); v.full = run14(v); v.halves = []; });
   for (let b = 1; b <= B; b++) { progress('후속 시험(절반)', (b - 1) / B); V.forEach(v => v.halves.push(run14(v, e => hash(e.r.y + '|' + b) < 0.5).cagr)); }
