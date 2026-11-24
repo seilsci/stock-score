@@ -345,9 +345,9 @@ function loadBars(cb){                       // 월봉(1.2MB)은 차트를 처�
 }
 function ymIdx(ym){ ym=+ym; return Math.floor(ym/100)*12+ym%100-1; }
 function cssv(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
-function drawChart(cv, y, endYm, buyYm, sellYm){
-  if(!BARS){
-    loadBars(function(){ drawChart(cv, y, endYm, buyYm, sellYm); });
+function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
+  if(!BARS && !rawOverride){
+    loadBars(function(){ drawChart(cv, y, endYm, buyYm, sellYm, rawOverride); });
     var g0=cv.getContext('2d'); cv.width=(cv.clientWidth||600); cv.height=200; g0.fillStyle=cssv('--mut'); g0.font='13px -apple-system,sans-serif'; g0.textAlign='center'; g0.fillText('월봉 불러오는 중…',cv.width/2,100);
     return;
   }
@@ -356,7 +356,7 @@ function drawChart(cv, y, endYm, buyYm, sellYm){
   var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W2,H);
   g.textBaseline='middle';
   var mut=cssv('--mut'), line=cssv('--line'), fg=cssv('--fg'), buyC=cssv('--buy'), sellC=cssv('--sell'), maC=cssv('--ma');
-  var raw = BARS && BARS[y];
+  var raw = rawOverride || (BARS && BARS[y]);
   if(!raw || raw.length<4){
     g.fillStyle=mut; g.font='13px -apple-system,sans-serif'; g.textAlign='center';
     g.fillText(BARS?'이 종목의 월봉 데이터가 없습니다':'월봉 데이터(bars.json)를 불러오지 못했습니다',W2/2,H/2);
@@ -418,6 +418,7 @@ function drawChart(cv, y, endYm, buyYm, sellYm){
     g.closePath(); g.fill();
   };
   DATA.trades.forEach(function(t){ if(t.y!==y) return; mark(t.buyYm,true); if(t.sellYm) mark(t.sellYm,false); });
+  if(rawOverride){ mark(buyYm,true); if(sellYm) mark(sellYm,false); }          // 예정 주문(아직 거래 기록이 없는 것)의 구매·판매 표시
   // 마지막 값
   g.fillStyle=fg; g.beginPath(); g.arc(X(e),Y(cs[e]),3,0,6.2832); g.fill();
 }
@@ -902,6 +903,8 @@ function loadPlan(){
   }).catch(function(e){ PLAN_BUSY=false; PLAN_ERR=String(e&&e.message||e); renderAll(); });
 }
 
+function chartRaw(r){ var ch=r&&r['차트']; if(!ch||!ch.length) return undefined; var f=[]; ch.forEach(function(x){ f.push(+x[0],+x[4]); }); return f; }
+
 function renderPlanView(){
   var sc=document.getElementById('sum-card'), list=document.getElementById('led'), label=document.getElementById('led-label');
   sc.style.display='block';
@@ -923,9 +926,12 @@ function renderPlanView(){
     +'</div><div class="sum-note">기준: '+esc(P.api.updated['한국']||'')+' 시점 가격·점수. <b>이번 달이 끝날 때의 종가에 따라 바뀔 수 있는 예상</b>입니다. 기준금리: '+rateTxt+'.<br>'
     +'구매는 사이트 점수(최신 모델) 상위 4종목입니다(매수 신호 '+P.api.candidates+'개 중). 과거 일지는 그해 모델 순위라 조금 다를 수 있어요. 미국은 '+Math.round(LED.months[Object.keys(LED.months).sort().pop()].fx).toLocaleString()+'원/$(지난달말 환율)로 환산했습니다.</div>';
   var bal=P.cash0, html='';
-  var row=function(cls,k,name,sub,amt,after){
-    html+='<div class="lr '+cls+'"><div class="lr-h"><span class="lr-k">'+k+'</span><div style="min-width:0"><div class="lr-n">'+name+'</div></div>'
-      +'<div class="lr-a">'+amt+'<div class="lr-b">잔액 '+won(after)+'</div></div></div>'+(sub?'<div class="lr-s lr-d">'+sub+'</div>':'')+'</div>';
+  var gr=[];                                                                    // 줄을 누르면 월봉 그래프(현재 가격까지)
+  var row=function(cls,k,name,sub,amt,after,args){
+    gr.push(args||null);
+    html+='<div class="lr '+cls+(args?' clk':'')+'"><div class="lr-h"'+(args?' data-g="'+(gr.length-1)+'"':'')+'><span class="lr-k">'+k+'</span><div style="min-width:0"><div class="lr-n">'+name+'</div></div>'
+      +'<div class="lr-a">'+amt+'<div class="lr-b">잔액 '+won(after)+'</div></div></div>'+(sub?'<div class="lr-s lr-d"'+(args?' data-g="'+(gr.length-1)+'"':'')+'>'+sub+'</div>':'')
+      +(args?'<div class="lr-c"><canvas></canvas></div>':'')+'</div>';
   };
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">전달 이월 현금</div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
   bal+=LED.meta.dep; row('dep','입금','월 적립금','',signWon(LED.meta.dep),bal);
@@ -940,14 +946,14 @@ function renderPlanView(){
       calc+'<br>'+cost+'<br><span class="'+(x.ret>=0?'p':'n')+'">수익 '+pc(x.ret)+'</span> · '+esc(rr)
       +'<br><b>구매 '+fmt(x.buyYm)+'</b> · '+pxS(x.buyPx,x.us)+'에 매수 (구매금액 '+won(x.basis)+') · '+hm+'개월 보유'
       +'<br>구매 당시 점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+x.buyYm+'" data-sn="'+esc(x.name)+'" data-sp="'+(buyTr?buyTr.score:'')+'">'+buyScore+'</span> <span class="meta">(눌러서 이유 보기)</span>',
-      signWon(x.amt),bal);
+      signWon(x.amt),bal,{y:x.y,end:ym,buy:x.buyYm,sell:ym,raw:null});
   });
   P.buys.forEach(function(x){
     bal-=x.amt;
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
     var cost='+ 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span> = <b>'+won(x.amt)+'</b>';
     row('buy','구매 예정',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-buyidx="'+P.buys.indexOf(x)+'">'+x.score+'</span> <span class="meta">(눌러서 이유 보기)</span>',signWon(-x.amt),bal);
+      calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-buyidx="'+P.buys.indexOf(x)+'">'+x.score+'</span> <span class="meta">(눌러서 이유 보기)</span>',signWon(-x.amt),bal,{y:x.y,end:ym,buy:ym,sell:null,raw:chartRaw(x.row)});
   });
   P.skipped.forEach(function(x){
     row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 현금으로 남음','0원',bal);
@@ -955,6 +961,12 @@ function renderPlanView(){
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">예상 월말 현금</div></div><div class="lr-a">'+won(P.cashEnd)+'</div></div></div>';
   if(P.watch.length) html+='<div class="sum-note" style="margin:6px 4px 0">유예 중: '+P.watch.map(function(w){ return esc(w.name); }).join(', ')+' — 이번 달 처음 10이평 아래로 내려왔고, 월말에도 아래면 다음 달에 판매됩니다.</div>';
   list.innerHTML=html;
+  list.querySelectorAll('.lr-h[data-g], .lr-d[data-g]').forEach(function(h){
+    h.onclick=function(){
+      var box=h.parentNode.querySelector('.lr-c'); box.classList.toggle('open');
+      if(box.classList.contains('open')){ var a=gr[+h.dataset.g]; drawChart(box.querySelector('canvas'),a.y,a.end,a.buy,a.sell,a.raw||undefined); }
+    };
+  });
   list.querySelectorAll('.lr-sc').forEach(function(c){
     c.onclick=function(ev){
       ev.stopPropagation();
