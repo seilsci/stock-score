@@ -7,17 +7,20 @@
  *       단, 미국 국채 10년 금리가 6개월 전 달말보다 올라 있으면(FRED DGS10) 유예 없이 하향 돌파 즉시 매도
  * 10이평 = 최근 10개월 월말 종가 평균(이번 달은 최근 종가를 그 달 종가로 씀)
  *
- * 대상: 코스피 시총 상위 300(ETF·ETN·우선주 포함, 채권·금리·레버리지·인버스형은 제외) + 코스닥 상위 200 + 미국 상위 500
- * 데이터: 한국 = 네이버 시총 순위 + 야후 월봉(15:30 종가, 없으면 네이버)
- *         미국 = 네이버 시총 순위·월봉(막히면 야후)
+ * 대상(2026-11-25 변경): 그 달 거래대금 상위 — 한국(코스피+코스닥 합쳐) 500, 미국 500. 거래대금 = 직전 12개월 평균 거래량 × 최근 종가(tools/learn/3_build.js와 같은 정의).
+ *   후보는 시총 순으로 넓게 받아(한국 코스피 1000 + 코스닥 900, 미국 1500; ETF·ETN·우선주 포함, 채권·금리·레버리지·인버스형은 제외) 월봉으로 거래대금 순위를 계산하고,
+ *   이번 달 상위 500만 시트에 씀. 과거 돌파 달의 순위도 같은 방식으로 계산해 '확인 매수' 후보에 씀.
+ * 데이터: 한국 = 네이버 시총 순위(후보) + 야후 월봉(15:30 종가, 없으면 네이버)
+ *         미국 = 네이버 시총 순위(후보)·월봉(막히면 야후)
  *
  * 처음 한 번: setup 실행 → 탭 만들기 + 매일 자동 갱신 예약
  */
 
 var CFG = {
-  KOSPI_N: 300,
-  KOSDAQ_N: 200,
-  US_N: 500,
+  KOSPI_N: 1000,       // 후보 수(시총 순): 거래대금 순위는 이 후보들의 월봉으로 계산
+  KOSDAQ_N: 900,
+  US_N: 1500,
+  LIQ_N: 500,          // 그 달 거래대금 상위 몇 개까지 인정(한국·미국 각각)
   MONTHS: 10,          // 이동평균 개월 수
   CHART_N: 45,         // 차트용으로 저장하는 개월 수(화면 36개월 + 10이평 계산용 9개월)
   BATCH: 40,           // 한 번에 동시에 받는 개수(100으로 올렸더니 야후 31.6→37.0초, 네이버 31.8→47.5초로 오히려 느려져 40으로 되돌림)
@@ -68,7 +71,7 @@ function newTimer_() {
 function updateKR() {
   var t0 = new Date(), T = newTimer_(), t;
   t = new Date();
-  var list = naverTop_('KOSPI', CFG.KOSPI_N).concat(naverTop_('KOSDAQ', CFG.KOSDAQ_N));
+  var list = naverTop_('KOSPI', CFG.KOSPI_N).concat(naverTop_('KOSDAQ', CFG.KOSDAQ_N));    // 후보(시총 순)
   T.lap('목록', t);
   // 월봉은 야후 먼저: 15:30 정규장 종가. 네이버 가격엔 16:00~18:00 시간외 단일가가 섞임
   t = new Date();
@@ -78,33 +81,31 @@ function updateKR() {
   }));
   T.lap('야후받기', t);
   t = new Date();
-  var rows = [], retry = [];
+  var mons = [], retry = [];
   list.forEach(function (s, i) {
     var mon = parseYahooMonthly_(bodies[i]);
-    if (mon && mon.length > CFG.MONTHS) rows.push(makeRow_(s, mon)); else retry.push(s);
+    if (mon && mon.length > CFG.MONTHS) mons[i] = mon; else retry.push(i);
   });
-  T.lap('계산·점수', t);
   // 야후에 없거나 막히면 네이버 월봉
   var fail = 0;
   if (retry.length) {
-    t = new Date();
-    var b2 = fetchAll_(retry.map(function (s) {
-      return 'https://fchart.stock.naver.com/sise.nhn?symbol=' + s.code +
+    var b2 = fetchAll_(retry.map(function (i) {
+      return 'https://fchart.stock.naver.com/sise.nhn?symbol=' + list[i].code +
              '&timeframe=month&count=' + (CFG.CHART_N + 2) + '&requestType=0';
     }));
+    retry.forEach(function (i, k) { var mon = parseNaverMonthly_(b2[k]); if (mon) mons[i] = mon; else fail++; });
     T.lap('네이버대체(' + retry.length + '개)', t);
     t = new Date();
-    retry.forEach(function (s, i) {
-      var mon = parseNaverMonthly_(b2[i]);
-      if (mon) rows.push(makeRow_(s, mon)); else fail++;
-    });
-    T.lap('대체계산', t);
   }
+  var liq = buildLiq_(mons, CFG.LIQ_N);                                  // 매달 거래대금 상위 LIQ_N의 문턱(한국 전체 한 묶음)
+  var rows = [];
+  list.forEach(function (s, i) { if (mons[i]) { var r = makeRow_(s, mons[i], liq); if (r) rows.push(r); } });
+  T.lap('계산·점수', t);
   rows.sort(function (a, b) { return b[4] - a[4]; });
   t = new Date();
   var wd = writeRows_('한국', rows);
   T.lap('시트쓰기', t); T.note(wd);
-  log_('updateKR', rows.length + '종목, 네이버 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
+  log_('updateKR', '후보 ' + list.length + ' → 거래대금 상위 ' + rows.length + '종목, 네이버 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
        Math.round((Date.now() - t0) / 1000) + '초 ' + T.text());
 }
 
@@ -146,7 +147,7 @@ function parseNaverMonthly_(xml) {
 function updateUS() {
   var t0 = new Date(), T = newTimer_(), t;
   t = new Date();
-  var list = naverUSTop_(CFG.US_N);
+  var list = naverUSTop_(CFG.US_N);                                      // 후보(시총 순)
   T.lap('목록', t);
   var now = new Date(), y = now.getFullYear(), m = now.getMonth() + 1;
   var start = (y - 4) + pad_(m) + '010000', end = (y + 1) + '01010000';
@@ -157,38 +158,36 @@ function updateUS() {
   }));
   T.lap('네이버받기', t);
   t = new Date();
-  var rows = [], retry = [];
+  var mons = [], retry = [];
   list.forEach(function (s, i) {
     var mon = parseNaverUSMonthly_(bodies[i], s.date);
-    if (mon) rows.push(makeRow_(s, mon)); else retry.push(s);
+    if (mon) mons[i] = mon; else retry.push(i);
   });
-  T.lap('계산·점수', t);
   var fail = 0;
   if (retry.length) {
-    t = new Date();
-    var b2 = fetchAll_(retry.map(function (s) {
-      return 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(s.yahoo) +
+    var b2 = fetchAll_(retry.map(function (i) {
+      return 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(list[i].yahoo) +
              '?range=' + (CFG.CHART_N + 2) + 'mo&interval=1mo';
     }));
+    retry.forEach(function (i, k) { var mon = parseYahooMonthly_(b2[k]); if (mon) mons[i] = mon; else fail++; });
     T.lap('야후대체(' + retry.length + '개)', t);
     t = new Date();
-    retry.forEach(function (s, i) {
-      var mon = parseYahooMonthly_(b2[i]);
-      if (mon) rows.push(makeRow_(s, mon)); else fail++;
-    });
-    T.lap('대체계산', t);
   }
+  var liq = buildLiq_(mons, CFG.LIQ_N);                                  // 매달 거래대금 상위 LIQ_N의 문턱(미국 한 묶음)
+  var rows = [];
+  list.forEach(function (s, i) { if (mons[i]) { var r = makeRow_(s, mons[i], liq); if (r) rows.push(r); } });
+  T.lap('계산·점수', t);
   rows.sort(function (a, b) { return b[4] - a[4]; });
   t = new Date();
   var wd = writeRows_('미국', rows);
   T.lap('시트쓰기', t); T.note(wd);
-  log_('updateUS', rows.length + '종목, 야후 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
+  log_('updateUS', '후보 ' + list.length + ' → 거래대금 상위 ' + rows.length + '종목, 야후 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
        Math.round((Date.now() - t0) / 1000) + '초 ' + T.text());
 }
 
 function naverUSTop_(n) {
   var urls = [];
-  [['NASDAQ', 5], ['NYSE', 5], ['AMEX', 1]].forEach(function (e) {
+  [['NASDAQ', 9], ['NYSE', 8], ['AMEX', 3]].forEach(function (e) {
     for (var p = 1; p <= e[1]; p++)
       urls.push('https://api.stock.naver.com/stock/exchange/' + e[0] + '/marketValue?page=' + p + '&pageSize=100');
   });
@@ -376,18 +375,45 @@ function rateAt_(back0) {
   return a !== undefined && b !== undefined && a > b;
 }
 
+/* ───────── 거래대금 순위 ─────────
+ * 거래대금(달 i) = log10(직전 12개월(i-12..i-1) 평균 거래량 × 달 i 종가 + 1). tools/learn/3_build.js와 같은 정의.
+ * 한 시장(한국 전체 또는 미국)의 후보들 월봉을 모아 매달 상위 n개의 문턱을 구함. 돌려주는 값: { th: {YYYYMM: 문턱}, at: function(mon, i) → 그 달 거래대금 }
+ * 월봉이 14개월보다 짧은 종목은 순위에 못 들어감 */
+function liqAt_(mon, i) {
+  if (i < 13) return null;
+  var c = mon[i].close, v = 0, k;
+  if (!(c > 0)) return null;
+  for (k = i - 12; k <= i - 1; k++) { if (mon[k].close > 0 || mon[k].vol > 0) v += mon[k].vol || 0; }
+  return mon[i].vol ? Math.log(v / 12 * c + 1) / Math.LN10 : null;
+}
+function buildLiq_(mons, n) {
+  var by = {};
+  mons.forEach(function (mon) {
+    if (!mon) return;
+    for (var i = 13; i < mon.length; i++) {
+      var t = liqAt_(mon, i); if (t == null) continue;
+      (by[mon[i].ym] = by[mon[i].ym] || []).push(t);
+    }
+  });
+  var th = {};
+  Object.keys(by).forEach(function (ym) { var a = by[ym].sort(function (x, y) { return y - x; }); th[ym] = a[Math.min(n, a.length) - 1]; });
+  return { th: th, at: liqAt_,
+           has: function (mon, i) { var t = liqAt_(mon, i), h = th[mon[i] && mon[i].ym]; return t != null && h !== undefined && t >= h; } };
+}
+
 /* ───────── 확인 매수 후보 ─────────
  * 돌파 달(전달 종가 ≤ 10이평, 그달 종가 > 10이평)의 다음 달 시가에 샀다고 가정한 가상 포지션이
  * (익절 트레일 2배·유예 2달(금리 상승 중이면 1달)로 안 팔린 채) 이번 달 최근 종가 기준 +10% 이상이고 5>10>20 정배열이 "처음" 된 달이면 후보.
  * 점수 = 돌파 달 시점의 점수. 후보가 여러 돌파에서 나오면 점수가 가장 높은 것 하나. 돌려주는 값: 'YYYYMM|점수' 또는 ''
  * tools/learn/7_backtest.js confirmTrig와 같은 규칙으로 유지할 것 */
-function confirmInfo_(s, mon) {
+function confirmInfo_(s, mon, liq) {
   var n = mon.length, M = CFG.MONTHS, c = mon.map(function (x) { return x.close; });
   var maAt = function (k, len) { return k >= len - 1 ? avg_(c.slice(k - len + 1, k + 1)) : null; };
   var best = null, up = null;
   for (var b = Math.max(M, 24); b <= n - 2; b++) {
     var mb = maAt(b, M), pm = maAt(b - 1, M);
     if (!(c[b - 1] <= pm && c[b] > mb)) continue;                       // 돌파 달
+    if (liq && !liq.has(mon, b)) continue;                              // 그 돌파 달에 거래대금 상위가 아니었으면 후보가 아님(백테스트는 그 달 상위인 종목의 돌파만 신호로 봄)
     var p0 = mon[b + 1].open; if (!(p0 > 0)) continue;
     var tp = false, cnt = 0, alive = true, trig = false;
     for (var j = b + 1; j <= n - 1 && alive; j++) {
@@ -412,7 +438,8 @@ function confirmInfo_(s, mon) {
   return best ? best.ym + '|' + best.sc : '';
 }
 
-function makeRow_(s, mon) {
+function makeRow_(s, mon, liq) {
+  if (liq && !liq.has(mon, mon.length - 1)) return null;                    // 이번 달 거래대금 상위가 아니면 목록에서 뺌
   var n = mon.length, M = CFG.MONTHS, c = mon.map(function (x) { return x.close; });
   var cur = c[n - 1], prev = c[n - 2];
   var ma = n >= M ? avg_(c.slice(n - M)) : '';
@@ -430,7 +457,7 @@ function makeRow_(s, mon) {
   }
   // 매수·매도·유예 종목만 차트용 월봉 저장: [[YYYYMM, 시가, 고가, 저가, 종가, 거래량], ...]
   // 점수 계산에 쓴 월봉 전체를 보내야 사이트의 "점수 설명"이 시트 점수와 똑같이 계산됨
-  var conf = n >= 25 ? confirmInfo_(s, mon) : '';                              // 확인 매수 후보('돌파월|점수') — 다음 달 첫날 사는 후보
+  var conf = n >= 25 ? confirmInfo_(s, mon, liq) : '';                              // 확인 매수 후보('돌파월|점수') — 다음 달 첫날 사는 후보
   var chart = '';
   if (sig === '매수' || sig === '매도' || sig === '유예' || conf) {
     chart = JSON.stringify(mon.map(function (x) {
