@@ -85,7 +85,7 @@ function simulate(pickFn, N, C, opt = {}) {
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
-      if (h.sellK !== null && h.sellK <= k) { cash += sellCash(h, k); continue; }
+      if (!opt.grace && h.sellK !== null && h.sellK <= k) { cash += sellCash(h, k); continue; }
       if (opt.tp) {                                       // 익절: 종가 ≥ tp × 월10이평이면 매도
         if (h.tpSellK != null) {                          // 이미 트리거됨 → 예정 달에 매도
           if (h.tpSellK <= k) { cash += sellCash(h, k); continue; }
@@ -105,8 +105,7 @@ function simulate(pickFn, N, C, opt = {}) {
         }
       }
       // 매도 유예: 10이평 아래로 내려와도 바로 팔지 않고 N달 연속 아래일 때만 매도
-      // sellK(원래 매도 예정)가 있는 종목은 이미 처리됨. 여기서는 이평 이탈 감지용.
-      if (opt.grace && h.sellK === null) {                // grace=연속 N달 아래여야 매도
+      if (opt.grace) {                                    // grace 모드: sellK 무시하고 연속 이탈 카운트로 매도
         const ma = ma10(h.px, k);
         if (ma) {
           if (h.last < ma) { h.graceCnt = (h.graceCnt || 0) + 1; if (h.graceCnt >= opt.grace) { cash += sellCash(h, k); continue; } }
