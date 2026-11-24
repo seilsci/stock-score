@@ -8,7 +8,8 @@ const { F, L: ALL } = load(), fi = n => F.indexOf(n);
 const { MODELS: ALLM } = modelDefs(F);
 const MODELS = ALLM.filter(M => 'ABEF'.includes(M.n[0]));
 const DEP = +process.env.DEPOSIT || 1000000;
-const COST = process.env.COST !== undefined ? +process.env.COST : 0.003;     // 한 번 사고팔 때마다(편도) 수수료·세금·슬리피지
+const C1 = JSON.parse(fs.readFileSync(path.join(__dirname, 'costs.json'), 'utf8'));          // 실제 비용·세금
+const C0 = { kr: { commission: 0, sell_tax: {}, etf_exempt: true }, us: { commission: 0, fx_spread: 0, cg_tax_rate: 0, cg_exemption_krw: 0 } };   // 비용 없음(비교용)
 const START_Y = +process.env.BT_START || 2012;                                // 첫 보고 연도(첫 입금은 그 전해 12월 말)
 const SEEDS = +process.env.SEEDS || 30;
 const clipT = t => Math.max(-2, Math.min(3, t));
@@ -33,7 +34,7 @@ function fx(k) {
   let v = 1; for (let j = k; j > k - 8; j--) if (FX[ymOf(j)]) { v = FX[ymOf(j)]; break; }
   fxC.set(k, v); return v;
 }
-const US = fi('us'), TURN = fi('turn');
+const US = fi('us'), TURN = fi('turn'), ETF = fi('etf');
 
 // ── 시험 연도마다 "그때까지 알던 것"으로 학습 → 그해 모든 신호에 점수 (미래 정보 없음)
 const scored = MODELS.map(() => new Map());                 // 모델 → Map(ym → [{r, s}] 점수 높은 순)
@@ -55,35 +56,60 @@ years.forEach((Y, yi) => {
 scored.forEach(m => m.forEach(a => a.sort((x, y) => y.s - x.s)));
 
 // ── 시뮬레이션
-function simulate(pickFn, N) {
-  let cash = 0, holds = [], prevAfter = 0, deposits = 0; const rets = [];
+function krTax(C, Y) { const t = C.kr.sell_tax; let v = 0; Object.keys(t).map(Number).sort().forEach(y => { if (y <= Y) v = t[y]; }); return v; }
+function simulate(pickFn, N, C) {
+  let cash = 0, holds = [], prevAfter = 0, deposits = 0; const rets = [], usGain = {};
+  const usFee = C.us.commission + C.us.fx_spread, val = (h, k) => h.sh * h.last * (h.us ? fx(k) : 1);
+  const sellCash = (h, k) => {                         // 한 종목을 팔아 현금으로: 수수료·거래세·(미국) 손익 기록
+    const v = val(h, k);
+    if (h.us) { const pr = v * (1 - usFee), Y = yOfK(k); usGain[Y] = (usGain[Y] || 0) + pr - h.basis; return pr; }
+    return v * (1 - C.kr.commission - (h.etf && C.kr.etf_exempt ? 0 : krTax(C, yOfK(k))));
+  };
+  const usTax = Y => C.us.cg_tax_rate * Math.max(0, (usGain[Y] || 0) - C.us.cg_exemption_krw);
   for (let k = START; k <= END; k++) {
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
-      if (h.sellK !== null && h.sellK <= k) cash += h.sh * h.last * (h.us ? fx(k) : 1) * (1 - COST); else keep.push(h);
+      if (h.sellK !== null && h.sellK <= k) cash += sellCash(h, k); else keep.push(h);
     }
     holds = keep;
+    if ((k - 1) % 12 === 11) {                          // 12월 말: 그해 미국 주식 실현 손익에 양도세(기본공제 후)를 냄
+      const Y = yOfK(k), tax = usTax(Y); usGain[Y] = 0;
+      if (tax > 0) {
+        if (cash >= tax) cash -= tax;
+        else { let hv = 0; for (const h of holds) hv += val(h, k); const f = hv > 0 ? Math.min(1, (tax - cash) / hv) : 0; for (const h of holds) h.sh *= 1 - f; cash = 0; }
+      }
+    }
     cash += DEP; deposits++;
     const picks = pickFn(ymOf(k));
     if (picks.length) {
       const per = cash / (N || picks.length);
       for (const { r } of picks) {
         const o = px(r.y), p = o.m.get(k); if (p === undefined) continue;
-        const us = r.x[US] === 1, a = Math.min(per, cash);
-        holds.push({ px: o, us, last: p, sh: a * (1 - COST) / (p * (us ? fx(k) : 1)), sellK: r.exoff === null ? null : mi(r.ym) + r.exoff });
+        const us = r.x[US] === 1, a = Math.min(per, cash), fee = us ? usFee : C.kr.commission;
+        holds.push({ px: o, us, etf: r.x[ETF] === 1, last: p, basis: a, sh: a * (1 - fee) / (p * (us ? fx(k) : 1)), sellK: r.exoff === null ? null : mi(r.ym) + r.exoff });
         cash -= a;
       }
     }
-    let after = cash; for (const h of holds) after += h.sh * h.last * (h.us ? fx(k) : 1);
+    let after = cash; for (const h of holds) after += val(h, k);
     if (prevAfter > 0) rets.push({ k, r: (after - DEP) / prevAfter - 1 });
     prevAfter = after;
   }
-  // 현재(진행 중인 달): 보유 종목을 가장 최근 종가로 평가
-  let nowV = cash; const fxNow = hasFx ? fx(mi(CUR)) : 1;
-  for (const h of holds) nowV += h.sh * (h.px.lastK >= END ? h.px.lastC : h.last) * (h.us ? fxNow : 1);
-  rets.push({ k: mi(CUR), r: nowV / prevAfter - 1, partial: true });
-  return { rets, deposits, val: nowV };
+  // 현재(진행 중인 달): 가장 최근 종가로 평가. 올해 이미 실현한 미국 손익의 세금은 미리 뺌
+  const kNow = mi(CUR), curY = Math.floor(CUR / 100);
+  holds.forEach(h => { h.last = h.px.lastK >= END ? h.px.lastC : h.last; });
+  let hv = 0; for (const h of holds) hv += val(h, kNow);
+  const nowV = cash + hv - usTax(curY);
+  // 전부 팔았다고 가정한 세후 금액(수수료·거래세·미국 양도세 반영)
+  let liq = cash, gl = usGain[curY] || 0;
+  for (const h of holds) {
+    const v = val(h, kNow);
+    if (h.us) { const pr = v * (1 - usFee); liq += pr; gl += pr - h.basis; }
+    else liq += v * (1 - C.kr.commission - (h.etf && C.kr.etf_exempt ? 0 : krTax(C, curY)));
+  }
+  liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
+  rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
+  return { rets, deposits, val: nowV, liq };
 }
 function irr(deposits, val) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += DEP * Math.pow(1 + r, deposits - j); return t - val; };
@@ -95,56 +121,64 @@ function summ(sim) {
   let idx = 1, peak = 1, mdd = 0;
   sim.rets.forEach(({ k, r }) => { const Y = ymOf(k) / 100 | 0; yearly[Y] = (yearly[Y] || 1) * (1 + r); idx *= 1 + r; peak = Math.max(peak, idx); mdd = Math.min(mdd, idx / peak - 1); });
   Object.keys(yearly).forEach(Y => yearly[Y] -= 1);
-  return { yearly, cum: idx - 1, cagr: Math.pow(idx, 12 / months) - 1, mdd, val: sim.val, dep: sim.deposits * DEP, irr: irr(sim.deposits, sim.val) };
+  return { yearly, cum: idx - 1, cagr: Math.pow(idx, 12 / months) - 1, mdd, val: sim.val, liq: sim.liq, dep: sim.deposits * DEP, irr: irr(sim.deposits, sim.liq) };
 }
 function avgSumm(list) {
-  const o = { yearly: {} }; ['cum', 'cagr', 'mdd', 'val', 'dep', 'irr'].forEach(k => o[k] = list.reduce((s, x) => s + x[k], 0) / list.length);
+  const o = { yearly: {} }; ['cum', 'cagr', 'mdd', 'val', 'liq', 'dep', 'irr'].forEach(k => o[k] = list.reduce((s, x) => s + x[k], 0) / list.length);
   Object.keys(list[0].yearly).forEach(Y => o.yearly[Y] = list.reduce((s, x) => s + x.yearly[Y], 0) / list.length);
   return o;
 }
 function rng(seed) { let s = seed * 2654435761 % 4294967296 || 1; return () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296; }
-// 지수에 같은 방식으로 적립
-function simIndex(tk, usd) {
+// 지수에 같은 방식으로 적립(한국 지수는 국내 ETF처럼 거래세 없음, S&P500은 미국 ETF처럼 수수료·환전·양도세)
+function simIndex(tk, usd, C) {
   const o = px(tk); if (!o.m.size) return null;
+  const usFee = C.us.commission + C.us.fx_spread, fee = usd ? usFee : C.kr.commission;
   const rets = []; let units = 0, deposits = 0;
   for (let k = START; k <= END; k++) {
     const p = o.m.get(k), p0 = o.m.get(k - 1); if (p === undefined) continue;
-    const f = usd ? fx(k) : 1; units += DEP / (p * f); deposits++;
+    const f = usd ? fx(k) : 1; units += DEP * (1 - fee) / (p * f); deposits++;
     if (k > START && p0 !== undefined) rets.push({ k, r: (p * f) / (p0 * (usd ? fx(k - 1) : 1)) - 1 });
   }
   const pNow = o.lastC, fN = usd && hasFx ? fx(mi(CUR)) : 1, last = o.m.get(END) * (usd ? fx(END) : 1);
   rets.push({ k: mi(CUR), r: (pNow * fN) / last - 1, partial: true });
-  return { rets, deposits, val: units * pNow * fN };
+  const v = units * pNow * fN, pr = v * (1 - fee);
+  const liq = usd ? pr - C.us.cg_tax_rate * Math.max(0, pr - deposits * DEP - C.us.cg_exemption_krw) : pr;
+  return { rets, deposits, val: v, liq };
 }
 
-// ── 전략 실행
-const R = [];
-const add = (n, sim) => R.push({ n, s: summ(sim) });
-const total = 2 + MODELS.length * 3 + 2;
-let step = 0;
-progress('백테스트', step++ / total);
-add('전부 균등', simulate(ym => byYm.get(ym) || [], null));
-progress('백테스트', step++ / total);
-add('거래대금 큰 순 10', simulate(ym => [...(byYm.get(ym) || [])].sort((a, b) => b.r.x[TURN] - a.r.x[TURN]).slice(0, 10), 10));
-const rs = []; for (let sd = 1; sd <= SEEDS; sd++) { const rnd = rng(sd); rs.push(summ(simulate(ym => { const a = [...(byYm.get(ym) || [])]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, 10); }, 10))); }
-R.push({ n: `무작위 10 (평균 ${SEEDS}회)`, s: avgSumm(rs) });
-MODELS.forEach((M, k) => [5, 10, 20].forEach(N => { progress('백테스트', step++ / total); add(`${M.n[0]} 상위 ${N}`, simulate(ym => (scored[k].get(ym) || []).slice(0, N), N)); }));
-const ks = simIndex('^KS11', false), sp = simIndex('^GSPC', true);
-if (ks) add('코스피(지수)', ks); if (sp) add('S&P500(원화)', sp);
+// ── 전략 실행 (실제 비용·세금 = C1, 비교용 비용 없음 = C0)
+const R = [], R0 = {};
+const pickAll = ym => byYm.get(ym) || [];
+const pickTurn = ym => [...pickAll(ym)].sort((a, b) => b.r.x[TURN] - a.r.x[TURN]).slice(0, 10);
+const randPick = rnd => ym => { const a = [...pickAll(ym)]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, 10); };
+const runRand = C => { const l = []; for (let sd = 1; sd <= SEEDS; sd++) l.push(summ(simulate(randPick(rng(sd)), 10, C))); return avgSumm(l); };
+const total = 3 + MODELS.length * 3 + 2; let step = 0;
+const tick = () => progress('백테스트', step++ / total);
+tick(); R.push({ n: '전부 균등', s: summ(simulate(pickAll, null, C1)) }); R0['전부 균등'] = summ(simulate(pickAll, null, C0));
+tick(); R.push({ n: '거래대금 큰 순 10', s: summ(simulate(pickTurn, 10, C1)) });
+tick(); R.push({ n: `무작위 10 (평균 ${SEEDS}회)`, s: runRand(C1) }); R0[`무작위 10 (평균 ${SEEDS}회)`] = runRand(C0);
+MODELS.forEach((M, k) => [5, 10, 20].forEach(N => {
+  tick(); const pk = ym => (scored[k].get(ym) || []).slice(0, N), n = `${M.n[0]} 상위 ${N}`;
+  R.push({ n, s: summ(simulate(pk, N, C1)) }); if (N === 10) R0[n] = summ(simulate(pk, N, C0));
+}));
+const ksS = simIndex('^KS11', false, C1), spS = simIndex('^GSPC', true, C1);
+if (ksS) R.push({ n: '코스피(지수)', s: summ(ksS) }); if (spS) R.push({ n: 'S&P500(원화)', s: summ(spS) });
 progress('백테스트', 1); process.stdout.write('\n');
 
 // ── 보고서
 const pc = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', won = x => Math.round(x / 10000).toLocaleString() + '만';
 const out = [], log = s => out.push(s);
-const nDep = R[0].s.dep / DEP;
+const nDep = R[0].s.dep / DEP, k1 = C1.kr, u1 = C1.us;
 log(`# 월 ${DEP / 10000}만원 적립 투자 시뮬레이션 (${new Date().toISOString().slice(0, 10)})`);
-log(`- 첫 입금 ${START_Y - 1}-12 말부터 매달 말 입금(총 ${nDep}회, 투입 ${won(R[0].s.dep)}원) → 그달 매수 신호 중 고른 종목에 균등 매수 → 월말 종가가 10이평 아래면 매도 → 현금은 다음 달 재투자`);
-log(`- 연도별 수익률 = 그해 마지막 거래일(12월 월봉 종가) 기준 시간가중(입금액 영향 제외). 누적 = 연도별 곱. ${CUR.toString().slice(0, 4)}년은 오늘까지.`);
-log(`- 점수는 해마다 "그해 1월 1일까지 알 수 있던 정답"으로만 학습(미래 정보 없음). 비용 편도 ${(COST * 100).toFixed(1)}%, ${hasFx ? '미국 종목은 원화 환산(환율 반영)' : '환율 없음(환율 무시)'}, 배당 제외.`);
-log(`- 주의: 지금 상장·시총 상위인 종목만 대상이라(상장폐지·망한 종목 없음, 지금 큰 회사 위주) 실제보다 좋게 나와요. 방법끼리 비교가 더 믿을 만해요.`);
+log(`- 첫 입금 ${START_Y - 1}-12 말부터 매달 말 입금(총 ${nDep}회, 투입 ${won(R[0].s.dep)}원) → 그달 매수 신호 중 고른 종목에 균등 매수 → 월말 종가가 10이평 이하면 매도 → 현금은 다음 달 재투자`);
+log(`- 연도별 수익률 = 그해 마지막 거래일(12월 월봉 종가) 기준 시간가중(입금액 영향 제외, 세금·비용은 낸 시점에 반영). 누적 = 연도별 곱. ${String(CUR).slice(0, 4)}년은 오늘까지.`);
+log(`- 점수는 해마다 "그해 1월 1일까지 알 수 있던 정답"으로만 학습(미래 정보 없음). 배당 제외.`);
+log(`- 비용·세금(costs.json): 한국 수수료 ${(k1.commission * 100).toFixed(3)}%/편도, 거래세(팔 때) ` + Object.entries(k1.sell_tax).map(([y, v]) => `${y}~ ${(v * 100).toFixed(2)}%`).join(', ') + `, ETF·ETN ${k1.etf_exempt ? '면제' : '부과'}`);
+log(`  미국 수수료 ${(u1.commission * 100).toFixed(2)}%/편도 + 환전 ${(u1.fx_spread * 100).toFixed(2)}%/편도, 양도세 ${(u1.cg_tax_rate * 100).toFixed(0)}%(그해 실현 순이익에서 ${u1.cg_exemption_krw / 10000}만원 공제, 손실은 같은 해 이익과 상계·이월 없음, 12월 말에 납부한 것으로 계산), ${hasFx ? '환율 반영' : '환율 무시'}`);
+log(`- 주의: 지금 상장·시총 상위인 종목만 대상이라(상장폐지·망한 종목 없음) 절대 수치는 과장될 수 있어요.`);
 const cols = ['전부 균등', '거래대금 큰 순 10', `무작위 10 (평균 ${SEEDS}회)`, 'A 상위 10', 'B 상위 10', 'E 상위 10', 'F 상위 10', '코스피(지수)', 'S&P500(원화)'].map(n => R.find(r => r.n === n)).filter(Boolean);
 const short = { '전부 균등': '전부', '거래대금 큰 순 10': '거래대금10' }; cols.forEach(c => c.h = short[c.n] || (c.n.startsWith('무작위') ? '무작위10' : c.n.startsWith('코스피') ? '코스피' : c.n.startsWith('S&P') ? 'S&P' : c.n.replace(' 상위 ', '')));
-log(`\n## 연도별 수익률 (A·B·E·F = 점수 모델, 숫자 = 상위 몇 개 종목에 균등 매수)`);
+log(`\n## 연도별 수익률 (비용·세금 반영 / A·B·E·F = 점수 모델, 숫자 = 상위 몇 개 종목에 균등 매수)`);
 log('연도   ' + cols.map(c => c.h.padStart(10)).join(''));
 const Ys = Object.keys(R[0].s.yearly).map(Number).sort();
 Ys.forEach(Y => log(`${Y}${Y === Math.floor(CUR / 100) ? '*' : ' '}  ` + cols.map(c => pc(c.s.yearly[Y] ?? 0).padStart(10)).join('')));
@@ -153,10 +187,14 @@ log('연평균 ' + cols.map(c => pc(c.s.cagr).padStart(10)).join(''));
 log('최대낙폭' + cols.map(c => pc(c.s.mdd).padStart(10)).join(''));
 log('투입   ' + cols.map(c => won(c.s.dep).padStart(10)).join(''));
 log('평가금 ' + cols.map(c => won(c.s.val).padStart(10)).join(''));
+log('청산시 ' + cols.map(c => won(c.s.liq).padStart(10)).join(''));
 log('IRR    ' + cols.map(c => pc(c.s.irr).padStart(10)).join(''));
-log(`(* = 올해 오늘까지, 평가금·투입 단위 원, IRR = 월 적립 기준 연환산 수익률)`);
-log(`\n## 요약 (모든 전략)`);
-log('전략                          누적     연평균   최대낙폭   평가금(투입 ' + won(R[0].s.dep) + ')   IRR   이긴 해(코스피보다)');
-const ksY = ks ? summ(ks).yearly : null;
-R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).padStart(8)} ${pc(r.s.mdd).padStart(9)} ${won(r.s.val).padStart(12)} ${pc(r.s.irr).padStart(8)}   ${ksY ? Ys.filter(Y => r.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + Ys.length : ''}`));
+log(`(* = 올해 오늘까지, 단위 원. 평가금 = 보유 그대로, 청산시 = 전부 팔았다고 가정한 세후 금액, IRR = 월 적립·청산시 기준 연환산 수익률)`);
+log(`\n## 비용·세금이 깎은 만큼 (연평균 수익률, 같은 전략을 비용 없이 vs 실제 비용으로)`);
+log('전략                          비용 없음   실제 비용    차이');
+Object.keys(R0).forEach(n => { const a = R0[n].cagr, b = R.find(r => r.n === n).s.cagr; log(`${n.padEnd(26)} ${pc(a).padStart(9)} ${pc(b).padStart(10)} ${((b - a) * 100).toFixed(1).padStart(7)}%p`); });
+log(`\n## 요약 (모든 전략, 비용·세금 반영)`);
+log('전략                          누적     연평균   최대낙폭   청산시 세후(투입 ' + won(R[0].s.dep) + ')   IRR   이긴 해(코스피보다)');
+const ksY = ksS ? summ(ksS).yearly : null;
+R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).padStart(8)} ${pc(r.s.mdd).padStart(9)} ${won(r.s.liq).padStart(14)} ${pc(r.s.irr).padStart(8)}   ${ksY ? Ys.filter(Y => r.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + Ys.length : ''}`));
 fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
