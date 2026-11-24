@@ -10,7 +10,7 @@ const Fu = require('./fund');
 const { F, L } = load();
 const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1, END = SL.mi(CUR) - 1;
 const iUS = F.indexOf('us');
-const hasSec = fs.existsSync(path.join(DATA, 'sec'));
+const hasSec = fs.existsSync(path.join(DATA, 'sec')) && fs.readdirSync(path.join(DATA, 'sec')).some(f => f.endsWith('.json') && fs.statSync(path.join(DATA, 'sec', f)).size > 5);   // 받은 재무 자료가 있을 때만
 const out = [], log = s => { out.push(s); console.log(s); };
 const NAMES = F.filter(f => !f.startsWith('m_') && !f.startsWith('idx_')).concat(hasSec ? Fu.NAMES.map(n => 'f_' + n) : []);
 const pick = (r, fund) => { const v = {}; F.forEach((f, j) => { v[f] = r.x[j]; }); if (fund) Fu.NAMES.forEach(n => { v['f_' + n] = fund[n]; }); return v; };
