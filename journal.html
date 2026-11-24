@@ -210,7 +210,7 @@ canvas{display:block;width:100%;height:230px}
   <div id="chart-box">
     <div class="ch-h"><div class="ch-n" id="ch-name">&nbsp;</div><div class="ch-p" id="ch-price"></div></div>
     <canvas id="cv"></canvas>
-    <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span>월봉 캔들 (올림 <b style="color:var(--buy)">■</b> 내림 <b style="color:var(--sell)">■</b>) · 아래는 거래대금(월 거래량×종가)</span><span style="color:var(--buy)">▲ 매수</span><span style="color:var(--sell)">▼ 매도</span></div>
+    <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span>월봉 캔들 (올림 <b style="color:var(--buy)">■</b> 내림 <b style="color:var(--sell)">■</b>) · 아래는 거래대금(월 거래량×종가) · 옆으로 끌면 이전·이후 달</span><span style="color:var(--buy)">▲ 매수</span><span style="color:var(--sell)">▼ 매도</span></div>
   </div>
   <div id="hold-panel">
     <div id="hold-title">연도·월을 선택하면 그달 말 보유 종목이 표시됩니다.</div>
@@ -401,9 +401,10 @@ function chartTip(cv, ev, i){                // i = 월 위치
   if(x<8) x=8; if(yy<8) yy=ev.clientY+18;
   t.style.left=x+'px'; t.style.top=yy+'px';
 }
-function bindChart(cv){                      // 마우스·터치로 월을 가리키면 정보창 (한 번만 연결)
+function bindChart(cv){                      // 마우스·터치로 월을 가리키면 정보창, 옆으로 끌면 기간 이동 (한 번만 연결)
   if(cv._bound) return; cv._bound=true; cv.style.touchAction='pan-y';
-  var move=function(ev){
+  var down=null;
+  var hover=function(ev){
     var G=cv._g; if(!G) return;
     var r=cv.getBoundingClientRect(), x=ev.clientX-r.left;
     var i=G.s0+Math.floor((x-G.L)/G.step); if(x<G.L||x>G.L+G.pw){ return; }
@@ -411,9 +412,21 @@ function bindChart(cv){                      // 마우스·터치로 월을 가�
     if(cv._hi!==i){ cv._hi=i; drawChart.apply(null,cv._args); }
     chartTip(cv, ev, i);
   };
-  cv.addEventListener('pointermove',move);
-  cv.addEventListener('pointerdown',move);
-  cv.addEventListener('pointerleave',function(ev){ if(ev.pointerType==='mouse') hideTip(); });
+  cv.addEventListener('pointerdown',function(ev){ down={x:ev.clientX,pan:cv._pan||0,moved:false}; try{ cv.setPointerCapture(ev.pointerId); }catch(e){} hover(ev); });
+  cv.addEventListener('pointermove',function(ev){
+    if(down && (ev.buttons||ev.pointerType==='touch')){
+      var dx=ev.clientX-down.x;
+      if(!down.moved && Math.abs(dx)<8){ hover(ev); return; }
+      down.moved=true; var G=cv._g; if(!G) return;
+      var np=down.pan-Math.round(dx/G.step);
+      if(np!==cv._pan){ cv._pan=np; cv._hi=null; if(CTIP) CTIP.style.display='none'; drawChart.apply(null,cv._args); }
+      return;
+    }
+    hover(ev);
+  });
+  var up=function(){ down=null; };
+  cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
+  cv.addEventListener('pointerleave',function(ev){ if(ev.pointerType==='mouse' && !down) hideTip(); });
 }
 function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
   cv._args=[cv, y, endYm, buyYm, sellYm, rawOverride];
@@ -422,7 +435,7 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
     var g0=cv.getContext('2d'); cv.width=(cv.clientWidth||600); cv.height=230; g0.fillStyle=cssv('--mut'); g0.font='13px -apple-system,sans-serif'; g0.textAlign='center'; g0.fillText('월봉 불러오는 중…',cv.width/2,115);
     return;
   }
-  var key=y+'|'+endYm+'|'+buyYm+'|'+sellYm; if(cv._key!==key){ cv._key=key; cv._hi=null; }
+  var key=y+'|'+endYm+'|'+buyYm+'|'+sellYm; if(cv._key!==key){ cv._key=key; cv._hi=null; cv._pan=0; }
   var W2=cv.clientWidth||600, H=230, dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr; cv.height=H*dpr; cv.style.height=H+'px';
   var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W2,H);
@@ -447,6 +460,9 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
   var bpos=posOf(buyYm);
   if(bpos>=0 && bpos-3<s0) s0=Math.max(0,bpos-3,e-83);
   var n=e-s0+1; if(n<2) return;
+  // 옆으로 드래그해서 판매 이후(현재까지)나 더 과거를 볼 수 있음: 기본(0)은 지금까지와 같은 화면
+  var lastI=yms.length-1, pan=Math.max(-s0,Math.min(lastI-e,cv._pan||0)); cv._pan=pan; var canPan=(s0>0)||(e<lastI);
+  s0+=pan; e+=pan;
   var lo=Infinity, hi=-Infinity;
   for(var i=s0;i<=e;i++){ lo=Math.min(lo,u.l[i]); hi=Math.max(hi,u.h[i]); if(ma[i]!=null){ lo=Math.min(lo,ma[i]); hi=Math.max(hi,ma[i]); } }
   var useLog = lo>0 && hi/lo>4;                                   // 가격이 4배 넘게 달라진 종목은 로그 눈금(초반이 납작해지지 않게)
@@ -512,6 +528,11 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
   };
   Object.keys(evB).forEach(function(k){ mark(k,true,evB[k]); });
   Object.keys(evS).forEach(function(k){ mark(k,false,evS[k]); });
+  if(canPan){                                                                   // 아래 가는 막대: 전체 기간 중 지금 보는 위치(옆으로 끌면 이동)
+    var tl=L, tw=W2-L-R, ty=H-3, tot=yms.length;
+    g.strokeStyle=line; g.lineWidth=3; g.lineCap='round'; g.beginPath(); g.moveTo(tl,ty); g.lineTo(tl+tw,ty); g.stroke();
+    g.strokeStyle=mut; g.beginPath(); g.moveTo(tl+tw*s0/tot,ty); g.lineTo(tl+tw*(e+1)/tot,ty); g.stroke(); g.lineCap='butt';
+  }
   cv._g={y:y,u:u,ma:ma,s0:s0,e:e,L:L,pw:pw,step:step,evB:evB,evS:evS};
   bindChart(cv);
 }
