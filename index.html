@@ -318,6 +318,39 @@ function bindChart(cv) {
 /* ───── 점수 설명: 기준값 + 지표별 가감 = 예측값 → 순위 → 점수 (나무) ───── */
 var W = null;
 fetch('tools/learn/result/weights.json').then(function (r) { return r.json(); }).then(function (w) { W = w; }).catch(function () {});
+fetch('tools/learn/result/gbm.json').then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (g) { G = g; }).catch(function () {});
+/* ── 트리 점수 모델(gbm.json): 있으면 이것으로, 없으면 옛 선형 모델(weights.json)로 ── */
+var G = null;
+function gbmX(fv) { return G.feats.map(function (p) { var v = fv[p.f]; if (v == null || isNaN(v)) return p.m; return Math.min(p.hi, Math.max(p.lo, v)); }); }
+function gbmEval(x) {
+  var s = G.init;
+  for (var i = 0; i < G.trees.length; i++) { var T = G.trees[i], nd = 0; while (T.f[nd] >= 0) nd = x[T.f[nd]] <= T.t[nd] ? T.l[nd] : T.r[nd]; s += T.v[nd]; }
+  return s;
+}
+// 항목별 몫(샤플리): 기준 종목(지표 중앙값)에서 시작해 항목을 하나씩 실제 값으로 바꿀 때 점수가 오른 만큼을, 바꾸는 순서를 섞어 평균. 합 = 최종 − 기준
+function gbmShapley(x0) {
+  var n = G.feats.length, ref = G.feats.map(function (p) { return p.med != null ? p.med : p.m; }), P = 300, idx = [], seed = 12345, phiS = [], phiR = [], i, k;
+  for (i = 0; i < n; i++) { idx.push(i); phiS.push(0); phiR.push(0); }
+  var rnd = function () { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  for (var t = 0; t < P; t++) {
+    for (i = n - 1; i > 0; i--) { k = Math.floor(rnd() * (i + 1)); var tmp = idx[i]; idx[i] = idx[k]; idx[k] = tmp; }
+    var cur = ref.slice(), r = G.base, sc = rawToScore(r);
+    for (i = 0; i < n; i++) {
+      var j = idx[i]; if (x0[j] === cur[j]) continue;
+      cur[j] = x0[j]; var r2 = gbmEval(cur), sc2 = rawToScore(r2);
+      phiR[j] += r2 - r; phiS[j] += sc2 - sc; r = r2; sc = sc2;
+    }
+  }
+  return { pts: phiS.map(function (v) { return v / P; }), raw: phiR.map(function (v) { return v / P; }) };
+}
+function gbmExplain(fv, light) {
+  var x = gbmX(fv), raw = gbmEval(x), out = { raw: raw, score: Math.round(rawToScore(raw)), base: rawToScore(G.base), b: G.base, items: [] };
+  if (light) return out;
+  var sh = gbmShapley(x);
+  G.feats.forEach(function (p, i) { out.items.push({ f: p.f, v: fv[p.f] == null || isNaN(fv[p.f]) ? p.m : fv[p.f], contrib: sh.raw[i], pts: sh.pts[i] }); });
+  return out;
+}
+
 
 var GROUPS = [
   ['추세·이평선', ['gap', 'gap_prev', 'slope1', 'slope3', 'slope6', 'ma10_ma24', 'c_ma12', 'c_ma60', 'ma_up6', 'above24', 'cross24', 'below', 'prev_fail']],
@@ -359,7 +392,7 @@ function featsOf(d, r) {
   var above = c.map(function (x, i) { return ma[i] == null ? null : x > ma[i]; });
   var i = n - 1, v = mon.map(function (x) { return x.vol || 0; });
   var vAvg = avg_(v.slice(i - 12, i)) || 1;
-  var v3 = avg_(v.slice(i - 2, i + 1)), v12 = avg_(v.slice(i - 14, i - 3)) || 1;
+  var v3 = avg_(v.slice(i - 2, i + 1)), v12 = avg_(v.slice(i - 14, i - 2)) || 1;
   var hi24 = Math.max.apply(null, mon.slice(i - 24, i).map(function (x) { return x.high; }));
   var hi36 = Math.max.apply(null, mon.slice(Math.max(0, i - 36), i).map(function (x) { return x.high; }));
   var lr = []; for (var k = i - 11; k <= i; k++) lr.push(Math.log(c[k] / c[k - 1]));
@@ -393,7 +426,7 @@ function featsOf(d, r) {
 }
 // 예측값 → 점수(0~100): 시트와 같은 표(pct)로 바꿈
 function rawToScore(raw) {
-  var pct = W.pct, lo = 0, hi = pct.length - 1;
+  var pct = G ? G.pct : W.pct, lo = 0, hi = pct.length - 1;
   while (lo < hi) { var mid = (lo + hi) >> 1; if (pct[mid] < raw) lo = mid + 1; else hi = mid; }
   return lo / (pct.length - 1) * 100;
 }
@@ -412,8 +445,9 @@ function shapleyPoints(contribs, b) {
 }
 // 지표별 가감과 최종 점수
 function explain(r) {
-  if (!W || !r['차트'] || !r['차트'].length) return null;
+  if ((!W && !G) || !r['차트'] || !r['차트'].length) return null;
   var f = featsOf(r['차트'], r); if (!f) return null;
+  if (G) return gbmExplain(f, false);
   var raw = W.b, items = [];
   W.feats.forEach(function (w) {
     var v = f[w.f]; if (v == null || isNaN(v)) v = w.m;

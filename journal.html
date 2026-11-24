@@ -577,7 +577,7 @@ var FNAME = {
   turn: '거래대금 크기', volat12: '12개월 변동성', us: '미국 종목', etf: 'ETF 여부', idx_above: '지수 이평 위', idx_slope: '지수 기울기', idx_ret12: '지수 12개월 수익'
 };
 function rawToScore(raw){
-  var pct=W.pct, lo=0, hi=pct.length-1;
+  var pct=G?G.pct:W.pct, lo=0, hi=pct.length-1;
   while(lo<hi){ var mid=(lo+hi)>>1; if(pct[mid]<raw) lo=mid+1; else hi=mid; }
   return lo/(pct.length-1)*100;
 }
@@ -593,9 +593,10 @@ function shapleyPoints(contribs, b){
   }
   return phi.map(function(x){ return x/P; });
 }
-function explainFeats(feats){
-  if(!W||!feats||!feats.length) return null;
+function explainFeats(feats, light){
+  if((!W&&!G)||!feats||!feats.length) return null;
   var fv={}; feats.forEach(function(x){ fv[x[0]]=x[1]; });
+  if(G) return gbmExplain(fv, light);
   var raw=W.b, items=[];
   W.feats.forEach(function(w){
     var v=fv[w.f]; if(v==null||isNaN(v)) v=w.m;
@@ -604,10 +605,43 @@ function explainFeats(feats){
   });
   return {raw:raw, score:Math.round(rawToScore(raw)), base:rawToScore(W.b), b:W.b, items:items};
 }
+
+/* ── 트리 점수 모델(gbm.json): 있으면 이것으로, 없으면 옛 선형 모델(weights.json)로 ── */
+var G = null;
+function gbmX(fv) { return G.feats.map(function (p) { var v = fv[p.f]; if (v == null || isNaN(v)) return p.m; return Math.min(p.hi, Math.max(p.lo, v)); }); }
+function gbmEval(x) {
+  var s = G.init;
+  for (var i = 0; i < G.trees.length; i++) { var T = G.trees[i], nd = 0; while (T.f[nd] >= 0) nd = x[T.f[nd]] <= T.t[nd] ? T.l[nd] : T.r[nd]; s += T.v[nd]; }
+  return s;
+}
+// 항목별 몫(샤플리): 기준 종목(지표 중앙값)에서 시작해 항목을 하나씩 실제 값으로 바꿀 때 점수가 오른 만큼을, 바꾸는 순서를 섞어 평균. 합 = 최종 − 기준
+function gbmShapley(x0) {
+  var n = G.feats.length, ref = G.feats.map(function (p) { return p.med != null ? p.med : p.m; }), P = 300, idx = [], seed = 12345, phiS = [], phiR = [], i, k;
+  for (i = 0; i < n; i++) { idx.push(i); phiS.push(0); phiR.push(0); }
+  var rnd = function () { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  for (var t = 0; t < P; t++) {
+    for (i = n - 1; i > 0; i--) { k = Math.floor(rnd() * (i + 1)); var tmp = idx[i]; idx[i] = idx[k]; idx[k] = tmp; }
+    var cur = ref.slice(), r = G.base, sc = rawToScore(r);
+    for (i = 0; i < n; i++) {
+      var j = idx[i]; if (x0[j] === cur[j]) continue;
+      cur[j] = x0[j]; var r2 = gbmEval(cur), sc2 = rawToScore(r2);
+      phiR[j] += r2 - r; phiS[j] += sc2 - sc; r = r2; sc = sc2;
+    }
+  }
+  return { pts: phiS.map(function (v) { return v / P; }), raw: phiR.map(function (v) { return v / P; }) };
+}
+function gbmExplain(fv, light) {
+  var x = gbmX(fv), raw = gbmEval(x), out = { raw: raw, score: Math.round(rawToScore(raw)), base: rawToScore(G.base), b: G.base, items: [] };
+  if (light) return out;
+  var sh = gbmShapley(x);
+  G.feats.forEach(function (p, i) { out.items.push({ f: p.f, v: fv[p.f] == null || isNaN(fv[p.f]) ? p.m : fv[p.f], contrib: sh.raw[i], pts: sh.pts[i] }); });
+  return out;
+}
+
 var SC_CACHE={};
 function scoreOf(y,buyYm){                 // 매수 시점 지표를 최신 모델로 계산한 점수(0~100). 없으면 null
   var key=y+'|'+buyYm; if(key in SC_CACHE) return SC_CACHE[key];
-  var t=findFeats({y:y,buyYm:buyYm}), e=t?explainFeats(t.feats):null;
+  var t=findFeats({y:y,buyYm:buyYm}), e=t?explainFeats(t.feats,true):null;
   if(e) SC_CACHE[key]=e.score; return e?e.score:null;
 }
 function fmtV(f,v){
@@ -636,7 +670,7 @@ function featsFromChart(d, r) {
   var above = c.map(function (x, i) { return ma[i] == null ? null : x > ma[i]; });
   var i = n - 1, v = mon.map(function (x) { return x.vol || 0; });
   var vAvg = avgQ_(v.slice(i - 12, i)) || 1;
-  var v3 = avgQ_(v.slice(i - 2, i + 1)), v12 = avgQ_(v.slice(i - 14, i - 3)) || 1;
+  var v3 = avgQ_(v.slice(i - 2, i + 1)), v12 = avgQ_(v.slice(i - 14, i - 2)) || 1;
   var hi24 = Math.max.apply(null, mon.slice(i - 24, i).map(function (x) { return x.high; }));
   var hi36 = Math.max.apply(null, mon.slice(Math.max(0, i - 36), i).map(function (x) { return x.high; }));
   var lr = []; for (var k = i - 11; k <= i; k++) lr.push(Math.log(c[k] / c[k - 1]));
@@ -674,8 +708,8 @@ function showScoreTree(y,buyYm,name,oldPred,live){
   var t=live?null:findFeats({y:y,buyYm:buyYm}), e=live?explainFeats(live.feats):(t?explainFeats(t.feats):null);
   if(!e){ box.innerHTML='<h2 style="margin:0 0 6px;font-size:15px">'+esc(name)+'</h2><div class="sc-sub">'+(W?'이 매수의 지표 데이터가 없습니다.':'점수 모델을 아직 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요.')+'</div>'; modal.classList.add('open'); return; }
   var byF={}; e.items.forEach(function(x){ byF[x.f]=x; });
-  var pts=shapleyPoints(e.items.map(function(x){ return x.contrib; }), e.b);
-  e.items.forEach(function(x,i){ x.pts=pts[i]; });
+  if(!G){ var pts=shapleyPoints(e.items.map(function(x){ return x.contrib; }), e.b);
+    e.items.forEach(function(x,i){ x.pts=pts[i]; }); }
   var gs=GROUPS.map(function(g){
     var its=g[1].map(function(k){ return byF[k]; }).filter(Boolean).sort(function(a,b){ return Math.abs(b.pts)-Math.abs(a.pts); });
     return {n:g[0],items:its,sum:its.reduce(function(t,x){ return t+x.pts; },0)};
@@ -1250,6 +1284,7 @@ function renderAll(){
 }
 
 fetch('tools/learn/result/weights.json').then(function(r){ return r.json(); }).then(function(w){ W=w; if(DATA) renderAll(); }).catch(function(){});
+fetch('tools/learn/result/gbm.json').then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(g){ G=g; SC_CACHE={}; if(DATA) renderAll(); }).catch(function(){});
 fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).then(function(l){ LED=l; LED0=l; FIRST_YM=Object.keys(l.months).sort()[0]; START_YM=FIRST_YM; START_Y=FIRST_YM.slice(0,4); calcRets(); PLAN_YM=nextYmOf(Object.keys(l.months).sort().pop()); }).catch(function(){})
 .then(function(){ return fetch('tools/learn/result/trades.json'); }).then(function(r){ return r.json(); }).then(function(d){
   DATA=d; SNAP0=d.snapshots;

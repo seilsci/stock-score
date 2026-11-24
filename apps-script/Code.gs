@@ -258,6 +258,18 @@ function parseYahooMonthly_(txt) {
 
 /* ───────── 점수 계산 (weights.json 기반, GitHub raw에서 받음) ───────── */
 var WEIGHTS_URL = 'https://raw.githubusercontent.com/seilsci/stock-score/main/tools/learn/result/weights.json';
+var GBM_URL = 'https://raw.githubusercontent.com/seilsci/stock-score/main/tools/learn/result/gbm.json';
+var GBM = null, GBM_TRIED = false;
+// 트리 점수 모델(gbm.json). 올라와 있으면 이것으로 점수를 내고, 못 받으면 아래 선형 모델(weights.json)로 계산
+function getGbm_() {
+  if (GBM || GBM_TRIED) return GBM;
+  GBM_TRIED = true;
+  try {
+    var r = UrlFetchApp.fetch(GBM_URL, { headers: CFG.UA, muteHttpExceptions: true });
+    if (r.getResponseCode() === 200) GBM = JSON.parse(r.getContentText());
+  } catch (e) { GBM = null; }
+  return GBM;
+}
 var WEIGHTS = null;
 function getWeights_() {
   if (WEIGHTS) return WEIGHTS;
@@ -268,15 +280,15 @@ function getWeights_() {
 }
 // 월봉 배열 → 학습 지표 → 점수 (0~100)
 function scoreMonthly_(mon, s) {
-  var W = getWeights_();
-  if (!W || mon.length < 25) return '';
+  var W = getWeights_(), GM = getGbm_();
+  if ((!W && !GM) || mon.length < 25) return '';
   var n = mon.length, c = mon.map(function (x) { return x.close; });
   var ma = c.map(function (x, i) { return i >= 9 ? avg_(c.slice(i - 9, i + 1)) : null; });
   var above = c.map(function (x, i) { return ma[i] == null ? null : x > ma[i]; });
   var i = n - 1;
   var v = mon.map(function (x) { return x.vol || 0; });
   var vAvg = avg_(v.slice(i - 12, i)) || 1;
-  var v3 = avg_(v.slice(i - 2, i + 1)), v12 = avg_(v.slice(i - 14, i - 3)) || 1;
+  var v3 = avg_(v.slice(i - 2, i + 1)), v12 = avg_(v.slice(i - 14, i - 2)) || 1;
   var hi24 = Math.max.apply(null, mon.slice(i - 24, i).map(function (x) { return x.high; }));
   var hi36 = Math.max.apply(null, mon.slice(Math.max(0, i - 36), i).map(function (x) { return x.high; }));
   var lr = []; for (var k = i - 11; k <= i; k++) lr.push(Math.log(c[k] / c[k - 1]));
@@ -308,16 +320,29 @@ function scoreMonthly_(mon, s) {
     vol_max36: last.vol / (Math.max.apply(null, v.slice(Math.max(0, i - 36), i)) || 1),
     prev_fail: pf, ma_up6: mu, close_pos: (c[i] - last.low) / hl, gap_prev: c[i - 1] / ma[i - 1] - 1
   };
-  // 표준화 + 가중 합 → 점수
-  var raw = W.b;
-  W.feats.forEach(function (f) {
-    var v = feats[f.f];
-    if (v == null || isNaN(v)) v = f.m;
-    var cl = Math.min(f.hi, Math.max(f.lo, v));
-    raw += ((cl - f.m) / f.sd) * f.w;
-  });
+  // 트리 모델: 지표를 모델 범위로 자르고(빈 값은 평균) 모든 나무의 값을 더함 → 점수(분위)
+  var raw, pct;
+  if (GM) {
+    var x = GM.feats.map(function (p) { var v = feats[p.f]; if (v == null || isNaN(v)) return p.m; return Math.min(p.hi, Math.max(p.lo, v)); });
+    raw = GM.init;
+    for (var ti = 0; ti < GM.trees.length; ti++) {
+      var T = GM.trees[ti], nd = 0;
+      while (T.f[nd] >= 0) nd = x[T.f[nd]] <= T.t[nd] ? T.l[nd] : T.r[nd];
+      raw += T.v[nd];
+    }
+    pct = GM.pct;
+  } else {
+    // 선형 모델: 표준화 + 가중 합
+    raw = W.b;
+    W.feats.forEach(function (f) {
+      var v = feats[f.f];
+      if (v == null || isNaN(v)) v = f.m;
+      var cl = Math.min(f.hi, Math.max(f.lo, v));
+      raw += ((cl - f.m) / f.sd) * f.w;
+    });
+    pct = W.pct;
+  }
   // raw → 0~100 (pct 배열로 백분위 변환)
-  var pct = W.pct;
   if (!pct || !pct.length) return '';
   var lo = 0, hi = pct.length - 1;
   while (lo < hi) { var mid = (lo + hi) >> 1; if (pct[mid] < raw) lo = mid + 1; else hi = mid; }

@@ -4,6 +4,7 @@
 const { fs, path, DATA, RAW, progress } = require('./common');
 const { prep, z, fitRidge, score } = require('./ml');
 const { load, trainSet, trainSetL, modelDefs } = require('./data');
+const GBM = require('./gbm');
 const { F, L: ALL } = load(), fi = n => F.indexOf(n);
 const { MODELS: ALLM } = modelDefs(F);
 const MODELS = ALLM.filter(M => 'ABEF'.includes(M.n[0]));
@@ -769,6 +770,19 @@ if (process.env.STAGE3 !== '0') {
     });
     out.forEach(a => a.sort((x, y) => y.s - x.s)); return out;
   }
+  // 경사 부스팅 트리(gbm.js, 순수 JS). 지표 = 가격 지표에서 지수 3개(idx_*)를 뺀 것(사이트에서 0으로 두는 항목이라 모델이 쓰면 안 됨)
+  const NOIDX = PRICE.filter(j => !F[j].startsWith('idx_'));
+  function walkG(spec) {
+    const labs = labsOf(spec.lab), out = new Map();
+    years.forEach(Y => {
+      const tr0 = trainSetL(ALL, labs, Y, spec.minAge || 12), te = ALL.filter(r => Math.floor(r.ym / 100) === Y);
+      if (tr0.length < 500 || !te.length) return;
+      const tr = TF[spec.tf || 'raw'](tr0); if (tr.length < 200) return;
+      const ms = []; for (let sd = 1; sd <= (spec.seeds || 1); sd++) ms.push(GBM.fit(tr.map(r => r.x), tr.map(r => r.t), spec.cols || NOIDX, { ...(spec.opt || {}), seed: sd }));
+      te.forEach(r => { let v = 0; ms.forEach(m => { v += GBM.predict(m, r.x); }); const a = out.get(r.ym) || []; a.push({ r, s: v / ms.length }); out.set(r.ym, a); });
+    });
+    out.forEach(a => a.sort((x, y) => y.s - x.s)); return out;
+  }
   const pctRank = (a) => { const n = a.length, o = new Map(); a.forEach((e, i) => o.set(e.r, (n - i - 0.5) / n)); return o; };   // 점수 높은 순 배열 → 순위 백분위(높을수록 좋음)
   function mergeByRank(maps, weights) {                              // 여러 점수를 월별 순위 백분위로 합침(시장별 모델·모델 섞기)
     const out = new Map(), yms = new Set(); maps.forEach(m => m.forEach((_, ym) => yms.add(ym)));
@@ -846,6 +860,13 @@ if (process.env.STAGE3 !== '0') {
     ['6 시장별로 따로 학습', 'fd + 그달 평균 빼기, 한국·미국 따로', () => splitMarkets(base({ lab: 'fd', tf: 'demean' }))],
     ['7 모델 섞기', 'orig + fd 순위 평균', () => mergeByRank([walk(base({ lab: 'orig' })), walk(base({ lab: 'fd' }))])],
     ['7 모델 섞기', 'fd raw + demean + rank 순위 평균', () => mergeByRank([walk(base({ lab: 'fd' })), walk(base({ lab: 'fd', tf: 'demean' })), walk(base({ lab: 'fd', tf: 'rank' }))])],
+    ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · fd 정답 (깊이3·300그루)', () => walkG({ lab: 'fd' })],
+    ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · fd 정답, 씨앗 3개 평균', () => walkG({ lab: 'fd', seeds: 3 })],
+    ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · 기존 정답(첫 10이평 이탈까지)', () => walkG({ lab: 'orig' })],
+    ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · fd 정답 + 그달 평균 빼기', () => walkG({ lab: 'fd', tf: 'demean' })],
+    ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · fd 정답, 깊이4·600그루', () => walkG({ lab: 'fd', opt: { depth: 4, rounds: 600 } })],
+    ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · fd 정답, 깊이2·400그루', () => walkG({ lab: 'fd', opt: { depth: 2, rounds: 400 } })],
+    ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · 월말 진입 정답(me)', () => walkG({ lab: 'me' })],
     ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 20% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.2) })],
     ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 35% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.35) })]
   ];
