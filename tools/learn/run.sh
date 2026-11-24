@@ -7,6 +7,8 @@ cd "$(dirname "$0")"
 YES=1   # 기본: 끝나면 묻지 않고 결과를 올림(사용자 지시). 올리지 않으려면 --no-push
 for a in "$@"; do [ "$a" = "--no-push" ] && YES=0; done
 command -v node >/dev/null || { echo "node가 없어요. https://nodejs.org 에서 LTS 설치 후 다시"; exit 1; }
+# 종목 범위: 현재 시총 순 목록 대신 넓은 목록(한국 전 종목 + 미국 3000) + 매달 그 시점 거래대금 상위(한국 500·미국 500)만 인정. 예전 방식: WIDE=0 LIQ_KR=0 LIQ_US=0 tools/learn/run.sh
+export WIDE=${WIDE:-1} LIQ_KR=${LIQ_KR:-500} LIQ_US=${LIQ_US:-500}
 D=${DATA:-data}; mkdir -p "$D"
 export T0=$(date +%s)
 LOG=$D/run.log; : > $LOG

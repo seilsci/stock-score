@@ -29,6 +29,26 @@ const F0 = ['gap', 'slope1', 'slope3', 'cross24', 'below', 'above24', 'c_ma12', 
            // 2차 추가 지표
            'turn', 'up6', 'slope6', 'c_ma60', 'hi12_break', 'vol_max36', 'prev_fail', 'ma_up6', 'close_pos', 'gap_prev'];
 const F = F0.concat(MF.map(k => 'm_' + k));
+// 그 시점 거래대금 순위 기준 종목 범위: 매달 시장별(한국·미국)로 거래대금(turn, 직전 12개월 평균 거래량×종가) 상위 N개만 인정. 0이면 끄고 목록 전체.
+//   현재 시총으로 고른 목록 대신 "그때 거래가 활발했던 종목"을 쓰기 위한 것(LIQ_KR·LIQ_US 환경변수, run.sh 기본 500)
+const LIQ = { KR: +process.env.LIQ_KR || 0, US: +process.env.LIQ_US || 0 };
+const TH = new Map();                                                     // 'ym|KR' → 그 달 N번째 turn 값(이보다 작으면 제외)
+if (LIQ.KR || LIQ.US) {
+  const byKey = new Map(); let np = 0;
+  for (const s of list) {
+    if (++np % 200 === 0) progress('거래대금 순위', np / list.length);
+    const b0 = load(s.y); if (!b0) continue;
+    const b = b0.filter(x => x[4] > 0), vv = b.map(x => x[5]), g = s.mk === 'US' ? 'US' : 'KR';
+    for (let i = 13; i < b.length; i++) {
+      if (!b[i][5]) continue;
+      const t = Math.log10(avg(vv, i - 12, i - 1) * b[i][4] + 1), key = b[i][0] + '|' + g;
+      (byKey.get(key) || byKey.set(key, []).get(key)).push(t);
+    }
+  }
+  for (const [key, a] of byKey) { const N = LIQ[key.split('|')[1]]; if (N) { a.sort((x, y) => y - x); TH.set(key, a[Math.min(N, a.length) - 1]); } }
+  process.stdout.write('\n');
+}
+let nLiqSkip = 0;
 const rows = [];
 let nEv = 0, ns = 0;
 for (const s of list) {
@@ -88,6 +108,7 @@ for (const s of list) {
     // 2차 추가 지표
     const vv = b.map(x => x[5]);
     f.turn = Math.log10(avg(vv, i - 12, i - 1) * c[i] + 1);                  // 거래대금 크기(종목 규모 대신)
+    { const th = TH.get(ym + '|' + (s.mk === 'US' ? 'US' : 'KR')); if (th !== undefined && f.turn < th) { nLiqSkip++; continue; } }   // 그달 거래대금 순위 밖
     let up = 0; for (let k = i - 5; k <= i; k++) if (c[k] > c[k - 1]) up++; f.up6 = up;
     f.slope6 = ma[i] / ma[i - 6] - 1;
     f.c_ma60 = i >= 59 ? c[i] / avg(c, i - 59, i) - 1 : '';
@@ -109,4 +130,5 @@ for (const s of list) {
 fs.writeFileSync(path.join(DATA, 'events.csv'), ['y,ym,label,hold,exitret,tgt,exitoff,' + MK.map(k => 'mk' + k).join(',') + ',' + F.join(',')].concat(rows).join('\n'));
 const T = rows.map(r => r.split(',')).filter(p => p[5] !== ''), win = T.filter(p => +p[5] > 0);
 progress('신호·지표 만들기', 1);
+if (LIQ.KR || LIQ.US) console.log(`\n거래대금 기준 범위: 한국 상위 ${LIQ.KR || '전체'}·미국 상위 ${LIQ.US || '전체'} (매달), 순위 밖이라 뺀 신호 ${nLiqSkip}건`);
 console.log(`\n매수 신호 ${nEv}건 (수익 확정 ${T.length}건, 그중 수익 ${win.length}건 = ${(win.length / T.length * 100).toFixed(1)}%)`);
