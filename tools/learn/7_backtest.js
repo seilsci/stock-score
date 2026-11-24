@@ -849,6 +849,21 @@ if (process.env.STAGE3 !== '0') {
     ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 20% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.2) })],
     ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 35% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.35) })]
   ];
+  // 외부 모델 점수(파이썬 LightGBM 등이 만든 data/ext_scores.csv: events.csv와 같은 순서, 열 p_* = 해마다 그 전까지 알던 것으로 학습한 점수). 같은 시뮬레이션·같은 평가로 비교
+  const extFile = process.env.EXT_SCORES || path.join(DATA, 'ext_scores.csv');
+  if (fs.existsSync(extFile)) {
+    const lines = fs.readFileSync(extFile, 'utf8').trim().split('\n'), head = lines[0].split(','), rowsE = lines.slice(1).map(l => l.split(','));
+    const iym = head.indexOf('ym');
+    if (rowsE.length === ALL.length && rowsE.every((p, i) => +p[iym] === ALL[i].ym)) {
+      head.forEach((h, c) => {
+        if (!h.startsWith('p_')) return;
+        const m = new Map();
+        rowsE.forEach((p, i) => { const v = p[c]; if (v === '' || v === undefined) return; const a = m.get(ALL[i].ym) || []; a.push({ r: ALL[i], s: +v }); m.set(ALL[i].ym, a); });
+        m.forEach(a => a.sort((x, y) => y.s - x.s));
+        SPECS.push(['9 외부 모델 (파이썬 LightGBM)', h.slice(2), () => m]);
+      });
+    } else console.log('\next_scores.csv가 events.csv와 안 맞아 건너뜀');
+  }
   SPECS.forEach(([g, name, mk], i) => {
     progress('3단계 실험', i / SPECS.length);
     const res = mk(), map = res instanceof Map ? res : res.map, skip = res instanceof Map ? null : res.skip;
