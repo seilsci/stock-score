@@ -48,61 +48,63 @@ function setup() {
 
 /* ───────── 한 번에 갱신: 이 함수 하나만 실행하면 한국·미국 둘 다 갱신 ───────── */
 function updateAll() {
+  var t0 = new Date();
   updateKR();
   updateUS();
+  log_('updateAll', '합계 ' + Math.round((new Date() - t0) / 1000) + '초');
+}
+
+// 단계별 걸린 시간 기록(로그 탭에 한 줄로 남김) — 어디서 시간이 걸리는지 보려는 용도
+function newTimer_() {
+  var start = new Date(), parts = [];
+  return {
+    lap: function (label, t0) { parts.push(label + ' ' + ((new Date() - t0) / 1000).toFixed(1)); },
+    text: function () { return '[' + parts.join(' / ') + ' / 총 ' + ((new Date() - start) / 1000).toFixed(1) + '초]'; }
+  };
 }
 
 /* ───────── 한국 ───────── */
 function updateKR() {
-  var t0 = Date.now();
+  var t0 = new Date(), T = newTimer_(), t;
+  t = new Date();
   var list = naverTop_('KOSPI', CFG.KOSPI_N).concat(naverTop_('KOSDAQ', CFG.KOSDAQ_N));
+  T.lap('목록', t);
   // 월봉은 야후 먼저: 15:30 정규장 종가. 네이버 가격엔 16:00~18:00 시간외 단일가가 섞임
+  t = new Date();
   var bodies = fetchAll_(list.map(function (s) {
     return 'https://query1.finance.yahoo.com/v8/finance/chart/' + s.code + (s.market === 'KOSPI' ? '.KS' : '.KQ') +
            '?range=' + (CFG.CHART_N + 2) + 'mo&interval=1mo';
   }));
+  T.lap('야후받기', t);
+  t = new Date();
   var rows = [], retry = [];
   list.forEach(function (s, i) {
     var mon = parseYahooMonthly_(bodies[i]);
     if (mon && mon.length > CFG.MONTHS) rows.push(makeRow_(s, mon)); else retry.push(s);
   });
+  T.lap('계산·점수', t);
   // 야후에 없거나 막히면 네이버 월봉
   var fail = 0;
   if (retry.length) {
+    t = new Date();
     var b2 = fetchAll_(retry.map(function (s) {
       return 'https://fchart.stock.naver.com/sise.nhn?symbol=' + s.code +
              '&timeframe=month&count=' + (CFG.CHART_N + 2) + '&requestType=0';
     }));
+    T.lap('네이버대체(' + retry.length + '개)', t);
+    t = new Date();
     retry.forEach(function (s, i) {
       var mon = parseNaverMonthly_(b2[i]);
       if (mon) rows.push(makeRow_(s, mon)); else fail++;
     });
+    T.lap('대체계산', t);
   }
   rows.sort(function (a, b) { return b[4] - a[4]; });
+  t = new Date();
   writeRows_('한국', rows);
+  T.lap('시트쓰기', t);
   log_('updateKR', rows.length + '종목, 네이버 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
-       Math.round((Date.now() - t0) / 1000) + '초');
-}
-
-// 제외 종목: 채권·금리(CD·KOFR)·머니마켓·단기채 등 가격이 거의 안 움직이는 상품, 레버리지·인버스(음의 복리)
-// tools/learn/1_lists.js의 EXCLUDE와 같은 규칙으로 유지할 것
-var EXCLUDE_RE = /채권|국채|통안채|금리|머니마켓|레버리지|인버스|곱버스|\b[23]X\b/;
-
-function naverTop_(market, n) {
-  var out = [];
-  for (var page = 1; out.length < n; page++) {
-    var url = 'https://m.stock.naver.com/api/stocks/marketValue/' + market +
-              '?page=' + page + '&pageSize=100';
-    var d = JSON.parse(UrlFetchApp.fetch(url, { headers: CFG.UA }).getContentText());
-    if (!d.stocks || !d.stocks.length) break;
-    d.stocks.forEach(function (x) {
-      if (out.length < n && !EXCLUDE_RE.test(x.stockName)) out.push({
-        market: market, code: x.itemCode, name: x.stockName, type: x.stockEndType,
-        cap: num_(x.marketValue), capUnit: '억원'
-      });
-    });
-  }
-  return out;
+       Math.round((Date.now() - t0) / 1000) + '초 ' + T.text());
 }
 
 // <item data="20261123|시가|고가|저가|종가|거래량" />
@@ -120,34 +122,46 @@ function parseNaverMonthly_(xml) {
 /* ───────── 미국 ───────── */
 // 네이버 해외주식(나스닥·뉴욕·아멕스) 시총 순위 → 네이버 월봉(막히면 야후 월봉)
 function updateUS() {
-  var t0 = Date.now();
+  var t0 = new Date(), T = newTimer_(), t;
+  t = new Date();
   var list = naverUSTop_(CFG.US_N);
+  T.lap('목록', t);
   var now = new Date(), y = now.getFullYear(), m = now.getMonth() + 1;
   var start = (y - 4) + pad_(m) + '010000', end = (y + 1) + '01010000';
+  t = new Date();
   var bodies = fetchAll_(list.map(function (s) {
     return 'https://api.stock.naver.com/chart/foreign/item/' + encodeURIComponent(s.reuters) +
            '/month?startDateTime=' + start + '&endDateTime=' + end;
   }));
+  T.lap('네이버받기', t);
+  t = new Date();
   var rows = [], retry = [];
   list.forEach(function (s, i) {
     var mon = parseNaverUSMonthly_(bodies[i], s.date);
     if (mon) rows.push(makeRow_(s, mon)); else retry.push(s);
   });
+  T.lap('계산·점수', t);
   var fail = 0;
   if (retry.length) {
+    t = new Date();
     var b2 = fetchAll_(retry.map(function (s) {
       return 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(s.yahoo) +
              '?range=' + (CFG.CHART_N + 2) + 'mo&interval=1mo';
     }));
+    T.lap('야후대체(' + retry.length + '개)', t);
+    t = new Date();
     retry.forEach(function (s, i) {
       var mon = parseYahooMonthly_(b2[i]);
       if (mon) rows.push(makeRow_(s, mon)); else fail++;
     });
+    T.lap('대체계산', t);
   }
   rows.sort(function (a, b) { return b[4] - a[4]; });
+  t = new Date();
   writeRows_('미국', rows);
+  T.lap('시트쓰기', t);
   log_('updateUS', rows.length + '종목, 야후 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
-       Math.round((Date.now() - t0) / 1000) + '초');
+       Math.round((Date.now() - t0) / 1000) + '초 ' + T.text());
 }
 
 function naverUSTop_(n) {
