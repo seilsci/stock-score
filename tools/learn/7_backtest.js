@@ -13,6 +13,7 @@ const C0 = { kr: { commission: 0, sell_tax: {}, etf_exempt: true }, us: { commis
 const START_Y = +process.env.BT_START || 2012;                                // 첫 보고 연도(첫 입금은 그 전해 12월 말)
 const SEEDS = +process.env.SEEDS || 30;
 const clipT = t => Math.max(-2, Math.min(3, t));
+const avg = (a, s, e) => { let t = 0; for (let k = s; k <= e; k++) t += a[k]; return t / (e - s + 1); };
 const mi = ym => Math.floor(ym / 100) * 12 + ym % 100, ymOf = k => Math.floor((k - 1) / 12) * 100 + (k - 1) % 12 + 1;
 const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1;
 const START = mi((START_Y - 1) * 100 + 12), END = mi(CUR) - 1;
@@ -56,6 +57,48 @@ years.forEach((Y, yi) => {
 });
 scored.forEach(m => m.forEach(a => a.sort((x, y) => y.s - x.s)));
 
+// ── 매도 유예 모델: 매도 신호(종가<10이평) 달의 가격 지표 → 3개월 뒤 수익 예측 → 높으면 유예
+// 매도 신호 이벤트를 원시 월봉에서 직접 생성 (종가·이평만으로 계산 가능한 가격 지표 사용)
+const sellEvents = [];
+const listAll = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
+for (const s of listAll) {
+  const o = px(s.y); if (o.m.size < 25) continue;
+  const ks = [...o.m.keys()].sort((a, b) => a - b), cs = ks.map(k => o.m.get(k)), n = cs.length;
+  const ma = cs.map((_, i) => i >= 9 ? avg(cs, i - 9, i) : null);
+  const above = cs.map((c, i) => ma[i] == null ? null : c > ma[i]);
+  const ma12 = cs.map((_, i) => i >= 11 ? avg(cs, i - 11, i) : null);
+  const ma24 = cs.map((_, i) => i >= 23 ? avg(cs, i - 23, i) : null);
+  for (let i = 25; i < n; i++) {
+    const ym = ymOf(ks[i]);
+    if (ym < 200812) continue;
+    if (above[i - 1] !== true || above[i] !== false) continue;      // 매도 신호: 10이평 아래로 전환
+    if (i + 3 >= n) continue;                                       // 3개월 뒤 수익 필요
+    const fwd = Math.log(cs[i + 3] / cs[i]);                        // 유예했을 때 3개월 뒤 수익
+    let below = 0; for (let k = i - 1; k >= 0 && above[k] === false; k--) below++;
+    let up = 0; for (let k = i - 5; k <= i; k++) if (k > 0 && cs[k] > cs[k - 1]) up++;
+    const lr = []; for (let k = i - 11; k <= i; k++) lr.push(Math.log(cs[k] / cs[k - 1]));
+    const m = avg(lr, 0, 11), volat = Math.sqrt(lr.reduce((t, x) => t + (x - m) ** 2, 0) / 12);
+    const hi36 = Math.max(...cs.slice(Math.max(0, i - 36), i));
+    sellEvents.push({ ym, y: s.y, t: fwd, x: [
+      cs[i] / ma[i] - 1, ma[i] / ma[i - 1] - 1, ma[i] / ma[i - 3] - 1, ma[i] / ma[i - 6] - 1,
+      cs[i] / cs[i - 1] - 1, cs[i] / cs[i - 3] - 1, cs[i] / cs[Math.max(0, i - 12)] - 1,
+      cs[i] / hi36 - 1, ma12[i] ? cs[i] / ma12[i] - 1 : 0, ma24[i] ? ma[i] / ma24[i] - 1 : 0,
+      volat, below, up
+    ]});
+  }
+}
+// 시간 순서 검증: 각 연도마다 그 전까지만 학습 → 그해 매도 신호에 유예 점수
+const sellYrs = [...new Set(sellEvents.map(r => Math.floor(r.ym / 100)))].sort();
+const sellScored = new Map();  // key "ym_y" → 유예 점수(높을수록 유예 가치 ↑)
+const SF_IDX = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+for (const Y of sellYrs) {
+  if (Y < sellYrs[0] + 3) continue;
+  const tr = sellEvents.filter(r => Math.floor(r.ym / 100) < Y);
+  const te = sellEvents.filter(r => Math.floor(r.ym / 100) === Y);
+  if (tr.length < 300 || !te.length) continue;
+  const P = prep(tr, SF_IDX), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => clipT(r.t)), 1000);
+  te.forEach(r => sellScored.set(r.ym + '_' + r.y, score(w, z(r, P))));
+}
 const kA = MODELS.findIndex(M => M.n[0] === 'A');
 // 유동성 필터: 각 달 신호 중 turn 하위 pct 비율 제외 후 점수 상위 N
 const pickLiqA = (pct, N) => ym => {
@@ -112,6 +155,20 @@ function simulate(pickFn, N, C, opt = {}) {
           else h.graceCnt = 0;
         }
       }
+      // ML 조건부 유예: 매도 신호 달에 sellScored 점수 ≥ 임계값이면 최대 opt.graceML달 유예
+      if (opt.graceML != null) {
+        const ma = ma10(h.px, k);
+        if (ma && h.last < ma) {                          // 10이평 아래 → 매도 후보
+          if (h.mlGrace == null) {                        // 처음 이탈
+            const sc = sellScored.get(ymOf(k) + '_' + h.y);
+            h.mlGrace = (sc != null && sc > 0) ? 1 : 0;  // 점수 양수면 유예
+          } else if (h.mlGrace > 0 && h.mlGrace < opt.graceML) {
+            h.mlGrace++;                                  // 계속 유예
+          } else {
+            cash += sellCash(h, k); continue;             // 유예 소진 → 매도
+          }
+        } else { h.mlGrace = null; }                      // 이평 위로 복귀 → 카운터 초기화
+      }
       keep.push(h);
     }
     holds = keep;
@@ -129,7 +186,7 @@ function simulate(pickFn, N, C, opt = {}) {
       for (const { r } of picks) {
         const o = px(r.y), p = o.m.get(k); if (p === undefined) continue;
         const us = r.x[US] === 1, a = Math.min(per, cash), fee = us ? usFee : C.kr.commission;
-        holds.push({ px: o, us, etf: r.x[ETF] === 1, last: p, basis: a, sh: a * (1 - fee) / (p * (us ? fx(k) : 1)), sellK: r.exoff === null ? null : mi(r.ym) + r.exoff });
+        holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh: a * (1 - fee) / (p * (us ? fx(k) : 1)), sellK: r.exoff === null ? null : mi(r.ym) + r.exoff });
         cash -= a;
       }
     } else if (holds.length && cash > 0) {
@@ -262,6 +319,17 @@ for (const g of GRACE_VALS) {
   progress('매도유예 실험', graceStep++ / graceTotal);
   R.push({ n: `A4 tp2x트레일+유예${g}달`, s: summ(simulate(A4pk, 4, C1, { tpTrail: 2, grace: g })) });
 }
+// ML 조건부 유예 실험: A4·A4 tp2x트레일 × 유예1달/2달
+const ML_GRACE_VALS = [1, 2];
+const mlGraceTotal = ML_GRACE_VALS.length * 2;
+let mlGraceStep = 0;
+for (const g of ML_GRACE_VALS) {
+  progress('ML유예 실험', mlGraceStep++ / mlGraceTotal);
+  R.push({ n: `A4 ML유예${g}달`, s: summ(simulate(A4pk, 4, C1, { graceML: g })) });
+  progress('ML유예 실험', mlGraceStep++ / mlGraceTotal);
+  R.push({ n: `A4 tp2x트레일+ML유예${g}달`, s: summ(simulate(A4pk, 4, C1, { tpTrail: 2, graceML: g })) });
+}
+progress('ML유예 실험', 1); process.stdout.write('\n');
 progress('매도유예 실험', 1); process.stdout.write('\n');
 progress('익절 실험', 1); process.stdout.write('\n');
 progress('백테스트', 1); process.stdout.write('\n');
