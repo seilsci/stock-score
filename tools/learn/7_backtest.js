@@ -197,6 +197,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       keep.push(h);
     }
     holds = keep;
+    cash += dep; deposits++;                            // 입금을 먼저 받는다: 12월에는 이 돈으로 양도세를 먼저 내고 남은 돈으로 산다
     if ((k - 1) % 12 === 11) {                          // 12월 말: 그해 미국 주식 실현 손익에 양도세(기본공제 후)를 냄
       const Y = yOfK(k), tax = usTax(Y); usGain[Y] = 0;
       if (cur) cur.tax = tax;
@@ -205,7 +206,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         else { let hv = 0; for (const h of holds) hv += val(h, k); const f = hv > 0 ? Math.min(1, (tax - cash) / hv) : 0; for (const h of holds) h.sh *= 1 - f; cash = 0; }
       }
     }
-    cash += dep; deposits++;
+    // (입금은 위에서 이미 받음)
     const picks = pickFn(ymOf(k));
     // opt.fill: 점수 순위대로 후보(opt.cand)를 보며 1주도 못 사는 종목은 건너뛰고 다음 순위를 산다. 종목 수가 N에 못 미치면 있는 종목끼리 현금을 나눔
     const fill = !!(opt.fill && opt.cand), list = fill ? opt.cand(ymOf(k)) : picks;
@@ -487,8 +488,9 @@ function simulateOOS(pickFn, N, C, opt = {}) {
       keep.push(h);
     }
     holds = keep;
+    cash += DEP; deposits++;   // 입금을 먼저 받는다(12월 세금을 이 돈으로 먼저 냄)
     if ((k-1)%12===11){const Y=yOfK(k),tax=usTax(Y);usGain[Y]=0;if(tax>0){if(cash>=tax)cash-=tax;else{let hv=0;for(const h of holds)hv+=val(h,k);const f=hv>0?Math.min(1,(tax-cash)/hv):0;for(const h of holds)h.sh*=1-f;cash=0;}}}
-    cash += DEP; deposits++;
+    // (입금은 위에서 이미 받음)
     const picks = pickFn(ymOf(k));
     if (picks.length) {
       const per = cash / (N || picks.length);

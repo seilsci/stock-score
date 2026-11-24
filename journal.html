@@ -867,7 +867,7 @@ function planCore(o){
   var taxPaid=0;
   if(+o.nowYm%100===12){                                                                    // 12월: 그해 미국 주식 실현 이익에서 250만원 공제 후 22%를 입금 전에 냄
     var gain=o.usGainYtd||0; sells.forEach(function(x){ if(x.us) gain+=x.amt-x.basis; });
-    taxPaid=C.us.cg_tax_rate*Math.max(0,gain-C.us.cg_exemption_krw); taxPaid=Math.min(taxPaid,cash); cash-=taxPaid;
+    taxPaid=C.us.cg_tax_rate*Math.max(0,gain-C.us.cg_exemption_krw); taxPaid=Math.min(taxPaid,cash+o.dep); cash-=taxPaid;   // 입금을 먼저 받아 그 돈으로 낸다
   }
   var cash1=cash+o.dep, N=o.N||4, buys=[], skipped=[], c=cash1, slots=N, list=o.picks;
   for(var li=0; li<list.length && slots>0; li++){                                          // 점수 순위대로: 1주도 못 사면 건너뛰고 다음 순위를 산다
@@ -1008,8 +1008,8 @@ function simulateFrom(S){
     });
     holds=keep;
     var tax=0;
-    if(mo===12){ tax=C.us.cg_tax_rate*Math.max(0,(usGain[Y]||0)-C.us.cg_exemption_krw); usGain[Y]=0; cash=Math.max(0,cash-tax); }
-    cash+=dep;
+    cash+=dep;                                                                      // 입금을 먼저 받고
+    if(mo===12){ tax=C.us.cg_tax_rate*Math.max(0,(usGain[Y]||0)-C.us.cg_exemption_krw); usGain[Y]=0; cash=Math.max(0,cash-tax); }   // 12월 세금을 먼저 낸 뒤 남은 돈으로 산다
     var buys=[], skipped=[], slots=4;
     var cands=(M0.order&&M0.order.length)?M0.order.map(function(y){ return M0.buys.filter(function(b){ return b.y===y; })[0]||M0.skipped.filter(function(b){ return b.y===y; })[0]; }).filter(Boolean):M0.buys.concat(M0.skipped);
     for(var li=0; li<cands.length && slots>0; li++){                          // 원래 일지가 점수 순서대로 본 후보를 같은 규칙으로(못 사면 다음, 모자라면 있는 만큼 나눔)
