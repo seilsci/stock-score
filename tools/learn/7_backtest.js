@@ -1217,7 +1217,7 @@ if (process.env.STAGE12 !== '0') {
   };
   const V1 = { alignExit: al, alignArm: false, addFrac: 1, addGroup: 'all', addAlign: alOK };
   const V = [{ name: '즉시 매수(돌파 달, 현재) · V0 지금 규칙', cand: topL12, o: {}, tag: 'I0' }, { name: '즉시 매수(돌파 달, 현재) · V1 정배열 묶음', cand: topL12, o: V1, tag: 'I1' }];
-  let ci = 0; const combos = []; [0, 0.1, 0.2, 0.3].forEach(t => [true, false].forEach(a => combos.push([t, a])));
+  let ci = 0; const combos = []; (process.env.AD6_THR ? process.env.AD6_THR.split(',').map(Number) : [0, 0.1, 0.2, 0.3]).forEach(t => (process.env.AD6_ALIGN === '1' ? [true] : [true, false]).forEach(a => combos.push([t, a])));   // AD6_THR=0.01,0.02,... 문턱 목록, AD6_ALIGN=1이면 정배열만
   combos.forEach(([t, a]) => { progress('확인 매수 후보 만들기', ci++ / combos.length); const mp = buildMap(t, a), cand = ym => mp.get(ym) || [], nm = `확인 매수(가상 수익 +${t * 100}% 이상${a ? ' + 5>10>20 정배열' : ''})`; V.push({ name: `${nm} · V0 지금 규칙`, cand, o: {}, n: [...mp.values()].reduce((x, l) => x + l.length, 0), tag: 'D0' }); V.push({ name: `${nm} · V1 정배열 묶음`, cand, o: V1, tag: 'D1' }); });
   const run12 = (v, cand) => summ(simulate(ym => cand(ym).slice(0, 4), 4, C1, { lotSize: true, lotAll: true, fill: true, cand, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, ...v.o }));
   const rows = V.map((v, i) => { progress('확인 매수', i / V.length); const sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { lotSize: true, lotAll: true, fill: true, cand: v.cand, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, log: true, ...v.o }); const m = summ(sm), T = (sm.trades || []).filter(t => t.sellYm); return { v, full: m, trades: T.length, win: T.filter(t => t.ret > 0).length / (T.length || 1), halves: [] }; });
