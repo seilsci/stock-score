@@ -194,12 +194,13 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       for (const h of holds) {
         const p0 = priceAt(h.px, { y: h.y }); if (!(p0 > 0)) continue;
         const pk = p0 * (h.us ? fx(k) : 1), pnl = h.sh * pk / h.basis - 1;
-        if (grp === 'win' && pnl <= 0) continue; if (grp === 'lose' && pnl >= 0) continue;
-        elig.push({ h, pk });
+        if (grp === 'win' && pnl <= (opt.addThr || 0)) continue; if (grp === 'lose' && pnl >= 0) continue;     // addThr: 수익이 이 비율을 넘는 종목만(0이면 수익 중이면 전부)
+        elig.push({ h, pk, w: opt.addW === 'value' ? h.sh * pk : opt.addW === 'pnl' ? Math.max(pnl, 1e-6) : 1 });      // addW: 대상 종목 몫 — equal 같은 금액 · value 평가금 비례 · pnl 수익률 비례
       }
       if (elig.length) {
-        const per = cash * opt.addFrac / elig.length;
+        const budget = cash * opt.addFrac, wsum = elig.reduce((a, e) => a + e.w, 0);
         for (const e of elig) {
+          const per = budget * e.w / wsum;
           const fee = e.h.us ? usFee : C.kr.commission, lots = Math.floor(Math.min(per, cash) * (1 - fee) / e.pk);
           if (lots < 1) continue;
           const a = Math.min(lots * e.pk / (1 - fee), cash); e.h.sh += lots; e.h.basis += a; cash -= a;
@@ -1095,7 +1096,43 @@ if (process.env.STAGE7 !== '0') {
   progress('추가 매수 비교(절반)', 1); process.stdout.write('\n');
   AD.rows = rows;
 }
+// ── 추가 매수 심화(STAGE8=0이면 건너뜀): ① 수익 문턱(+0·10·25·50·100% 넘는 종목만) ② 대상 몫(같은 금액·평가금 비례·수익률 비례) ③ 다른 판매 규칙과 함께 ④ 종목 수 N과 함께(추가 매수 효과가 집중 때문인지 가림)
+const AD2 = { sec: null };
+if (process.env.STAGE8 !== '0') {
+  const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  const B = +process.env.AD2_HALVES || 8, topL8 = ym => scored[kA].get(ym) || [];
+  let rt2 = null; try { const RT = JSON.parse(fs.readFileSync(path.join(DATA, 'rates.json'))); const r = k => RT[ymOf(k)] || {}; rt2 = k => { const a = r(k).dgs2, b = r(k - 12).dgs2; return a != null && b != null ? a > b : null; }; } catch (e) {}
+  const ADD = (f, thr, w) => ({ addFrac: f, addGroup: 'win', addThr: thr || 0, addW: w || 'equal' });
+  const run8 = (v, cand) => summ(simulate(ym => cand(ym).slice(0, v.N || 4), v.N || 4, C1, { lotSize: true, lotAll: true, fill: true, cand, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, ...(v.opt || {}) }));
+  const S = [];                                                     // [구역, 이름, {N, opt}, 비교 기준 이름(없으면 첫 구역 기준)]
+  const sec1 = '① 수익 문턱 (수익이 문턱을 넘는 종목에만 추가 매수, 같은 금액씩)', sec2 = '② 대상 몫 (수익 중인 종목에만)', sec3 = '③ 판매 규칙과 함께 (N=4)', sec4 = '④ 종목 수 N과 함께 (추가 매수 없음 vs 수익 중인 종목 100%)';
+  S.push([sec1, '기준: 추가 매수 없음 (지금 방식)', {}, null]);
+  [0, 0.1, 0.25, 0.5, 1].forEach(t => [0.5, 1].forEach(f => S.push([sec1, `수익 +${Math.round(t * 100)}% 넘는 종목 ${Math.round(f * 100)}%`, { opt: ADD(f, t) }, '기준: 추가 매수 없음 (지금 방식)'])));
+  ['value', 'pnl'].forEach(w => [0.5, 1].forEach(f => S.push([sec2, `${w === 'value' ? '평가금 비례' : '수익률 비례'} ${Math.round(f * 100)}%`, { opt: ADD(f, 0, w) }, '기준: 추가 매수 없음 (지금 방식)'])));
+  const sells = [['이탈 즉시', { grace: 0, graceRate: false }], ['유예2+금리(현재)', {}]];
+  if (rt2) sells.push(['유예2+국채2년 12개월 변화', { rateFn: rt2 }]);
+  sells.forEach(([n, o]) => { S.push([sec3, `${n} · 추가 매수 없음`, { opt: o }, null]); S.push([sec3, `${n} · 수익 중인 종목 100%`, { opt: { ...o, ...ADD(1) } }, `${n} · 추가 매수 없음`]); });
+  [2, 3, 4, 6, 10].forEach(N => { S.push([sec4, `N=${N} · 추가 매수 없음`, { N }, null]); S.push([sec4, `N=${N} · 수익 중인 종목 100%`, { N, opt: ADD(1) }, `N=${N} · 추가 매수 없음`]); });
+  const rows = S.map((x, i) => { progress('추가 매수 심화', i / S.length); return { sec: x[0], name: x[1], base: x[3], v: x[2], full: run8(x[2], topL8), halves: [] }; });
+  for (let b = 1; b <= B; b++) { progress('추가 매수 심화(절반)', (b - 1) / B); const cand = ym => topL8(ym).filter(e => hash(e.r.y + '|' + b) < 0.5); rows.forEach(r => r.halves.push(run8(r.v, cand).cagr)); }
+  progress('추가 매수 심화(절반)', 1); process.stdout.write('\n');
+  AD2.sec = rows;
+}
 // ── 걸어가며 설정 고르기 보고
+// ── 추가 매수 심화 보고
+if (AD2.sec) {
+  const Rr = AD2.sec, pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019), mean = a => a.reduce((x, y) => x + y, 0) / a.length, first = Rr[0];
+  let cur = '';
+  Rr.forEach(r => {
+    if (r.sec !== cur) { cur = r.sec; log(''); log(`## 추가 매수 심화 ${cur}`); log('방식                                   전체    앞쪽    뒤쪽    낙폭    기준 대비 효과(종목 절반 되풀이 평균 · 표준편차 · 이긴 비율)'); }
+    const b = r.base ? Rr.find(x => x.name === r.base) : null;
+    let eff = '(기준)';
+    if (b) { const d = r.halves.map((h, i) => h - b.halves[i]), sd = Math.sqrt(mean(d.map(x => (x - mean(d)) ** 2))); eff = `${pp(mean(d)).padStart(7)} · ${(sd * 100).toFixed(1)}%p · ${(d.filter(x => x > 0).length / d.length * 100).toFixed(0)}%   vs ${b.name}`; }
+    log(`${r.name.padEnd(36)} ${pc1(r.full.cagr).padStart(7)} ${pc1(cagrOver(r.full.yearly, early)).padStart(7)} ${pc1(cagrOver(r.full.yearly, late)).padStart(7)} ${pc1(r.full.mdd).padStart(7)}    ${eff}`);
+  });
+  log('※ ④에서 "수익 중인 종목 100%"의 이득이 N이 작을수록 줄거나 사라지면 이득의 원천은 집중(분산 감소)이고, N과 무관하게 남으면 "오른 종목에 더 넣기" 자체의 효과.');
+}
 // ── 추가 매수 비율 보고
 if (AD.rows) {
   const Rr = AD.rows, base = Rr[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
