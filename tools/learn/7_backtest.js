@@ -6,6 +6,15 @@ const { prep, z, fitRidge, score } = require('./ml');
 const { load, trainSet, trainSetL, modelDefs } = require('./data');
 const GBM = require('./gbm');
 const { F, L: ALL } = load(), fi = n => F.indexOf(n);
+// 재무 지표(미국, SEC 공시; fund.js): 있으면 신호마다 "그 시점에 이미 공시된 값만"으로 계산해 지표 끝에 붙임(이름 f_*). 한국은 아직 자료가 없어 빈 값.
+const FUND = { on: false, cover: 0, us: 0 };
+if (process.env.FUND !== '0' && fs.existsSync(path.join(DATA, 'sec'))) {
+  const Fu = require('./fund');
+  const iUS = F.indexOf('us');
+  F.push(...Fu.NAMES.map(n => 'f_' + n));
+  ALL.forEach(r => { const o = r.x[iUS] === 1 ? Fu.featuresAt(r.y, r.ym) : null; if (r.x[iUS] === 1) FUND.us++; if (o) FUND.cover++; Fu.NAMES.forEach(n => r.x.push(o ? o[n] : NaN)); });
+  FUND.on = FUND.cover > 0;
+}
 const { MODELS: ALLM } = modelDefs(F);
 const MODELS = ALLM.filter(M => 'ABEF'.includes(M.n[0]));
 const DEP = +process.env.DEPOSIT || 1000000;
@@ -789,6 +798,7 @@ if (process.env.STAGE3 !== '0') {
   }
   // 경사 부스팅 트리(gbm.js, 순수 JS). 지표 = 가격 지표에서 지수 3개(idx_*)를 뺀 것(사이트에서 0으로 두는 항목이라 모델이 쓰면 안 됨)
   const NOIDX = PRICE.filter(j => !F[j].startsWith('idx_'));
+  const FUNDC = names => F.map((f, j) => j).filter(j => F[j].startsWith('f_') && (!names || names.includes(F[j].slice(2))));
   function walkG(spec) {
     const labs = labsOf(spec.lab), out = new Map();
     years.forEach(Y => {
@@ -884,6 +894,13 @@ if (process.env.STAGE3 !== '0') {
     ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · fd 정답, 깊이4·600그루', () => walkG({ lab: 'fd', opt: { depth: 4, rounds: 600 } })],
     ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · fd 정답, 깊이2·400그루', () => walkG({ lab: 'fd', opt: { depth: 2, rounds: 400 } })],
     ['A 트리 모델 (gbm.js, 지수 지표 뺌)', 'gbm · 월말 진입 정답(me)', () => walkG({ lab: 'me' })],
+    ...(FUND.on ? [
+      ['B 재무 지표 (미국만 있음, SEC 공시 시점 기준) — 비교 기준은 위 "gbm · fd 정답"', 'gbm · fd + 재무 전체', () => walkG({ lab: 'fd', cols: NOIDX.concat(FUNDC()) })],
+      ['B 재무 지표 (미국만 있음, SEC 공시 시점 기준) — 비교 기준은 위 "gbm · fd 정답"', 'gbm · fd + 영업이익(흑자·마진·증가율)·순이익 흑자', () => walkG({ lab: 'fd', cols: NOIDX.concat(FUNDC(['oi_pos', 'oi_margin', 'oi_growth', 'ni_pos'])) })],
+      ['B 재무 지표 (미국만 있음, SEC 공시 시점 기준) — 비교 기준은 위 "gbm · fd 정답"', 'gbm · fd + 현금·부채 비율', () => walkG({ lab: 'fd', cols: NOIDX.concat(FUNDC(['cash_ratio', 'debt_ratio'])) })],
+      ['B 재무 지표 (미국만 있음, SEC 공시 시점 기준) — 비교 기준은 위 "gbm · fd 정답"', 'gbm · fd + 배당(지급·성향)', () => walkG({ lab: 'fd', cols: NOIDX.concat(FUNDC(['payout', 'pays_div'])) })],
+      ['B 재무 지표 (미국만 있음, SEC 공시 시점 기준) — 비교 기준은 위 "gbm · fd 정답"', 'gbm · fd + 영업이익 흑자 여부만', () => walkG({ lab: 'fd', cols: NOIDX.concat(FUNDC(['oi_pos'])) })]
+    ] : []),
     ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 20% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.2) })],
     ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 35% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.35) })]
   ];
@@ -920,6 +937,7 @@ if (S3.rows.length) {
   const o0 = S3.rows[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', f2 = x => Number.isFinite(x) ? (x >= 0 ? '+' : '') + x.toFixed(3) : '   -  ';
   log(''); log('## 3단계: 정답·학습 방식을 바꾼 점수 모델 비교 (점수 상위 4, 첫날 체결, 판매 규칙 tp2x트레일+금리유예2달, 정수 주문, 월 100만원, 비용·세금 반영)');
   log(`검산: 기준 변형(orig)이 기존 A 모델 점수와 최대 ${S3.check ? S3.check.max.toExponential(1) : '?'} 차이 (${S3.check ? S3.check.n : 0}건 중 빠진 것 ${S3.check ? S3.check.miss : '?'}건) — 둘 다 0이어야 같은 학습·같은 정답`);
+  if (FUND.on) log(`재무 지표(SEC): 미국 신호 ${FUND.us}건 중 ${FUND.cover}건(${(FUND.cover / FUND.us * 100).toFixed(0)}%)에 값이 있음. 한국은 자료가 없어 빈 값(점수 계산에서 평균으로 대체). 값은 신호 달 말까지 공시된 것만 사용.`);
   log(`참고: 무작위 4 (첫날 체결, 50번) 중앙값 ${pc1(S3.ref.med)} · 상위 10% ${pc1(S3.ref.p90)}`);
   log('IC = 월별로 (점수, 실제 결과) 순위상관의 평균, 초과 = 점수 상위 4의 실제 결과 − 그달 평균(log 수익, 건당). 실제 결과 = 첫날 진입 + 지금 판매 규칙으로 판 수익(못 팔았으면 12개월 시점).');
   log('변형                                                 전체     앞쪽    뒤쪽    한국    미국   월말체결  IC앞    IC뒤    초과앞  초과뒤   채택후보');

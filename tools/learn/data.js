@@ -43,7 +43,7 @@ function trainSetL(L, labs, Y, minAge = 12) {
 function modelDefs(F) {
   const fi = n => F.indexOf(n), all = F.map((_, j) => j), MAC = all.filter(j => F[j].startsWith('m_'));
   const MKT = all.filter(j => F[j].startsWith('idx_') || F[j] === 'us');
-  const PRICE = all.filter(j => !F[j].startsWith('m_')), STOCK = PRICE.filter(j => !MKT.includes(j));
+  const PRICE = all.filter(j => !F[j].startsWith('m_') && !F[j].startsWith('f_')), STOCK = PRICE.filter(j => !MKT.includes(j));
   const MODELS = [
     { n: 'A 가격만(35)', cols: PRICE, lam: 1000 },
     { n: 'B 가격+거시 전부', cols: PRICE.concat(MAC), lam: 1000 },
