@@ -554,3 +554,4 @@ const journal = {
 };
 fs.writeFileSync(path.join(DATA, 'trades.json'), JSON.stringify(journal));
 progress('매매일지', 1); process.stdout.write('\n');
+require('./8_bars.js');                                      // 매매일지 차트용 월봉(bars.json)

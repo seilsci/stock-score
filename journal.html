@@ -94,7 +94,7 @@ canvas{display:block;width:100%;height:200px}
   <div id="chart-box">
     <div class="ch-h"><div class="ch-n" id="ch-name">&nbsp;</div><div class="ch-p" id="ch-price"></div></div>
     <canvas id="cv"></canvas>
-    <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span>매수 시점 월봉 (최근 36개월)</span></div>
+    <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span><i style="background:var(--fg)"></i>월 종가</span><span style="color:var(--buy)">▲ 매수</span><span style="color:var(--sell)">▼ 매도</span></div>
   </div>
 
   <div id="hold-panel">
@@ -222,53 +222,97 @@ function renderHoldings(){
   });
 }
 
-/* ── 보유 종목 차트 ── */
+/* ── 월봉 차트 (종가 + 월 10이평, 매수 ▲ · 매도 ▼) ── */
+var BARS = null;
+function ymIdx(ym){ ym=+ym; return Math.floor(ym/100)*12+ym%100-1; }
+function cssv(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function drawChart(cv, y, endYm, buyYm, sellYm){
+  var W2=cv.clientWidth||600, H=200, dpr=window.devicePixelRatio||1;
+  cv.width=W2*dpr; cv.height=H*dpr; cv.style.height=H+'px';
+  var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W2,H);
+  g.textBaseline='middle';
+  var mut=cssv('--mut'), line=cssv('--line'), fg=cssv('--fg'), buyC=cssv('--buy'), sellC=cssv('--sell'), maC=cssv('--ma');
+  var raw = BARS && BARS[y];
+  if(!raw || raw.length<4){
+    g.fillStyle=mut; g.font='13px -apple-system,sans-serif'; g.textAlign='center';
+    g.fillText(BARS?'이 종목의 월봉 데이터가 없습니다':'월봉 데이터(bars.json)를 불러오지 못했습니다',W2/2,H/2);
+    return;
+  }
+  var yms=[], cs=[];
+  for(var i=0;i<raw.length;i+=2){ yms.push(raw[i]); cs.push(raw[i+1]); }
+  var ma=cs.map(function(x,i){
+    if(i<9) return null;
+    var t=0; for(var k=i-9;k<=i;k++) t+=cs[k]; return t/10;
+  });
+  // 끝 = 기준 월(없으면 가장 가까운 이전 달), 시작 = 36개월 전 또는 매수 3개월 전(최대 84개월)
+  var e=yms.length-1; while(e>0 && yms[e]>+endYm) e--;
+  var s0=Math.max(0,e-35);
+  var where={}; yms.forEach(function(q,i){ where[q]=i; });
+  var posOf=function(ym){ var q=+ym; while(where[q]==null && q>yms[0]) q--; return where[q]==null?-1:where[q]; };   // 월 → 배열 위치(빠진 달은 직전 달)
+  var bpos=posOf(buyYm);
+  if(bpos>=0 && bpos-3<s0) s0=Math.max(0,bpos-3,e-83);
+  var n=e-s0+1; if(n<2) return;
+  var lo=Infinity, hi=-Infinity;
+  for(var i=s0;i<=e;i++){ lo=Math.min(lo,cs[i]); hi=Math.max(hi,cs[i]); if(ma[i]!=null){ lo=Math.min(lo,ma[i]); hi=Math.max(hi,ma[i]); } }
+  var pad=(hi-lo)*0.08||hi*0.05; lo-=pad; hi+=pad;
+  var L=6, R=52, T=10, B=20, pw=W2-L-R, ph=H-T-B;
+  var X=function(i){ return L+(i-s0)/(n-1)*pw; };
+  var Y=function(v){ return T+(1-(v-lo)/(hi-lo))*ph; };
+  // 눈금(가로선 4개) + 가격
+  g.font='10px -apple-system,sans-serif'; g.textAlign='left';
+  for(var k=0;k<=3;k++){
+    var v=lo+(hi-lo)*k/3, yy=Y(v);
+    g.strokeStyle=line; g.lineWidth=1; g.beginPath(); g.moveTo(L,yy); g.lineTo(W2-R,yy); g.stroke();
+    g.fillStyle=mut; g.fillText(v>=100?Math.round(v).toLocaleString():v.toFixed(v>=10?1:2),W2-R+4,yy);
+  }
+  // 연도 표시(1월)
+  g.textAlign='center';
+  for(var i=s0;i<=e;i++){ if(yms[i]%100===1){ g.fillStyle=mut; g.fillText(String(yms[i]).slice(0,4),X(i),H-8); } }
+  // 보유 구간 음영
+  var holdFrom=Math.max(s0,bpos), holdTo=sellYm?Math.min(e,posOf(sellYm)):e;
+  if(bpos>=0 && holdTo>holdFrom){
+    g.fillStyle='rgba(124,58,237,.10)';
+    g.fillRect(X(holdFrom),T,X(holdTo)-X(holdFrom),ph);
+  }
+  // 종가선
+  g.strokeStyle=fg; g.lineWidth=1.6; g.lineJoin='round'; g.beginPath();
+  for(var i=s0;i<=e;i++){ var px0=X(i), py0=Y(cs[i]); if(i===s0) g.moveTo(px0,py0); else g.lineTo(px0,py0); }
+  g.stroke();
+  // 10이평
+  g.strokeStyle=maC; g.lineWidth=1.4; g.beginPath(); var st=false;
+  for(var i=s0;i<=e;i++){ if(ma[i]==null) continue; var mx=X(i), my=Y(ma[i]); if(!st){ g.moveTo(mx,my); st=true; } else g.lineTo(mx,my); }
+  g.stroke();
+  // 이 종목의 매수·매도 표시
+  var mark=function(ym, up){
+    var p=posOf(ym); if(p<s0||p>e) return;
+    var x=X(p), yy=Y(cs[p]);
+    g.fillStyle=up?buyC:sellC; g.beginPath();
+    if(up){ g.moveTo(x,yy+3); g.lineTo(x-5,yy+12); g.lineTo(x+5,yy+12); }
+    else { g.moveTo(x,yy-3); g.lineTo(x-5,yy-12); g.lineTo(x+5,yy-12); }
+    g.closePath(); g.fill();
+  };
+  DATA.trades.forEach(function(t){ if(t.y!==y) return; mark(t.buyYm,true); if(t.sellYm) mark(t.sellYm,false); });
+  // 마지막 값
+  g.fillStyle=fg; g.beginPath(); g.arc(X(e),Y(cs[e]),3,0,6.2832); g.fill();
+}
+
 function drawHoldChart(h){
   var box = document.getElementById('chart-box');
   var nameEl = document.getElementById('ch-name');
   var priceEl = document.getElementById('ch-price');
   if(!h){ box.style.display='none'; return; }
-  // trades에서 이 종목의 매수 거래 찾기
-  var t = DATA.trades.filter(function(tr){ return tr.y===h.y && String(tr.buyYm)===String(h.buyYm); })[0];
   nameEl.innerHTML = esc(h.name||h.y);
   priceEl.textContent = '매수 '+px(h.buyPx)+'  →  현재 '+px(h.curPx)+'  '+pc(h.ret);
   box.style.display='block';
-
-  // 차트 데이터: trades.json에 월봉이 없으므로 feats로 근사하거나 안내문 표시
-  // 실제 월봉 데이터는 없으므로 "매수 시점 주요 지표" 텍스트로 대체
   var cv = document.getElementById('cv');
-  var W2=cv.clientWidth, H=cv.clientHeight||200, dpr=window.devicePixelRatio||1;
-  cv.width=W2*dpr; cv.height=H*dpr;
-  var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W2,H);
-  var mut=getComputedStyle(document.documentElement).getPropertyValue('--mut').trim();
-  g.fillStyle=mut; g.font='13px -apple-system,sans-serif'; g.textAlign='center'; g.textBaseline='middle';
-  if(t && t.feats && t.feats.length){
-    // 간단 바 차트: 상위 기여 지표 10개
-    var contribs = computeContribs(t.feats, 10);
-    if(contribs.length){
-      var barH=Math.min(22,(H-20)/contribs.length);
-      var maxA=Math.max.apply(null,contribs.map(function(c){ return Math.abs(c.contrib); }));
-      var midX=W2*0.45, maxW=W2*0.3;
-      var fg=getComputedStyle(document.documentElement).getPropertyValue('--buy').trim();
-      var sb=getComputedStyle(document.documentElement).getPropertyValue('--sell').trim();
-      contribs.forEach(function(c,i){
-        var yy=14+i*(barH+2), bw=Math.abs(c.contrib)/maxA*maxW;
-        g.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--chip').trim();
-        g.fillRect(midX-maxW,yy,maxW*2,barH-2);
-        g.fillStyle=c.contrib>0?fg:sb;
-        if(c.contrib>0) g.fillRect(midX,yy,bw,barH-2);
-        else g.fillRect(midX-bw,yy,bw,barH-2);
-        g.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--mut').trim();
-        g.textAlign='right'; g.font='10px -apple-system,sans-serif'; g.textBaseline='middle';
-        g.fillText((FEAT_DESC[c.f]||c.f).slice(0,10),midX-maxW-4,yy+barH/2-1);
-        g.textAlign='left';
-        g.fillText((c.contrib>0?'+':'')+c.contrib.toFixed(3),midX+maxW+4,yy+barH/2-1);
-      });
-      return;
-    }
-  }
-  g.fillText('매수 시점 데이터 없음',W2/2,H/2);
+  drawChart(cv, h.y, SEL_YM, h.buyYm, null);
+  cv._redraw=function(){ drawChart(cv, h.y, SEL_YM, h.buyYm, null); };
+  box.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+window.addEventListener('resize',function(){
+  var cv=document.getElementById('cv');
+  if(document.getElementById('chart-box').style.display==='block' && cv._redraw) cv._redraw();
+});
 
 /* ── 점수 모달 ── */
 function computeContribs(feats, n){
@@ -342,17 +386,23 @@ function renderTrades(){
         +'<div class="dr"><span class="dl">매도가</span><span>'+px(t.sellPx)+'</span></div>'
         +'<div class="dr"><span class="dl">매수 점수</span><span>'+Math.round(t.score*100)+'점</span></div>'
         +'<div class="dr"><span class="dl">보유</span><span>'+hm+'개월</span></div>'
+        +'<canvas class="tcv" data-y="'+esc(t.y)+'" data-b="'+t.buyYm+'" data-s="'+(t.sellYm||'')+'" style="margin-top:8px"></canvas>'
       +'</div>'
     +'</div>';
   }).join('');
   list.querySelectorAll('.tc-h').forEach(function(h){
-    h.onclick=function(){ h.nextElementSibling.classList.toggle('open'); };
+    h.onclick=function(){
+      var body=h.nextElementSibling; body.classList.toggle('open');
+      var c=body.querySelector('.tcv');
+      if(c && body.classList.contains('open')) drawChart(c, c.dataset.y, c.dataset.s||c.dataset.b, c.dataset.b, c.dataset.s||null);
+    };
   });
 }
 
 function renderAll(){ renderNav(); renderHoldings(); renderTrades(); document.getElementById('chart-box').style.display='none'; }
 
 fetch('tools/learn/result/weights.json').then(function(r){ return r.json(); }).then(function(w){ W=w; }).catch(function(){});
+fetch('tools/learn/result/bars.json').then(function(r){ return r.json(); }).then(function(b){ BARS=b; }).catch(function(){});
 fetch('tools/learn/result/trades.json').then(function(r){ return r.json(); }).then(function(d){
   DATA=d;
   var yms=Object.keys(d.snapshots).sort();

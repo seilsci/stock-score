@@ -46,7 +46,7 @@ echo; say "100% 완료 · 보고서: tools/learn/data/report.txt"
 if [ -n "$LIMIT" ]; then say "시험 실행(LIMIT)이라 올리지 않아요."; exit 0; fi
 if [ $YES = 0 ]; then read -r -p "결과를 올릴까요? (y/N) " A </dev/tty || A=n; else A=y; fi
 if [ "$A" = "y" ] || [ "$A" = "Y" ]; then
-  mkdir -p result; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/
+  mkdir -p result; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; for f in trades.json bars.json; do [ -f $D/$f ] && cp $D/$f result/ || true; done
   git -c core.safecrlf=false add result
   git commit -q -m "학습 결과: 월봉 10이평 매수 신호 가중치 ($(date '+%Y-%m-%d'))" && git pull --rebase --autostash -q && git push -q && say "■ 올림 끝 (8/8). Claude에게 '올렸어'라고 알려 주세요."
 else
