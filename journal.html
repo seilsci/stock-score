@@ -80,6 +80,14 @@ canvas{display:block;width:100%;height:200px}
 .rtag.rt{background:#e0f2fe;color:#075985}
 .rtag.ma{background:var(--chip);color:var(--mut)}
 
+/* 월별 수익률 그래프 */
+#ret-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;margin-bottom:14px}
+.rc-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:2px}
+.rc-t{font-weight:700;font-size:14px}
+.rc-y{font-weight:800;font-size:18px;font-variant-numeric:tabular-nums}
+.rc-s{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--mut);margin-top:6px}
+.rc-s b{color:var(--fg)}
+#rc{height:190px;cursor:pointer;touch-action:manipulation}
 /* 월 요약 */
 #sum-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
 .sum-t{font-weight:700;font-size:13px;margin-bottom:8px}
@@ -120,6 +128,8 @@ canvas{display:block;width:100%;height:200px}
 <main>
   <h1>매매일지</h1>
   <div class="sub">A4 tp2x트레일+금리유예2달 · 월 100만원 · 비용·세금 반영 · <a href="index.html">← 사이트</a></div>
+
+  <div id="ret-card"></div>
 
   <div class="nav">
     <div class="yr-row" id="yr-row"></div>
@@ -468,11 +478,72 @@ function renderLedger(){
   });
 }
 
-function renderAll(){ renderNav(); renderSummary(); renderLedger(); renderHoldings(); document.getElementById('chart-box').style.display='none'; }
+
+/* ── 월별 수익률 그래프 (선택한 연도 12개월, 막대를 누르면 그 달로 이동) ── */
+var RET = {};
+function calcRets(){
+  RET = {}; if(!LED) return;
+  var ks=Object.keys(LED.months).sort(), dep=LED.meta.dep;
+  for(var i=1;i<ks.length;i++){
+    var a=LED.months[ks[i]], b=LED.months[ks[i-1]];
+    RET[ks[i]] = (a.cash+a.holdVal-dep)/(b.cash+b.holdVal)-1;
+  }
+}
+function renderRetChart(){
+  var card=document.getElementById('ret-card');
+  if(!LED || !SEL_YM){ card.style.display='none'; return; }
+  card.style.display='block';
+  var Y=String(SEL_YM).slice(0,4), vals=[], ann=1, n=0, win=0, best=null, worst=null;
+  for(var m=1;m<=12;m++){
+    var ym=Y+(m<10?'0':'')+m, r=RET[ym];
+    vals.push(r==null?null:r);
+    if(r!=null){ n++; ann*=1+r; if(r>0) win++; if(best==null||r>best.r) best={r:r,m:m}; if(worst==null||r<worst.r) worst={r:r,m:m}; }
+  }
+  var annR=ann-1, cls=annR>=0?'p':'n';
+  card.innerHTML='<div class="rc-h"><div class="rc-t">'+Y+'년 월별 수익률</div>'
+    +(n?'<div class="rc-y '+cls+'">'+pc(annR)+'</div>':'')+'</div>'
+    +'<canvas id="rc"></canvas>'
+    +(n?'<div class="rc-s"><span>플러스 <b>'+win+'</b> / '+n+'개월</span><span>최고 <b class="p">'+best.m+'월 '+pc(best.r)+'</b></span><span>최저 <b class="'+(worst.r>=0?'p':'n')+'">'+worst.m+'월 '+pc(worst.r)+'</b></span></div>'
+      :'<div class="rc-s">이 해는 수익률 데이터가 없습니다.</div>');
+  var cv=document.getElementById('rc'); if(!n) { cv.style.display='none'; return; }
+  var W2=cv.clientWidth||600, H=190, dpr=window.devicePixelRatio||1;
+  cv.width=W2*dpr; cv.height=H*dpr; cv.style.height=H+'px';
+  var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W2,H);
+  var buyC=cssv('--buy'), sellC=cssv('--sell'), mut=cssv('--mut'), line=cssv('--line'), fg=cssv('--fg');
+  var hi=0, lo=0; vals.forEach(function(v){ if(v!=null){ hi=Math.max(hi,v); lo=Math.min(lo,v); } });
+  var span=(hi-lo)||0.01; hi+=span*0.14; lo-=span*(lo<0?0.14:0);
+  var T=6, B=22, ph=H-T-B, slot=W2/12, bw=Math.min(30,slot*0.64);
+  var Y0=function(v){ return T+(hi-v)/(hi-lo)*ph; };
+  g.textAlign='center'; g.textBaseline='middle';
+  // 0% 선
+  g.strokeStyle=mut; g.lineWidth=1; g.beginPath(); g.moveTo(0,Y0(0)); g.lineTo(W2,Y0(0)); g.stroke();
+  vals.forEach(function(v,i){
+    var cx=i*slot+slot/2, ym=Y+(i<9?'0':'')+(i+1), sel=String(SEL_YM)===ym;
+    g.font=(sel?'700 ':'')+'11px -apple-system,sans-serif';
+    g.fillStyle=sel?fg:mut; g.fillText((i+1)+'월',cx,H-9);
+    if(v==null) return;
+    var yTop=Y0(Math.max(v,0)), yBot=Y0(Math.min(v,0)), h=Math.max(2,yBot-yTop);
+    g.globalAlpha=(SEL_YM && !sel)?0.55:1;
+    g.fillStyle=v>=0?buyC:sellC; g.fillRect(cx-bw/2,v>=0?yTop-(h-(yBot-yTop)):yTop,bw,h);
+    g.globalAlpha=1;
+    if(sel){ g.strokeStyle=fg; g.lineWidth=2; g.strokeRect(cx-bw/2,yTop,bw,h); }
+    var txt=(v>=0?'+':'')+(Math.abs(v)>=0.095?(v*100).toFixed(0):(v*100).toFixed(1));
+    g.font='600 10.5px -apple-system,sans-serif'; g.fillStyle=v>=0?buyC:sellC;
+    g.fillText(txt, cx, v>=0?yTop-8:yBot+9);
+  });
+  cv.onclick=function(e){
+    var i=Math.min(11,Math.max(0,Math.floor(e.offsetX/(cv.clientWidth/12)))), ym=Y+(i<9?'0':'')+(i+1);
+    if(RET[ym]==null) return;
+    SEL_YM=ym; SEL_HOLD=null; renderAll();
+  };
+}
+window.addEventListener('resize',function(){ if(LED && SEL_YM) renderRetChart(); });
+
+function renderAll(){ renderRetChart(); renderNav(); renderSummary(); renderLedger(); renderHoldings(); document.getElementById('chart-box').style.display='none'; }
 
 fetch('tools/learn/result/weights.json').then(function(r){ return r.json(); }).then(function(w){ W=w; }).catch(function(){});
 fetch('tools/learn/result/bars.json').then(function(r){ return r.json(); }).then(function(b){ BARS=b; }).catch(function(){});
-fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).then(function(l){ LED=l; }).catch(function(){})
+fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).then(function(l){ LED=l; calcRets(); }).catch(function(){})
 .then(function(){ return fetch('tools/learn/result/trades.json'); }).then(function(r){ return r.json(); }).then(function(d){
   DATA=d;
   var yms=Object.keys(d.snapshots).sort();

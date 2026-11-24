@@ -2,7 +2,9 @@
  * 주식 점수 — 월봉 10이평 돌파 신호 (Apps Script)
  *
  * 매수: 전달 종가 ≤ 전달 10이평  그리고  이번 달 최근 종가 > 이번 달 10이평
- * 매도: 전달 종가 ≥ 전달 10이평  그리고  이번 달 최근 종가 < 이번 달 10이평
+ * 유예: 이번 달 처음 10이평 아래로 내려옴(하향 돌파 1개월째). 다음 달에도 아래면 매도
+ * 매도: 하향 돌파 후 2개월째까지 계속 10이평 아래(전전달 위 → 전달·이번 달 아래).
+ *       단, 미국 기준금리가 1년 전보다 올라 있으면(FEDFUNDS 전월 - 13개월 전 > 0) 유예 없이 하향 돌파 즉시 매도
  * 10이평 = 최근 10개월 월말 종가 평균(이번 달은 최근 종가를 그 달 종가로 씀)
  *
  * 대상: 코스피 시총 상위 300(ETF·ETN·우선주 포함, 채권·금리·레버리지·인버스형은 제외) + 코스닥 상위 200 + 미국 상위 500
@@ -281,21 +283,49 @@ function scoreMonthly_(mon, s) {
 }
 
 /* ───────── 신호 계산 ───────── */
+// 미국 기준금리(FEDFUNDS)가 오르는 중인지: (전월 값) - (13개월 전 값) > 0, 매도 유예를 건너뛰는 조건. 못 받으면 false
+var FF = null;
+function rateUp_() {
+  if (FF === null) {
+    FF = {};
+    try {
+      UrlFetchApp.fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS', { headers: CFG.UA })
+        .getContentText().split('\n').slice(1).forEach(function (l) {
+          var p = l.trim().split(',');
+          if (p.length > 1 && p[1] && p[1] !== '.') FF[p[0].slice(0, 7)] = +p[1];
+        });
+    } catch (e) { FF = {}; }
+  }
+  var now = new Date(Utilities.formatDate(new Date(), 'Asia/Seoul', "yyyy-MM-dd'T'12:00:00"));
+  var key = function (back) {
+    var d = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    return d.getFullYear() + '-' + pad_(d.getMonth() + 1);
+  };
+  var a = FF[key(1)], b = FF[key(13)];
+  return a !== undefined && b !== undefined && a - b > 0;
+}
+
 function makeRow_(s, mon) {
   var n = mon.length, M = CFG.MONTHS, c = mon.map(function (x) { return x.close; });
   var cur = c[n - 1], prev = c[n - 2];
   var ma = n >= M ? avg_(c.slice(n - M)) : '';
   var pma = n >= M + 1 ? avg_(c.slice(n - M - 1, n - 1)) : '';
+  var pma2 = n >= M + 2 ? avg_(c.slice(n - M - 2, n - 2)) : '';
   var sig = '';
   if (ma !== '' && pma !== '') {
+    var below = cur < ma;
+    var justCrossed = below && prev >= pma;                                   // 이번 달 처음 아래로
+    var second = below && prev < pma && pma2 !== '' && c[n - 3] >= pma2;      // 전달 처음 아래로 → 이번 달 2개월째
     if (prev <= pma && cur > ma) sig = '매수';
-    else if (prev >= pma && cur < ma) sig = '매도';
+    else if (second || (justCrossed && rateUp_())) sig = '매도';
+    else if (justCrossed) sig = '유예';
     else sig = cur > ma ? '위' : '아래';
   }
-  // 매수·매도 종목만 차트용 월봉 저장: [[YYYYMM, 시가, 고가, 저가, 종가, 거래량], ...]
+  // 매수·매도·유예 종목만 차트용 월봉 저장: [[YYYYMM, 시가, 고가, 저가, 종가, 거래량], ...]
+  // 점수 계산에 쓴 월봉 전체를 보내야 사이트의 "점수 설명"이 시트 점수와 똑같이 계산됨
   var chart = '';
-  if (sig === '매수' || sig === '매도') {
-    chart = JSON.stringify(mon.slice(-CFG.CHART_N).map(function (x) {
+  if (sig === '매수' || sig === '매도' || sig === '유예') {
+    chart = JSON.stringify(mon.map(function (x) {
       return [+x.ym, round_(x.open), round_(x.high), round_(x.low), round_(x.close), Math.round(x.vol || 0)];
     }));
   }
@@ -306,7 +336,7 @@ function makeRow_(s, mon) {
 }
 
 /* ───────── 사이트용 ───────── */
-// ?all=1 이면 모든 종목, 아니면 매수·매도 신호만
+// ?all=1 이면 모든 종목, 아니면 매수·매도·유예 신호만
 function doGet(e) {
   var all = e && e.parameter && e.parameter.all;
   var ss = SpreadsheetApp.getActive(), out = { updated: {}, rows: [] };
@@ -316,7 +346,7 @@ function doGet(e) {
     out.updated[n] = sh.getRange('R1').getValue();
     var v = sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues();
     v.forEach(function (r) {
-      if (!all && r[10] !== '매수' && r[10] !== '매도') return;
+      if (!all && r[10] !== '매수' && r[10] !== '매도' && r[10] !== '유예') return;
       var o = {};
       HEAD.forEach(function (h, i) { o[h] = r[i] instanceof Date ? fmtDate_(r[i]) : r[i]; });
       if (o['차트']) { try { o['차트'] = JSON.parse(o['차트']); } catch (err) { o['차트'] = null; } }

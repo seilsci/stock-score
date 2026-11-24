@@ -18,7 +18,7 @@ const yms = Object.keys(j.snapshots).sort();
     fxSrc = 'yahoo KRW=X';
     const P2 = Math.floor(Date.now() / 1000) + 86400;
     const m = yahooMonthly(await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/KRW%3DX?period1=1293840000&period2=${P2}&interval=1mo`)) || [];
-    m.forEach(b => { fx[b[0]] = b[4]; });
+    m.forEach(b => { if (b[4] > 500 && b[4] < 2500) fx[b[0]] = b[4]; });     // 야후에 0.11원 같은 잘못된 값이 섞여 있어 걸러냄(빠진 달은 직전 달 값 사용)
   }
   const fxAt = ym => { let q = +ym; for (let k = 0; k < 8; k++) { if (fx[q]) return fx[q]; q = q % 100 === 1 ? q - 89 : q - 1; } return 1; };
   const prevYm = ym => { ym = +ym; return ym % 100 === 1 ? ym - 89 : ym - 1; };
