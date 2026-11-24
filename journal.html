@@ -598,7 +598,7 @@ function showScoreTree(y,buyYm,name,oldPred,live){
   var bar=function(x,m){ var w=Math.min(50,Math.abs(x)/m*50); return '<div class="tr-bar"><i class="'+(x>=0?'pos':'neg')+'" style="width:'+w+'%"></i></div>'; };
   var total=e.score-Math.round(e.base);
   var h='<h2 style="margin:0 0 4px;font-size:16px">'+esc(name)+' · '+fmt(buyYm)+(live?' 구매 예정, ':' 매수, ')+e.score+'점은 왜?</h2>'
-    +'<div class="sc-sub" style="color:var(--fg);background:var(--chip);border-radius:8px;padding:8px 10px"><b>참고용입니다.</b> 이 일지의 거래는 모두 그달 점수 상위 4종목이라 점수 차이가 작아서, 이 목록만으로는 점수의 효과를 알 수 없습니다. 같은 판매 규칙·월 100만원에서 점수 상위 4는 연 +35.9%, 무작위 4는 +16.1%였습니다(소수의 큰 수익에 의존, 과거 결과).</div><div class="sc-sub">평범한 신호의 점수(기준)에서 시작해, 항목마다 점수를 올리고 내려서 최종 점수가 됩니다. 아래 숫자가 <b>그 항목이 점수를 몇 점 올리거나 내렸는지</b>예요. 항목을 눌러 펼쳐 보세요.</div>'
+    +'<div class="sc-sub" style="color:var(--fg);background:var(--chip);border-radius:8px;padding:8px 10px"><b>참고용입니다.</b> 이 일지의 거래는 모두 그달 점수 상위 4종목이라 점수 차이가 작아서, 이 목록만으로는 점수의 효과를 알 수 없습니다. 같은 판매 규칙·월 100만원에서 점수 상위 4는 한국 연 +40%(무작위 +19%), 미국 +18%(무작위 +16%)였습니다(소수의 큰 수익·생존 편향 가능, 과거 결과).</div><div class="sc-sub">평범한 신호의 점수(기준)에서 시작해, 항목마다 점수를 올리고 내려서 최종 점수가 됩니다. 아래 숫자가 <b>그 항목이 점수를 몇 점 올리거나 내렸는지</b>예요. 항목을 눌러 펼쳐 보세요.</div>'
     +'<div class="tr-root"><span class="big">'+e.score+'점</span><span>= 기준 '+Math.round(e.base)+'점 '+(total>=0?'+ ':'− ')+Math.abs(total)+'점<br><span class="meta">학습 때 신호 중 상위 '+Math.max(1,100-e.score)+'%</span></span></div>'
     +'<div class="tr-kids"><div class="tr-node"><div class="tr-base"><span><b>기준</b> <span class="meta">(평균적인 매수 신호, 예측 수익 '+sgn(e.b)+'%)</span></span><b>'+Math.round(e.base)+'점</b></div></div>';
   gs.forEach(function(g,gi){
