@@ -9,7 +9,7 @@ const keys = new Set(j.trades.map(t => t.y));
 Object.values(j.snapshots).forEach(h => h.forEach(x => keys.add(x.y)));
 const out = {};
 let local = 0, net = 0, miss = 0;
-const sig = v => +(+v).toPrecision(6);        // 6자리로 줄여 파일 크기를 아낌
+const sig = v => +(+v).toPrecision(9);        // 9자리: 매매일지 "시작 시점 바꾸기"가 가격으로 현금·수량을 다시 계산하므로 반올림 오차가 거의 없게
 
 (async () => {
   await pool([...keys], +process.env.CONC || 6, async y => {

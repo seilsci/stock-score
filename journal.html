@@ -80,6 +80,11 @@ canvas{display:block;width:100%;height:200px}
 .rtag.rt{background:#e0f2fe;color:#075985}
 .rtag.ma{background:var(--chip);color:var(--mut)}
 
+/* 시작 시점 */
+#start-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.st-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
+.st-t{font-weight:700;font-size:14px}.st-v{font-weight:800;font-size:15px;color:var(--acc)}
+.st-note{font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5}
 /* 월별 수익률 그래프 */
 #yr-card,#ret-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;margin-bottom:14px}
 .rc-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:2px}
@@ -163,6 +168,8 @@ canvas{display:block;width:100%;height:200px}
   <h1>매매일지</h1>
   <div class="sub">A4 tp2x트레일+금리유예2달 · 월 100만원 · 비용·세금 반영 · <a href="index.html">← 사이트</a></div>
 
+  <div id="start-card"></div>
+
   <div id="yr-card"></div>
 
   <div id="ret-card"></div>
@@ -234,7 +241,7 @@ function renderNav(){
   document.getElementById('yr-row').innerHTML = years.map(function(y){
     return '<button class="yr-btn'+(y===selY?' sel':'')+'" data-y="'+y+'">'+y+'</button>';
   }).join('');
-  document.querySelectorAll('.yr-btn').forEach(function(b){
+  document.querySelectorAll('#yr-row .yr-btn').forEach(function(b){
     b.onclick=function(){
       var y=b.dataset.y;
       // 해당 연도 첫 달 선택
@@ -256,7 +263,7 @@ function renderNav(){
     var cls = 'mo-btn'+(ym===String(SEL_YM)?' sel':hasBuy?' has-b':hasSell?' has-s':'');
     return '<button class="'+cls+'" data-ym="'+ym+'"'+(inData?'':' hidden')+'>'+m+'월</button>';
   }).join('');
-  document.querySelectorAll('.mo-btn:not([hidden])').forEach(function(b){
+  document.querySelectorAll('#mo-row .mo-btn:not([hidden])').forEach(function(b){
     b.onclick=function(){ SEL_YM=b.dataset.ym; SEL_HOLD=null; renderAll(); };
   });
 }
@@ -707,7 +714,7 @@ function renderYearChart(){
     +(cagr!=null?'<div class="rc-y '+(cagr>=0?'p':'n')+'">'+pc(cagr)+'<span style="font-size:11px;color:var(--mut);font-weight:600"> 연평균</span></div>':'')+'</div>'
     +'<canvas id="yc"></canvas>'
     +'<div class="rc-s"><span>플러스 <b>'+win+'</b> / '+years.length+'년</span><span>최고 <b class="p">'+years[best]+' '+pc(vals[best])+'</b></span><span>최저 <b class="'+(vals[worst]>=0?'p':'n')+'">'+years[worst]+' '+pc(vals[worst])+'</b></span></div>'
-    +'<div class="rc-s">연평균은 12개월이 모두 있는 '+full.length+'개 연도의 복리 평균입니다.'+(partial?' '+last+'년은 '+cnt[last]+'개월까지의 수익률(*)입니다.':'')+'</div>';
+    +'<div class="rc-s">연평균은 12개월이 모두 있는 '+full.length+'개 연도의 복리 평균입니다.'+(years.filter(function(y){ return cnt[y]<12; }).length?' 별(*) 표시 연도는 12개월이 안 되는 해(시작한 해, 올해)의 수익률입니다.':'')+'</div>';
   var cv=document.getElementById('yc');
   var W2=cv.clientWidth||600, H=190, dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr; cv.height=H*dpr; cv.style.height=H+'px';
@@ -721,7 +728,7 @@ function renderYearChart(){
   g.strokeStyle=mut; g.lineWidth=1; g.beginPath(); g.moveTo(0,Y0(0)); g.lineTo(W2,Y0(0)); g.stroke();
   var selY=String(SEL_YM).slice(0,4);
   vals.forEach(function(v,i){
-    var cx=i*slot+slot/2, y=years[i], sel=y===selY, isP=(y===last&&partial);
+    var cx=i*slot+slot/2, y=years[i], sel=y===selY, isP=cnt[y]<12;
     g.font=(sel?'700 ':'')+'10.5px -apple-system,sans-serif'; g.fillStyle=sel?fg:mut;
     g.fillText("'"+y.slice(2)+(isP?'*':''),cx,H-9);
     var yTop=Y0(Math.max(v,0)), yBot=Y0(Math.min(v,0)), h=Math.max(2,yBot-yTop);
@@ -882,8 +889,87 @@ function renderPlanView(){
   });
 }
 
+
+/* ── 시작 시점 바꾸기: 그 달부터 같은 규칙으로 월 100만원씩 투자했다면 (브라우저에서 다시 계산) ──
+   매달 무엇을 사는지(점수 상위 4)와 언제 파는지는 현금과 무관하게 정해지므로, 현금·수량·세금만 다시 계산한다. */
+var LED0=null, SNAP0=null, START_YM=null, START_Y=null, FIRST_YM=null, EXIT_C=null;
+function loadCosts(cb){ if(COSTS){ cb(); return; } fetch('tools/learn/costs.json').then(function(r){ return r.json(); }).then(function(c){ COSTS=c; cb(); }); }
+function exitMap(){
+  if(EXIT_C) return EXIT_C; EXIT_C={};
+  DATA.trades.forEach(function(t){ EXIT_C[t.y+'|'+t.buyYm]={ym:String(t.sellYm),reason:t.reason}; });
+  return EXIT_C;
+}
+function simulateFrom(S){
+  var C=COSTS, usFee=C.us.commission+C.us.fx_spread, krFee=C.kr.commission, dep=LED0.meta.dep, EX=exitMap();
+  var yms=Object.keys(LED0.months).sort().filter(function(ym){ return ym>=S; });
+  var holds=[], cash=0, months={}, snaps={}, usGain={}, lastPx={};
+  var closeAt=function(y,ym,fallback){ var b=barsOf(y); var i=b&&b.pos[ym]; return i!=null?b.cs[i]:fallback; };
+  yms.forEach(function(ym){
+    var M0=LED0.months[ym], fx=M0.fx, Y=+ym.slice(0,4), mo=+ym.slice(4), sells=[], keep=[];
+    holds.forEach(function(h){
+      if(h.exit && h.exit<=ym){                                              // 판매
+        var px=closeAt(h.y,ym,h.last), val=h.sh*px*(h.us?fx:1), feeR=h.us?usFee:krFee, taxR=h.us?0:(h.etf?0:krTaxY(Y)), got=val*(1-feeR-taxR);
+        if(h.us) usGain[Y]=(usGain[Y]||0)+got-h.basis;
+        sells.push({y:h.y,name:h.name,us:h.us,sh:h.sh,px:px,fxUsed:h.us?fx:null,gross:val,fee:val*feeR,feeRate:feeR,tax:val*taxR,taxRate:taxR,amt:got,basis:h.basis,ret:got/h.basis-1,reason:h.exitReason,buyYm:h.buyYm});
+        cash+=got;
+      } else keep.push(h);
+    });
+    holds=keep;
+    var tax=0;
+    if(mo===12){ tax=C.us.cg_tax_rate*Math.max(0,(usGain[Y]||0)-C.us.cg_exemption_krw); usGain[Y]=0; cash=Math.max(0,cash-tax); }
+    cash+=dep;
+    var per=cash/4, buys=[], skipped=[];
+    M0.buys.forEach(function(r){                                             // 그달 점수 상위 종목(원래 일지의 선택)을 같은 순서로
+      var fee=r.us?usFee:krFee, pKrw=r.px*(r.us?fx:1), lots=Math.floor(Math.min(per,cash)*(1-fee)/pKrw);
+      if(lots<1){ skipped.push({y:r.y,name:r.name,us:r.us,px:r.px,one:pKrw,per:Math.min(per,cash)}); return; }
+      var a=lots*pKrw/(1-fee); cash-=a;
+      var ex=EX[r.y+'|'+ym];
+      holds.push({y:r.y,name:r.name,us:r.us,etf:isEtfHold({y:r.y,buyYm:+ym}),sh:lots,buyYm:+ym,buyPx:r.px,basis:a,last:r.px,score:r.score,exit:ex?ex.ym:null,exitReason:ex?ex.reason:null});
+      buys.push({y:r.y,name:r.name,us:r.us,sh:lots,px:r.px,fxUsed:r.us?fx:null,gross:a*(1-fee),fee:a*fee,feeRate:fee,amt:a,score:r.score});
+    });
+    M0.skipped.forEach(function(r){ skipped.push({y:r.y,name:r.name,us:r.us,px:r.px,one:r.one,per:Math.min(per,cash)}); });   // 원래도 못 산 종목(월봉 데이터 없음)
+    var hv=0;
+    holds.forEach(function(h){ h.last=closeAt(h.y,ym,h.last); hv+=h.sh*h.last*(h.us?fx:1); });
+    months[ym]={dep:dep,tax:Math.round(tax),cash:Math.round(cash),holdVal:Math.round(hv),fx:fx,
+      buys:buys.map(function(x){ return Object.assign({},x,{amt:Math.round(x.amt),gross:Math.round(x.gross),fee:Math.round(x.fee)}); }),
+      sells:sells.map(function(x){ return Object.assign({},x,{amt:Math.round(x.amt),basis:Math.round(x.basis),gross:Math.round(x.gross),fee:Math.round(x.fee),tax:Math.round(x.tax)}); }),
+      skipped:skipped.map(function(x){ return Object.assign({},x,{one:Math.round(x.one),per:Math.round(x.per)}); })};
+    snaps[ym]=holds.map(function(h){ return {y:h.y,name:h.name,buyYm:h.buyYm,buyPx:h.buyPx,curPx:h.last,sh:h.sh,basis:h.basis,ret:h.last/h.buyPx-1,score:h.score}; });
+  });
+  return {meta:LED0.meta,months:months,snaps:snaps};
+}
+function applyStart(S){
+  START_YM=S; START_Y=S.slice(0,4); PLAN=null; PLAN_BUSY=false; PLAN_ERR=null;
+  var done=function(){
+    if(S===FIRST_YM){ LED=LED0; DATA.snapshots=SNAP0; }
+    else { var r=simulateFrom(S); LED={meta:r.meta,months:r.months}; DATA.snapshots=r.snaps; }
+    calcRets();
+    var yms=Object.keys(LED.months).sort();
+    if(!SEL_YM || String(SEL_YM)<yms[0] || (PLAN_YM&&String(SEL_YM)===PLAN_YM&&false)) SEL_YM=yms[yms.length-1];
+    if(SEL_YM && String(SEL_YM)!==PLAN_YM && yms.indexOf(String(SEL_YM))<0) SEL_YM=yms[0];
+    renderAll();
+  };
+  if(S===FIRST_YM){ done(); return; }
+  loadBars(function(){ loadCosts(done); });
+}
+function renderStartCard(){
+  var card=document.getElementById('start-card'); if(!LED0){ card.style.display='none'; return; }
+  card.style.display='block';
+  var yms=Object.keys(LED0.months).sort(), years=[], seen={}; yms.forEach(function(ym){ var y=ym.slice(0,4); if(!seen[y]){ seen[y]=1; years.push(y); } });
+  var selY=START_Y||years[0];
+  var h='<div class="st-h"><div class="st-t">시작 시점</div><div class="st-v">'+fmt(START_YM)+'부터</div></div>'
+    +'<div class="yr-row">'+years.map(function(y){ return '<button class="yr-btn'+(y===selY?' sel':'')+'" data-sy="'+y+'">'+y+'</button>'; }).join('')+'</div>'
+    +'<div class="mo-row">'+MONTHS.map(function(m){ var ym=selY+m, ok=yms.indexOf(ym)>=0;
+        return '<button class="mo-btn'+(ym===START_YM?' sel':'')+'" data-sm="'+ym+'"'+(ok?'':' hidden')+'>'+m+'월</button>'; }).join('')+'</div>'
+    +'<div class="st-note">'+(START_YM===FIRST_YM?'기본(2011-12)부터 매달 100만원씩 같은 규칙으로 투자한 기록입니다. ':'선택한 달부터 빈손으로 시작해 매달 100만원씩 같은 규칙(매달 점수 상위 4종목, 같은 판매 기준)으로 투자했다면의 계산입니다. ')
+    +'시작 시점을 바꾸면 아래 모든 그래프·거래 내역이 그 기준으로 다시 계산돼요.</div>';
+  card.innerHTML=h;
+  card.querySelectorAll('[data-sy]').forEach(function(b){ b.onclick=function(){ START_Y=b.dataset.sy; renderStartCard(); }; });
+  card.querySelectorAll('[data-sm]').forEach(function(b){ b.onclick=function(){ if(b.dataset.sm!==START_YM) applyStart(b.dataset.sm); else renderStartCard(); }; });
+}
+
 function renderAll(){
-  renderYearChart(); renderRetChart(); renderNav();
+  renderStartCard(); renderYearChart(); renderRetChart(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
     document.getElementById('hold-title').textContent='예정 주문을 반영한 보유 종목은 위 거래 내역을 기준으로 봐 주세요.'; document.getElementById('hold-list').innerHTML='';
@@ -895,9 +981,9 @@ function renderAll(){
 }
 
 fetch('tools/learn/result/weights.json').then(function(r){ return r.json(); }).then(function(w){ W=w; if(DATA) renderAll(); }).catch(function(){});
-fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).then(function(l){ LED=l; calcRets(); PLAN_YM=nextYmOf(Object.keys(l.months).sort().pop()); }).catch(function(){})
+fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).then(function(l){ LED=l; LED0=l; FIRST_YM=Object.keys(l.months).sort()[0]; START_YM=FIRST_YM; START_Y=FIRST_YM.slice(0,4); calcRets(); PLAN_YM=nextYmOf(Object.keys(l.months).sort().pop()); }).catch(function(){})
 .then(function(){ return fetch('tools/learn/result/trades.json'); }).then(function(r){ return r.json(); }).then(function(d){
-  DATA=d;
+  DATA=d; SNAP0=d.snapshots;
   var yms=Object.keys(d.snapshots).sort();
   SEL_YM=yms[yms.length-1]||null;
   renderAll();
