@@ -416,6 +416,23 @@ for (const dep of LOT_DEPOSITS) {
   R.push({ n: `A4 tp2x금리유예2달 정수주문(한·미)${dep / 10000}만`, s: summ(simulate(lk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true }, dep)) });
 }
 
+// ── 점수가 기여했나? 같은 판매 규칙(tp2x 트레일 + 금리 유예 2달)·정수 주문·월 100만원에서 "무엇을 사느냐"만 바꿔 비교
+//    점수 상위 4 / 중간 4 / 하위 4 / 무작위 4(여러 번 평균) / 거래대금 큰 4. 상위 4가 하위·무작위보다 확실히 좋아야 점수가 일한 것
+const CMP_OPT = { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true };
+const cmpTop = ym => (scored[kA].get(ym) || []).slice(0, 4);
+const cmpBottom = ym => { const a = scored[kA].get(ym) || []; return a.slice(Math.max(0, a.length - 4)); };
+const cmpMiddle = ym => { const a = scored[kA].get(ym) || [], m = Math.floor(a.length / 2); return a.slice(Math.max(0, m - 2), m + 2); };
+const cmpTurn = ym => [...(byYm.get(ym) || [])].sort((a, b) => b.r.x[TURN] - a.r.x[TURN]).slice(0, 4);
+const cmpRand = rnd => ym => { const a = [...(byYm.get(ym) || [])]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, 4); };
+const CMP_NAMES = [];
+const cmpRun = (name, fn) => { progress('점수효과', CMP_NAMES.length / 5); CMP_NAMES.push(name); R.push({ n: name, s: fn() }); };
+cmpRun('점수효과 · 점수 상위 4', () => summ(simulate(cmpTop, 4, C1, CMP_OPT)));
+cmpRun('점수효과 · 점수 중간 4', () => summ(simulate(cmpMiddle, 4, C1, CMP_OPT)));
+cmpRun('점수효과 · 점수 하위 4', () => summ(simulate(cmpBottom, 4, C1, CMP_OPT)));
+cmpRun(`점수효과 · 무작위 4 (평균 ${SEEDS}회)`, () => { const l = []; for (let sd = 1; sd <= SEEDS; sd++) l.push(summ(simulate(cmpRand(rng(sd)), 4, C1, CMP_OPT))); return avgSumm(l); });
+cmpRun('점수효과 · 거래대금 큰 4', () => summ(simulate(cmpTurn, 4, C1, CMP_OPT)));
+progress('점수효과', 1); process.stdout.write('\n');
+
 // ── 1. 손절 실험: A4 tp2x트레일 × sl(10%·15%·20%·25% 하락 시 손절)
 const SL_VALS = [0.10, 0.15, 0.20, 0.25];
 const slTotal = SL_VALS.length * 2;
@@ -548,6 +565,15 @@ log(`\n## 요약 (모든 전략, 비용·세금 반영)`);
 log('전략                          누적     연평균   최대낙폭   청산시 세후(투입 ' + won(R[0].s.dep) + ')   IRR   이긴 해(코스피보다)');
 const ksY = ksS ? summ(ksS).yearly : null;
 R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).padStart(8)} ${pc(r.s.mdd).padStart(9)} ${won(r.s.liq).padStart(14)} ${pc(r.s.irr).padStart(8)}   ${ksY ? Ys.filter(Y => r.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + Ys.length : ''}`));
+// ── 점수가 기여했나? 비교 표 (같은 판매 규칙·정수 주문·월 100만원)
+{
+  log(''); log('## 점수가 기여했나? 사는 종목만 바꿔 비교 (같은 판매 규칙 tp2x트레일+금리유예2달, 정수 주문, 월 100만원, 비용·세금 반영)');
+  log('전략                              연평균   누적        최대낙폭   청산시 세후   IRR    이긴 해(코스피보다)');
+  const cmpRows = CMP_NAMES.map(n => R.find(r => r.n === n)).filter(Boolean);
+  cmpRows.forEach(r => log(`${r.n.padEnd(34)} ${pc(r.s.cagr).padStart(7)} ${pc(r.s.cum).padStart(10)} ${pc(r.s.mdd).padStart(9)} ${won(r.s.liq).padStart(12)} ${pc(r.s.irr).padStart(7)}   ${ksY ? Ys.filter(Y => r.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + Ys.length : ''}`));
+  const g = n => (cmpRows.find(r => r.n.includes(n)) || { s: { cagr: NaN } }).s.cagr;
+  log(`→ 점수 상위 4 − 무작위 4 = ${((g('상위') - g('무작위')) * 100).toFixed(1)}%p/년,  상위 4 − 하위 4 = ${((g('상위') - g('하위')) * 100).toFixed(1)}%p/년  (0 근처이거나 음수면 점수가 수익에 기여하지 못한 것)`);
+}
 fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
 
 // ── 매매일지(trades.json): A4 tp2x트레일+금리유예2달, 월 100만원
