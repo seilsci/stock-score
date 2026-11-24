@@ -326,8 +326,15 @@ function computeContribs(feats, n){
   }).filter(Boolean).sort(function(a,b){ return Math.abs(b.contrib)-Math.abs(a.contrib); }).slice(0,n||100);
 }
 
-function showScoreModal(h){
+/* 매수 시점 지표: 종료된 거래(trades) 또는 아직 보유 중인 매수(open)에서 찾음 */
+function findFeats(h){
   var t=DATA.trades.filter(function(tr){ return tr.y===h.y && String(tr.buyYm)===String(h.buyYm); })[0];
+  if(t && t.feats && t.feats.length) return t;
+  return (DATA.open||[]).filter(function(o){ return o.y===h.y && String(o.buyYm)===String(h.buyYm); })[0] || null;
+}
+
+function showScoreModal(h){
+  var t=findFeats(h);
   var modal=document.getElementById('sc-modal');
   var title=document.getElementById('sc-title');
   var content=document.getElementById('sc-content');
@@ -348,7 +355,7 @@ function showScoreModal(h){
           +'<div class="feat-val '+(pos?'':'n')+'">'+(pos?'+':'')+c.contrib.toFixed(3)+'</div>'
           +'</div>';
       }).join('')
-      +'<p style="font-size:11px;color:var(--mut);margin:12px 0 0">점수 '+sc+'점 = 과거 같은 패턴 신호 중 상위 '+sc+'번째 백분위</p>';
+      +'<p style="font-size:11px;color:var(--mut);margin:12px 0 0">목록의 '+sc+'점은 매수한 해 1월 1일까지 알던 정답으로 학습한 모델의 예측값(×100)입니다. 위 기여도는 지표별 영향을 보기 위해 최신 모델 가중치로 계산한 것이라 합계가 목록 점수와 같지는 않습니다.</p>';
   }
   modal.classList.add('open');
 }

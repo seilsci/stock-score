@@ -245,7 +245,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (prevAfter > 0) rets.push({ k, r: (after - dep) / prevAfter - 1 });
     prevAfter = after;
     // 보유 스냅샷 (opt.log)
-    if (snapshots) snapshots.set(ymOf(k), holds.map(h => ({ y: h.y, buyYm: h.buyYm, buyPx: h.buyPx, curPx: h.last, basis: h.basis, sh: h.sh, score: h.buyScore })));
+    if (snapshots) snapshots.set(ymOf(k), holds.map(h => ({ y: h.y, buyYm: h.buyYm, buyPx: h.buyPx, curPx: h.last, basis: h.basis, sh: h.sh, score: h.buyScore, feats: h.buyFeats })));
   }
   // 현재(진행 중인 달): 가장 최근 종가로 평가. 올해 이미 실현한 미국 손익의 세금은 미리 뺌
   const kNow = mi(CUR), curY = Math.floor(CUR / 100);
@@ -552,6 +552,13 @@ const journal = {
   })),
   snapshots: journalSim.snapshots ? Object.fromEntries([...journalSim.snapshots].map(([ym, h]) => [ym, h.map(x => ({ y: x.y, name: nameMap.get(x.y)?.name || x.y, code: nameMap.get(x.y)?.code || '', buyYm: x.buyYm, buyPx: x.buyPx, curPx: x.curPx, sh: x.sh ? +x.sh.toFixed(4) : null, basis: x.basis ? Math.round(x.basis) : null, ret: x.curPx ? +((x.curPx / x.buyPx - 1)).toFixed(4) : 0, score: +x.score.toFixed(4) }))])) : {}
 };
+// 아직 보유 중이라 거래 기록(trades)에 없는 매수의 지표: 점수 산출 기준 화면용
+const doneKey = new Set(journal.trades.map(t => t.y + '|' + t.buyYm)), openMap = new Map();
+for (const h of (journalSim.snapshots || new Map()).values()) for (const x of h) {
+  const key = x.y + '|' + x.buyYm;
+  if (!doneKey.has(key) && !openMap.has(key) && x.feats) openMap.set(key, { y: x.y, buyYm: x.buyYm, feats: F.map((f, i) => [f, +((x.feats[i] || 0)).toFixed(4)]) });
+}
+journal.open = [...openMap.values()];
 fs.writeFileSync(path.join(DATA, 'trades.json'), JSON.stringify(journal));
 progress('매매일지', 1); process.stdout.write('\n');
 require('./8_bars.js');                                      // 매매일지 차트용 월봉(bars.json)
