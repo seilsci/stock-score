@@ -270,6 +270,16 @@ log('평가금 ' + cols.map(c => won(c.s.val).padStart(10)).join(''));
 log('청산시 ' + cols.map(c => won(c.s.liq).padStart(10)).join(''));
 log('IRR    ' + cols.map(c => pc(c.s.irr).padStart(10)).join(''));
 log(`(* = 올해 오늘까지, 단위 원. 평가금 = 보유 그대로, 청산시 = 전부 팔았다고 가정한 세후 금액, IRR = 월 적립·청산시 기준 연환산 수익률)`);
+
+// A1~A9 tp2x트레일 연도별 수익률
+const tpCols2 = A_N_VALS.map(N => R.find(r => r.n === `A${N} tp2x트레일`)).filter(Boolean);
+tpCols2.forEach(c => c.h = c.n.replace(' tp2x트레일', ''));
+log(`\n## A1~A9 tp2x트레일 연도별 수익률`);
+log('연도   ' + tpCols2.map(c => c.h.padStart(10)).join(''));
+Ys.forEach(Y => log(`${Y}${Y === Math.floor(CUR / 100) ? '*' : ' '}  ` + tpCols2.map(c => pc(c.s.yearly[Y] ?? 0).padStart(10)).join('')));
+log('연평균 ' + tpCols2.map(c => pc(c.s.cagr).padStart(10)).join(''));
+log('2020제외' + tpCols2.map(c => { const ys = Object.entries(c.s.yearly).filter(([Y]) => +Y !== 2020); const m = ys.length; const cum = ys.reduce((p,[,v])=>p*(1+v),1); return pc(Math.pow(cum,12/m)-1).padStart(10); }).join(''));
+log('최대낙폭' + tpCols2.map(c => pc(c.s.mdd).padStart(10)).join(''));
 log(`\n## 비용·세금이 깎은 만큼 (연평균 수익률, 같은 전략을 비용 없이 vs 실제 비용으로)`);
 log('전략                          비용 없음   실제 비용    차이');
 Object.keys(R0).forEach(n => { const a = R0[n].cagr, b = R.find(r => r.n === n).s.cagr; log(`${n.padEnd(26)} ${pc(a).padStart(9)} ${pc(b).padStart(10)} ${((b - a) * 100).toFixed(1).padStart(7)}%p`); });
