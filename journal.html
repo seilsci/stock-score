@@ -292,19 +292,19 @@ function renderNav(){
 }
 
 /* ── 보유 종목 ── */
-function renderHoldings(){
+function renderHoldings(over){            // over: 예정 달의 예상 보유 {holds, fx}
   var ym = SEL_YM;
   var title = document.getElementById('hold-title');
   var list = document.getElementById('hold-list');
   if(!ym){ title.textContent='연도·월을 선택하면 그달 말 보유 종목이 표시됩니다.'; list.innerHTML=''; return; }
-  var holds = DATA.snapshots[ym] || [];
-  title.textContent = fmt(ym)+' 말 보유 종목 '+holds.length+'개';
+  var holds = over ? over.holds : (DATA.snapshots[ym] || []);
+  title.innerHTML = over ? fmt(ym)+' 예상 보유 종목 '+holds.length+'개 <span class="plan-tag">예정 주문 반영</span>' : fmt(ym)+' 말 보유 종목 '+holds.length+'개';
   if(!holds.length){ list.innerHTML='<div style="color:var(--mut);padding:4px 0">현금 보유</div>'; return; }
   list.innerHTML = holds.map(function(h,i){
     var ret=h.ret, cls=ret>=0?'p':'n';
     var isSel = SEL_HOLD && SEL_HOLD.y===h.y;
     var scN = scoreOf(h.y,h.buyYm), sc = scN!=null ? scN : Math.round(h.score*100);
-    var hUS = !/\.(KS|KQ)$/.test(h.y), fxv = LED && LED.months[ym] ? LED.months[ym].fx : 1;
+    var hUS = !/\.(KS|KQ)$/.test(h.y), fxv = over ? over.fx : (LED && LED.months[ym] ? LED.months[ym].fx : 1);
     var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx * (hUS ? fxv : 1)) : null;
     var buyAmt = h.basis ? Math.round(h.basis) : null;
     var shStr = h.sh ? (h.sh < 1 ? h.sh.toFixed(3)+'주' : Math.floor(h.sh)+'주') : '';
@@ -332,7 +332,11 @@ function renderHoldings(){
     btn.onclick=function(e){
       e.stopPropagation();
       var i=+btn.dataset['scI'];
-      showScoreTree(holds[i].y, holds[i].buyYm, holds[i].name||holds[i].y, holds[i].score);
+      var hh=holds[i];
+      if(hh.row){                                                             // 이번에 새로 사는 종목: 지금 지표로 바로 나무
+        var f=hh.row['차트']&&hh.row['차트'].length?featsFromChart(hh.row['차트'],hh.row):null;
+        showScoreTree(hh.y,+SEL_YM,hh.name||hh.y,null,{feats:f?Object.keys(f).map(function(k){ return [k,f[k]]; }):[],apiScore:hh.apiScore});
+      } else showScoreTree(hh.y, hh.buyYm, hh.name||hh.y, hh.score);
     };
   });
 }
@@ -433,8 +437,8 @@ function drawHoldChart(h){
   priceEl.textContent = '매수 '+px(h.buyPx)+'  →  현재 '+px(h.curPx)+'  '+pc(h.ret);
   box.style.display='block';
   var cv = document.getElementById('cv');
-  drawChart(cv, h.y, SEL_YM, h.buyYm, null);
-  cv._redraw=function(){ drawChart(cv, h.y, SEL_YM, h.buyYm, null); };
+  drawChart(cv, h.y, SEL_YM, h.buyYm, null, h.raw||undefined);
+  cv._redraw=function(){ drawChart(cv, h.y, SEL_YM, h.buyYm, null, h.raw||undefined); };
   box.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 window.addEventListener('resize',function(){
@@ -919,11 +923,26 @@ function loadPlan(){
       .map(function(x){ return {y:x['시장']==='US'?x['코드']:x['코드']+(x['시장']==='KOSPI'?'.KS':'.KQ'),name:x['이름'],us:x['시장']==='US',px:+x['최근종가'],score:+x['점수'],cap:x['시총'],row:x}; });
     var core=planCore({nowYm:nextYmOf(lastYm),lastYm:lastYm,holds:DATA.snapshots[lastYm]||[],cash:L.cash,dep:LED.meta.dep,fx:L.fx,rateUp:api.rateUp===true,picks:picks,N:4,usGainYtd:usGainYtdOf(nextYmOf(lastYm))});
     core.api={updated:api.updated,rateUp:api.rateUp,candidates:api.rows.filter(function(x){ return x['신호']==='매수'; }).length};
+    core.fx=L.fx; core.base=DATA.snapshots[lastYm]||[];
     PLAN=core; PLAN_YM=nextYmOf(lastYm); PLAN_BUSY=false; renderAll();
   }).catch(function(e){ PLAN_BUSY=false; PLAN_ERR=String(e&&e.message||e); renderAll(); });
 }
 
 function chartRaw(r){ var ch=r&&r['차트']; if(!ch||!ch.length) return undefined; var f=[]; ch.forEach(function(x){ f.push(+x[0],+x[4]); }); return f; }
+
+function planHoldings(P){                    // 예상 보유 = 지난달 보유 − 판매 예정 + 구매 예정 (현재 가격 기준)
+  var nowYm=PLAN_YM, sold={}; P.sells.forEach(function(x){ sold[x.y+'|'+x.buyYm]=1; });
+  var out=[];
+  (P.base||[]).forEach(function(h){
+    if(sold[h.y+'|'+h.buyYm]) return;
+    var b=barsOf(h.y), i=b&&b.pos[nowYm], cur=(b&&i!=null)?b.cs[i]:h.curPx;
+    out.push({y:h.y,name:h.name,buyYm:h.buyYm,buyPx:h.buyPx,curPx:cur,sh:h.sh,basis:h.basis,ret:cur/h.buyPx-1,score:h.score});
+  });
+  P.buys.forEach(function(x){
+    out.push({y:x.y,name:x.name,buyYm:+nowYm,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:x.score/100,row:x.row,apiScore:x.score,raw:chartRaw(x.row)});
+  });
+  return out;
+}
 
 function renderPlanView(){
   var sc=document.getElementById('sum-card'), list=document.getElementById('led'), label=document.getElementById('led-label');
@@ -1141,7 +1160,8 @@ function renderAll(){
   renderStartCard(); renderSoldList(); renderYearChart(); renderRetChart(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
-    document.getElementById('hold-title').textContent='예정 주문을 반영한 보유 종목은 위 거래 내역을 기준으로 봐 주세요.'; document.getElementById('hold-list').innerHTML='';
+    if(PLAN) renderHoldings({holds:planHoldings(PLAN),fx:PLAN.fx});
+    else { document.getElementById('hold-title').textContent='예상 보유 종목을 계산하는 중…'; document.getElementById('hold-list').innerHTML=''; }
     document.getElementById('chart-box').style.display='none';
     if(!PLAN) loadPlan();
     return;
