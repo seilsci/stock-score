@@ -342,9 +342,39 @@ function makeRow_(s, mon) {
 }
 
 /* ───────── 사이트용 ───────── */
+// 응답 캐시: 갱신(updateKR·updateUS)할 때 지우고, 그 사이에는 저장해 둔 응답을 바로 돌려줌(느린 시트 읽기 생략)
+var CACHE_CHUNK = 30000;                       // 캐시 한 칸 크기(글자). 한 칸 100KB 제한 때문에 나눠 저장
+function cacheGet_(key) {
+  var c = CacheService.getScriptCache(), n = +c.get(key + ':n');
+  if (!n) return null;
+  var keys = []; for (var i = 0; i < n; i++) keys.push(key + ':' + i);
+  var got = c.getAll(keys), out = [];
+  for (var j = 0; j < n; j++) { if (got[keys[j]] == null) return null; out.push(got[keys[j]]); }
+  return out.join('');
+}
+function cachePut_(key, text) {
+  try {
+    var c = CacheService.getScriptCache(), put = {}, n = Math.ceil(text.length / CACHE_CHUNK);
+    for (var i = 0; i < n; i++) put[key + ':' + i] = text.slice(i * CACHE_CHUNK, (i + 1) * CACHE_CHUNK);
+    put[key + ':n'] = String(n);
+    c.putAll(put, 21600);                       // 최대 6시간(갱신 때 지워짐)
+  } catch (e) {}
+}
+function cacheClear_() {
+  var c = CacheService.getScriptCache();
+  ['sig', 'all'].forEach(function (k) {
+    var key = 'doGet:' + k, n = +c.get(key + ':n'), keys = [key + ':n'];
+    for (var i = 0; i < n; i++) keys.push(key + ':' + i);
+    c.removeAll(keys);
+  });
+}
+
 // ?all=1 이면 모든 종목, 아니면 매수·매도·유예 신호만
 function doGet(e) {
   var all = e && e.parameter && e.parameter.all;
+  var key = 'doGet:' + (all ? 'all' : 'sig');
+  var hit = cacheGet_(key);
+  if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
   var ss = SpreadsheetApp.getActive(), out = { updated: {}, rows: [] };
   ['한국', '미국'].forEach(function (n) {
     var sh = ss.getSheetByName(n);
@@ -359,7 +389,9 @@ function doGet(e) {
       out.rows.push(o);
     });
   });
-  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+  var text = JSON.stringify(out);
+  cachePut_(key, text);
+  return ContentService.createTextOutput(text).setMimeType(ContentService.MimeType.JSON);
 }
 
 /* ───────── 도구 ───────── */
@@ -377,15 +409,18 @@ function fetchAll_(urls) {
 }
 
 function writeRows_(name, rows) {
-  var sh = SpreadsheetApp.getActive().getSheetByName(name) || SpreadsheetApp.getActive().insertSheet(name);
+  var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(name) || ss.insertSheet(name);
+  var fresh = sh.getLastRow() === 0;             // 새 탭일 때만 서식을 지정(서식은 clearContents로 지워지지 않음)
   sh.clearContents();
-  // 코드(005930)·기준일·갱신 시각이 숫자·날짜로 바뀌지 않게 텍스트로
-  ['B:D', 'F:F', 'K:L', 'N:N', 'Q1:R1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
-  sh.getRange(1, 1, 1, HEAD.length).setValues([HEAD]);
-  if (rows.length) sh.getRange(2, 1, rows.length, HEAD.length).setValues(rows);
-  sh.getRange('Q1').setValue('갱신');
-  sh.getRange('R1').setValue(Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'));
+  if (fresh) {
+    // 코드(005930)·기준일·갱신 시각이 숫자·날짜로 바뀌지 않게 텍스트로
+    ['B:D', 'F:F', 'K:L', 'N:N', 'Q1:R1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
+  }
+  // 머리글 + 데이터를 한 번에 쓰기(호출 1번), 갱신 시각도 한 번에
+  sh.getRange(1, 1, rows.length + 1, HEAD.length).setValues([HEAD].concat(rows));
+  sh.getRange('Q1:R1').setValues([['갱신', Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm')]]);
   sh.setFrozenRows(1);
+  cacheClear_();                                 // 새 데이터가 들어왔으니 저장해 둔 응답을 지움
 }
 
 function log_(what, msg) {

@@ -271,10 +271,20 @@ function renderHoldings(){
 }
 
 /* ── 월봉 차트 (종가 + 월 10이평, 매수 ▲ · 매도 ▼) ── */
-var BARS = null;
+var BARS = null, BARS_P = null;
+function loadBars(cb){                       // 월봉(1.2MB)은 차트를 처음 열 때만 받음
+  if(BARS){ cb(); return; }
+  if(!BARS_P) BARS_P = fetch('tools/learn/result/bars.json').then(function(r){ return r.json(); }).then(function(b){ BARS=b; }).catch(function(){ BARS={}; });
+  BARS_P.then(cb);
+}
 function ymIdx(ym){ ym=+ym; return Math.floor(ym/100)*12+ym%100-1; }
 function cssv(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 function drawChart(cv, y, endYm, buyYm, sellYm){
+  if(!BARS){
+    loadBars(function(){ drawChart(cv, y, endYm, buyYm, sellYm); });
+    var g0=cv.getContext('2d'); cv.width=(cv.clientWidth||600); cv.height=200; g0.fillStyle=cssv('--mut'); g0.font='13px -apple-system,sans-serif'; g0.textAlign='center'; g0.fillText('월봉 불러오는 중…',cv.width/2,100);
+    return;
+  }
   var W2=cv.clientWidth||600, H=200, dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr; cv.height=H*dpr; cv.style.height=H+'px';
   var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W2,H);
@@ -542,7 +552,6 @@ window.addEventListener('resize',function(){ if(LED && SEL_YM) renderRetChart();
 function renderAll(){ renderRetChart(); renderNav(); renderSummary(); renderLedger(); renderHoldings(); document.getElementById('chart-box').style.display='none'; }
 
 fetch('tools/learn/result/weights.json').then(function(r){ return r.json(); }).then(function(w){ W=w; }).catch(function(){});
-fetch('tools/learn/result/bars.json').then(function(r){ return r.json(); }).then(function(b){ BARS=b; }).catch(function(){});
 fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).then(function(l){ LED=l; calcRets(); }).catch(function(){})
 .then(function(){ return fetch('tools/learn/result/trades.json'); }).then(function(r){ return r.json(); }).then(function(d){
   DATA=d;

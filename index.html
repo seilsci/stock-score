@@ -407,12 +407,19 @@ document.querySelectorAll('.tab').forEach(function (t) {
 document.querySelectorAll('.seg button').forEach(function (b) {
   b.onclick = function () { S = b.dataset.s; try { localStorage.setItem('s', S); } catch (e) {} render(); };
 });
+// 지난번에 받은 데이터를 먼저 보여 주고(즉시), 새 데이터는 뒤에서 받아 바꿈
+var cached = false;
+try { var c0 = JSON.parse(localStorage.getItem('dataCache') || 'null'); if (c0 && c0.rows) { DATA = c0; cached = true; } } catch (e) {}
 render();
-fetch(API).then(function (r) { return r.json(); }).then(function (d) { DATA = d; render(); })
-  .catch(function () {
-    document.getElementById('upd').textContent = '데이터를 불러오지 못했어요';
-    document.getElementById('L').innerHTML = '<div class="msg">잠시 뒤 새로고침해 주세요.</div>';
-  });
+if (cached) document.getElementById('upd').textContent += ' · 새 데이터 확인 중…';
+fetch(API).then(function (r) { return r.json(); }).then(function (d) {
+  DATA = d; render();
+  try { localStorage.setItem('dataCache', JSON.stringify(d)); } catch (e) {}
+}).catch(function () {
+  if (cached) { render(); document.getElementById('upd').textContent += ' (새로고침 실패, 지난 데이터)'; return; }
+  document.getElementById('upd').textContent = '데이터를 불러오지 못했어요';
+  document.getElementById('L').innerHTML = '<div class="msg">잠시 뒤 새로고침해 주세요.</div>';
+});
 </script>
 </body>
 </html>
