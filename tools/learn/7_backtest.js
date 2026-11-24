@@ -194,6 +194,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       for (const h of holds) {
         const p0 = priceAt(h.px, { y: h.y }); if (!(p0 > 0)) continue;
         const pk = p0 * (h.us ? fx(k) : 1), pnl = h.sh * pk / h.basis - 1;
+        if (opt.addAlign && !opt.addAlign(h.px, opt.firstDay ? k - 1 : k)) continue;       // addAlign: 이평 정배열인 종목만(체결 시점에 이미 알던 달 기준: 첫날 체결이면 지난달 말)
         if (grp === 'win' && pnl <= (opt.addThr || 0)) continue; if (grp === 'lose' && pnl >= 0) continue;     // addThr: 수익이 이 비율을 넘는 종목만(0이면 수익 중이면 전부)
         elig.push({ h, pk, w: opt.addW === 'value' ? h.sh * pk : opt.addW === 'pnl' ? Math.max(pnl, 1e-6) : 1 });      // addW: 대상 종목 몫 — equal 같은 금액 · value 평가금 비례 · pnl 수익률 비례
       }
@@ -1118,7 +1119,38 @@ if (process.env.STAGE8 !== '0') {
   progress('추가 매수 심화(절반)', 1); process.stdout.write('\n');
   AD2.sec = rows;
 }
+// ── 정배열인 보유 종목에만 추가 매수(STAGE9=0이면 건너뜀): 정배열 4가지 정의 × (정배열 전부 / 정배열이면서 수익 중) × 현금 50%·100%
+const AD3 = { rows: null };
+if (process.env.STAGE9 !== '0') {
+  const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  const B = +process.env.AD3_HALVES || 8, topL9 = ym => scored[kA].get(ym) || [];
+  const maAt = (o, k, n) => { let t = 0; for (let j = k; j > k - n; j--) { const p = o.m.get(j); if (p === undefined) return null; t += p; } return t / n; };
+  const AL = {
+    '종가>5>10>20이평': (o, k) => { const c = o.m.get(k), a = maAt(o, k, 5), b = maAt(o, k, 10), d = maAt(o, k, 20); return c != null && a != null && b != null && d != null && c > a && a > b && b > d; },
+    '5>10>20이평': (o, k) => { const a = maAt(o, k, 5), b = maAt(o, k, 10), d = maAt(o, k, 20); return a != null && b != null && d != null && a > b && b > d; },
+    '종가>10>24이평': (o, k) => { const c = o.m.get(k), b = maAt(o, k, 10), d = maAt(o, k, 24); return c != null && b != null && d != null && c > b && b > d; },
+    '10>24이평+10이평 상승': (o, k) => { const b = maAt(o, k, 10), b1 = maAt(o, k - 1, 10), d = maAt(o, k, 24); return b != null && b1 != null && d != null && b > d && b > b1; }
+  };
+  const V = [['추가 매수 없음 (지금 방식)', {}], ['수익 중인 종목 100% (참고: 앞 시험 유력 후보)', { addFrac: 1, addGroup: 'win' }], ['수익 중인 종목 50% (참고)', { addFrac: 0.5, addGroup: 'win' }]];
+  Object.entries(AL).forEach(([n, fn]) => [['all', '정배열 전부'], ['win', '정배열 + 수익 중']].forEach(([g, gn]) => [0.5, 1].forEach(f => V.push([`${n} · ${gn} ${f * 100}%`, { addFrac: f, addGroup: g, addAlign: fn }]))));
+  const run9 = (o, cand) => summ(simulate(ym => cand(ym).slice(0, 4), 4, C1, { lotSize: true, lotAll: true, fill: true, cand, firstDay: true, tpTrail: 2, grace: 2, graceRate: true, ...o }));
+  const rows = V.map((v, i) => { progress('정배열 추가 매수', i / V.length); return { name: v[0], o: v[1], full: run9(v[1], topL9), halves: [] }; });
+  for (let b = 1; b <= B; b++) { progress('정배열 추가 매수(절반)', (b - 1) / B); const cand = ym => topL9(ym).filter(e => hash(e.r.y + '|' + b) < 0.5); rows.forEach(r => r.halves.push(run9(r.o, cand).cagr)); }
+  progress('정배열 추가 매수(절반)', 1); process.stdout.write('\n');
+  AD3.rows = rows;
+}
 // ── 걸어가며 설정 고르기 보고
+// ── 정배열 추가 매수 보고
+if (AD3.rows) {
+  const Rr = AD3.rows, base = Rr[0], ref = Rr[1], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019), mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  log(''); log('## 정배열인 보유 종목에만 추가 매수 (점수 상위 4, 유예2+금리+tp2x, 첫날 체결, 월 100만원; 나머지는 신규 매수. 정배열은 체결 시점에 이미 알던 달 기준)');
+  log('방식                                              전체    앞쪽    뒤쪽    낙폭    지금 방식 대비(평균 · 표준편차 · 이긴 비율)       수익 중 100% 대비(평균 · 이긴 비율)');
+  Rr.forEach(r => {
+    const d = r.halves.map((h, i) => h - base.halves[i]), sd = Math.sqrt(mean(d.map(x => (x - mean(d)) ** 2))), d2 = r.halves.map((h, i) => h - ref.halves[i]);
+    log(`${r.name.padEnd(46)} ${pc1(r.full.cagr).padStart(7)} ${pc1(cagrOver(r.full.yearly, early)).padStart(7)} ${pc1(cagrOver(r.full.yearly, late)).padStart(7)} ${pc1(r.full.mdd).padStart(7)}    ${r === base ? '(기준)'.padEnd(34) : `${pp(mean(d)).padStart(7)} · ${(sd * 100).toFixed(1)}%p · ${(d.filter(x => x > 0).length / d.length * 100).toFixed(0)}%`.padEnd(34)}  ${r === base || r === ref ? '' : `${pp(mean(d2)).padStart(7)} · ${(d2.filter(x => x > 0).length / d2.length * 100).toFixed(0)}%`}`);
+  });
+}
 // ── 추가 매수 심화 보고
 if (AD2.sec) {
   const Rr = AD2.sec, pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
