@@ -11,13 +11,13 @@
   - `tools/learn/run.sh` 진행 표시 규칙: 한 줄 `○○ 진행중 · N% 완료 · 경과 m분 · 100% 예상 HH:MM`, 단계 끝 줄은 `■ 단계 (n/N) 끝 · 지금 HH:MM · 시작 후 m분`(시각은 PC 현지=한국 시각; Git Bash에서 `TZ=Asia/Seoul`은 안 먹혀 UTC가 나오니 쓰지 말 것). 진행률 구간은 `plan.js`가 계산(이미 받은 월봉은 거의 0%, 단계별 실측 시간은 `data/steptimes.txt`). **새 단계를 추가하면 `plan.js`의 `names`와 `run.sh`의 `mark`도 같이 추가.**
 - 실험은 **끝까지 물고 늘어짐**: 시험할 수 있는 건 다 해 보고 수치가 가장 좋은 쪽으로. 실험을 다 끝낸 뒤 코드를 한꺼번에 고침. **같은 데이터로 비교해야 같은 기준.** 탈락한 실험은 NOTES.md에 남겨 다시 하지 않음.
 - 평가는 **월 100만원 적립 시뮬레이션**(연도별 수익률·누적, 비용·세금 반영). 건별 평균 수익은 쓰지 않음(보유 기간 무시).
-- **main 반영은 사용자가 "올려"라고 확인한 뒤에만.** 작업 브랜치에는 자유롭게 커밋·push.
+- **main 반영: 사용자가 2026-11-24에 "앞으로는 올려 요청하지 말고 올려줘"라고 지시함 → 작업이 끝나 확인(문법·시험)한 변경은 묻지 않고 바로 main에 올림**(작업 브랜치 커밋·push → `git push origin HEAD:main`, 빨리감기 가능할 때만). 단 강제 push·기록 다시 쓰기 금지, PC에서 만든 `result/`가 아닌 클라우드 실험 결과는 올리지 않음, 시트(Apps Script)·`stock_learn.bat` 같은 사용자가 직접 해야 하는 일은 올린 뒤 알려 줌.
 - 사용자는 스크린샷으로 상황을 공유함. 특이한 점을 함께 짚어 줄 것.
 
 ## 꼭 지킬 규칙
 - Apps Script는 수정 후 **배포 → 배포 관리 → 연필(수정) → 새 버전**으로 배포(URL 유지). 웹 앱 액세스는 "모든 사용자".
 - 개인정보·API 키·시트 링크는 저장소에 넣지 않음. **apix 키는 `~/apix-key.txt`(저장소 밖)에만.** 로그·커밋에 키가 찍히지 않게.
-- **학습·시뮬레이션(`tools/learn/run.sh` 전체 실행)은 절대 Claude가 클라우드에서 돌리지 않음. 예외 없음.** 사용자 PC가 더 빠르고, 결과(`result/`)는 PC에서 만든 것만 저장소에 넣음. 사용자는 바탕화면 `stock_learn.bat`(= `tools/learn/run_learn.bat`: `git pull && tools/learn/run.sh`, 끝에 올릴지 묻고 `result/`에 커밋·push)로 돌림(토큰 0). Claude는 코드 수정·결과 분석만 하고, 돌려야 할 때는 "PC에서 stock_learn.bat을 돌려 주세요"라고 안내. 단 PC는 `git pull`로 코드를 받으므로 **고친 코드가 PC가 pull하는 브랜치(main)에 있어야 함** → 코드를 main에 올려도 되는지 "올려" 확인부터 받을 것. 가벼운 한 줄 확인(파일 문법·작은 계산)만 클라우드에서 가능(`tools/learn/README-PC.md`).
+- **학습·시뮬레이션(`tools/learn/run.sh` 전체 실행)은 절대 Claude가 클라우드에서 돌리지 않음. 예외 없음.** 사용자 PC가 더 빠르고, 결과(`result/`)는 PC에서 만든 것만 저장소에 넣음. 사용자는 바탕화면 `stock_learn.bat`(= `tools/learn/run_learn.bat`: `git pull && tools/learn/run.sh`, 끝에 올릴지 묻고 `result/`에 커밋·push)로 돌림(토큰 0). Claude는 코드 수정·결과 분석만 하고, 돌려야 할 때는 "PC에서 stock_learn.bat을 돌려 주세요"라고 안내. 단 PC는 `git pull`로 코드를 받으므로 **고친 코드가 PC가 pull하는 브랜치(main)에 있어야 함** → 코드를 main에 올린 뒤 PC에서 돌려 달라고 안내할 것(올리는 건 위 지시대로 확인 불필요). 가벼운 한 줄 확인(파일 문법·작은 계산)만 클라우드에서 가능(`tools/learn/README-PC.md`).
 - 이 PC의 Claude Code는 제3자 API(apix)라 크레딧이 한정됨: `/model`로 Sonnet, 파일은 필요한 부분만 읽기.
 
 ## 지금 상태 (2026-11-24)
