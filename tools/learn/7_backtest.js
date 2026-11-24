@@ -45,6 +45,9 @@ const ffChg12 = k => { const m = MACRO[ymOf(k)]; return m && m.ff_chg12 != null 
 const scored = MODELS.map(() => new Map());                 // 모델 → Map(ym → [{r, s}] 점수 높은 순)
 const byYm = new Map();
 ALL.forEach(r => { const a = byYm.get(r.ym) || []; a.push({ r, s: 0 }); byYm.set(r.ym, a); });
+const KA0 = MODELS.findIndex(M => M.n[0] === 'A'), KF0 = MODELS.findIndex(M => M.n[0] === 'F');
+const scoredMk = {};                                          // 'A한국'·'F미국' 등: 한 시장 안에서만 학습하고 그 시장 신호에만 점수(점수 살리기 실험)
+['A', 'F'].forEach(m => ['한국', '미국'].forEach(mk => { scoredMk[m + mk] = new Map(); }));
 const years = []; for (let Y = START_Y - 1; Y <= Math.floor(CUR / 100); Y++) years.push(Y);
 years.forEach((Y, yi) => {
   progress('백테스트 점수', yi / years.length);
@@ -57,7 +60,18 @@ years.forEach((Y, yi) => {
     const P = prep(tr, M.cols), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), M.lam);
     te.forEach(r => { const a = scored[k].get(r.ym) || []; a.push({ r, s: score(w, z(r, P)) }); scored[k].set(r.ym, a); });
   });
+  // 시장별 모델: 그 시장 신호만으로 학습(시간 순서는 같음: 그해 1월 1일까지 알던 정답만)
+  [KA0, KF0].forEach(k => [['한국', false], ['미국', true]].forEach(([mkName, isUS]) => {
+    const M = MODELS[k], inM = r => (r.x[US] === 1) === isUS;
+    const trm = tr0.filter(inM), tem = te.filter(inM); if (trm.length < 300 || !tem.length) return;
+    const mm2 = new Map(); trm.forEach(r => { const a = mm2.get(r.ym) || []; a.push(clipT(r.t)); mm2.set(r.ym, a); });
+    const tr = M.demean ? trm.map(r => { const a = mm2.get(r.ym); return { x: r.x, t: a.length >= 5 ? clipT(r.t) - a.reduce((s, v) => s + v, 0) / a.length : null }; }).filter(r => r.t !== null)
+                        : trm.map(r => ({ x: r.x, t: clipT(r.t) }));
+    const P = prep(tr, M.cols), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), M.lam), key = M.n[0] + mkName;
+    tem.forEach(r => { const a = scoredMk[key].get(r.ym) || []; a.push({ r, s: score(w, z(r, P)) }); scoredMk[key].set(r.ym, a); });
+  }));
 });
+Object.values(scoredMk).forEach(m => m.forEach(a => a.sort((x, y) => y.s - x.s)));
 scored.forEach(m => m.forEach(a => a.sort((x, y) => y.s - x.s)));
 
 // ── 매도 유예 모델: 매도 신호(종가<10이평) 달의 가격 지표 → 3개월 뒤 수익 예측 → 높으면 유예
@@ -489,6 +503,23 @@ const SPLITS = [2019, 2022].map(lastEarly => {
 });
 progress('앞뒤검증', 1); process.stdout.write('\n');
 
+// ── 점수 효과 보강 ③: 시장별로 점수 살리기 — 모델 A/F × (한국·미국 합쳐 학습 / 시장별 따로 학습)
+const MK_VAR = [];
+for (const [mkName, isUS] of [['한국', false], ['미국', true]]) {
+  const inMk = e => (e.r.x[US] === 1) === isUS;
+  const variants = [
+    ['A 합쳐 학습 (현재)', ym => (scored[KA0].get(ym) || []).filter(inMk)],
+    ['F 합쳐 학습 (그달 평균 뺀 수익)', ym => (scored[KF0].get(ym) || []).filter(inMk)],
+    [`A ${mkName}만 학습`, ym => scoredMk['A' + mkName].get(ym) || []],
+    [`F ${mkName}만 학습 (그달 평균 뺀 수익)`, ym => scoredMk['F' + mkName].get(ym) || []]
+  ];
+  variants.forEach(([vn, candFn]) => {
+    progress('시장별모델', MK_VAR.length / 8);
+    MK_VAR.push({ mk: mkName, name: vn, s: summ(simulate(ym => candFn(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand: candFn })) });
+  });
+}
+progress('시장별모델', 1); process.stdout.write('\n');
+
 // ── 1. 손절 실험: A4 tp2x트레일 × sl(10%·15%·20%·25% 하락 시 손절)
 const SL_VALS = [0.10, 0.15, 0.20, 0.25];
 const slTotal = SL_VALS.length * 2;
@@ -660,6 +691,18 @@ R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).
   const sp0 = SPLITS[0];
   log(''); log(`설정 28가지의 앞쪽(${sp0.early[0]}~${sp0.early[sp0.early.length - 1]}) 대 뒤쪽(${sp0.late[0]}~${sp0.late[sp0.late.length - 1]}) 연평균 (뒤쪽 높은 순)`);
   [...sp0.rows].sort((x, y) => y.l - x.l).forEach(r => log(`  ${r.g.name.padEnd(34)} 앞쪽 ${pc(r.e).padStart(8)}   뒤쪽 ${pc(r.l).padStart(8)}`));
+}
+// ── 점수 효과 보강 ③ 보고
+{
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019);
+  log(''); log('## 점수 효과 보강 ③ 시장별로 점수 살리기 (각 시장 안에서 점수 상위 4, 같은 판매 규칙·정수 주문·월 100만원)');
+  log('모델 변형                               전체     앞쪽(2012~2019)  뒤쪽(2020~)   이긴 해(코스피보다)');
+  ['한국', '미국'].forEach(mk => {
+    const rd = (MK_RES.find(r => r.mk === mk) || { rand: [0] }).rand, q = p => rd[Math.min(rd.length - 1, Math.floor(p * (rd.length - 1)))];
+    log(`[${mk}]  (참고: 무작위 4 중앙값 ${pc(q(0.5))}, 상위 10% ${pc(q(0.9))})`);
+    MK_VAR.filter(v => v.mk === mk).forEach(v => log(`  ${v.name.padEnd(36)} ${pc(v.s.cagr).padStart(8)}   ${pc(cagrOver(v.s.yearly, early)).padStart(10)}      ${pc(cagrOver(v.s.yearly, late)).padStart(9)}      ${ksY ? YEARS_ALL.filter(Y => v.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + YEARS_ALL.length : ''}`));
+  });
+  log('→ 미국에서 현재(A 합쳐 학습)보다 무작위 상위 10%를 확실히 넘는 변형이 있으면 그 모델로 미국 점수를 바꾸는 것을 검토. 앞쪽·뒤쪽 모두에서 좋아야 믿을 만함');
 }
 fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
 
