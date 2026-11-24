@@ -106,6 +106,9 @@ canvas{display:block;width:100%;height:200px}
 .lr.sell{border-left:4px solid var(--buy);background:rgba(217,54,62,.06)}
 .lr.tax{border-left:4px solid #16a34a;background:rgba(22,163,74,.07)}
 .lr.dep{border-left:4px solid var(--mut)}
+.lr.skip{border-left:4px dashed var(--mut);background:transparent}
+.lr.skip .lr-k{background:var(--chip);color:var(--mut)}
+.lr.skip .lr-n{color:var(--mut)}
 .lr-h{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:9px 11px;cursor:default}
 .lr.clk .lr-h{cursor:pointer}
 .lr-k{font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px;white-space:nowrap}
@@ -552,7 +555,7 @@ function renderSummary(){
     +'<div class="sum-i"><span class="k">보유 평가금</span><b>'+won(m.holdVal)+'</b></div>'
     +'<div class="sum-i"><span class="k">이달 매도</span><b>'+(m.sells.length?m.sells.length+'건 '+won(sellSum):'없음')+'</b></div>'
     +'<div class="sum-i"><span class="k">이달 매수</span><b>'+(m.buys.length?m.buys.length+'건 '+won(buySum):'없음')+'</b></div>'
-    +'</div><div class="sum-note">매달 입금액과 매도금을 전부 4종목에 똑같이 나눠 사기 때문에 월말 현금은 거의 0원입니다. 미국 종목은 월말 환율('+Math.round(m.fx).toLocaleString()+'원/$)로 환산했고, 팔 때 드는 세금·수수료는 팔 때 반영됩니다.</div>';
+    +'</div><div class="sum-note">매달 입금액·매도금·남은 현금을 4종목에 똑같이 나눠 배정하고, <b>실제로 주문 가능한 정수 주만</b> 삽니다(소수점 없음). 1주 값이 배정액보다 비싸면 그 종목은 건너뛰고 현금으로 남아 다음 달로 넘어갑니다. 미국 종목은 월말 환율('+Math.round(m.fx).toLocaleString()+'원/$)로 환산했고, 팔 때 드는 세금·수수료는 팔 때 반영됩니다.</div>';
 }
 
 function renderLedger(){
@@ -595,6 +598,10 @@ function renderLedger(){
     add('buy','구매',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
       calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+ym+'" data-sn="'+esc(x.name)+'" data-sp="'+x.score+'">'+scv+'</span>',
       signWon(-x.amt),bal,{y:x.y,end:endYm,buy:ym,sell:tr?tr.sellYm:null});
+  });
+  (m.skipped||[]).forEach(function(x){
+    add('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
+      '1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 현금으로 남음','0원',bal);
   });
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">월말 현금</div></div><div class="lr-a">'+won(m.cash)+'</div></div></div>';
   list.innerHTML=html;

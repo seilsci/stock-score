@@ -122,18 +122,24 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   let cash = 0, holds = [], prevAfter = 0, deposits = 0; const rets = [], usGain = {};
   const trades = opt.log ? [] : null;                     // 거래 기록 (opt.log=true일 때만)
   const snapshots = opt.log ? new Map() : null;           // ym → 보유 종목 스냅샷
+  const led = opt.log ? new Map() : null;                 // ym → 그달 입금·매도·세금·매수·못 산 종목·월말 현금(매매일지 장부)
+  let cur = null;                                         // 지금 처리 중인 달의 장부
   const usFee = C.us.commission + C.us.fx_spread, val = (h, k) => h.sh * h.last * (h.us ? fx(k) : 1);
   const sellCash = (h, k, reason) => {                   // 한 종목을 팔아 현금으로: 수수료·거래세·(미국) 손익 기록
     const v = val(h, k);
-    let got;
+    let got, taxR = 0;
     if (h.us) { const pr = v * (1 - usFee), Y = yOfK(k); usGain[Y] = (usGain[Y] || 0) + pr - h.basis; got = pr; }
-    else got = v * (1 - C.kr.commission - (h.etf && C.kr.etf_exempt ? 0 : krTax(C, yOfK(k))));
+    else { taxR = (h.etf && C.kr.etf_exempt ? 0 : krTax(C, yOfK(k))); got = v * (1 - C.kr.commission - taxR); }
+    if (cur) cur.sells.push({ y: h.y, buyYm: h.buyYm, us: h.us, sh: h.sh, px: h.last, fx: h.us ? fx(k) : null, gross: v,
+      feeRate: h.us ? usFee : C.kr.commission, fee: v * (h.us ? usFee : C.kr.commission), taxRate: taxR, tax: v * taxR,
+      amt: got, basis: h.basis, ret: got / h.basis - 1, reason: reason || 'ma10' });
     if (trades && h.buyYm) trades.push({ y: h.y, buyYm: h.buyYm, sellYm: ymOf(k), buyPx: h.buyPx, sellPx: h.last,
       ret: got / h.basis - 1, score: h.buyScore, feats: h.buyFeats, reason: reason || 'ma10' });
     return got;
   };
   const usTax = Y => C.us.cg_tax_rate * Math.max(0, (usGain[Y] || 0) - C.us.cg_exemption_krw);
   for (let k = START; k <= END; k++) {
+    cur = led ? { k, dep, sells: [], buys: [], skipped: [], tax: 0 } : null;
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
@@ -193,6 +199,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     holds = keep;
     if ((k - 1) % 12 === 11) {                          // 12월 말: 그해 미국 주식 실현 손익에 양도세(기본공제 후)를 냄
       const Y = yOfK(k), tax = usTax(Y); usGain[Y] = 0;
+      if (cur) cur.tax = tax;
       if (tax > 0) {
         if (cash >= tax) cash -= tax;
         else { let hv = 0; for (const h of holds) hv += val(h, k); const f = hv > 0 ? Math.min(1, (tax - cash) / hv) : 0; for (const h of holds) h.sh *= 1 - f; cash = 0; }
@@ -208,9 +215,9 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         const pKrw = p * (us ? fx(k) : 1);                // 원화 환산 주가
         // 주식 단위 제한(opt.lotSize): 미국은 소수점 허용, 한국은 1주 단위
         let sh, a;
-        if (opt.lotSize && !us) {
+        if (opt.lotSize && (!us || opt.lotAll)) {           // lotAll: 미국도 정수 주만(실제 주문 가능한 수량)
           const lots = Math.floor(Math.min(per, cash) * (1 - fee) / pKrw);  // 살 수 있는 주 수
-          if (lots < 1) continue;                           // 1주도 못 사면 패스
+          if (lots < 1) { if (cur) cur.skipped.push({ y: r.y, us, px: p, pKrw, per: Math.min(per, cash) }); continue; }   // 1주도 못 사면 패스(현금으로 남음)
           sh = lots; a = lots * pKrw / (1 - fee);          // 실제 쓴 돈
           a = Math.min(a, cash);
         } else {
@@ -225,9 +232,11 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
           } else { sh = a * (1 - fee) / pKrw; }
         } else { sh = a * (1 - fee) / pKrw; }
         }
+        const bScore = (scored[kA].get(ymOf(k)) || []).find(e => e.r.y === r.y)?.s ?? 0;
         holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
-          buyYm: ymOf(k), buyPx: p, buyScore: (scored[kA].get(ymOf(k)) || []).find(e => e.r.y === r.y)?.s ?? 0,
+          buyYm: ymOf(k), buyPx: p, buyScore: bScore,
           buyFeats: r.x });
+        if (cur) cur.buys.push({ y: r.y, us, sh, px: p, fx: us ? fx(k) : null, amt: a, gross: a * (1 - fee), fee: a * fee, feeRate: fee, score: bScore });
         cash -= a;
       }
     } else if (holds.length && cash > 0) {
@@ -244,6 +253,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     let after = cash; for (const h of holds) after += val(h, k);
     if (prevAfter > 0) rets.push({ k, r: (after - dep) / prevAfter - 1 });
     prevAfter = after;
+    if (led) led.set(ymOf(k), Object.assign(cur, { cash, holdVal: after - cash, fx: fx(k) }));
     // 보유 스냅샷 (opt.log)
     if (snapshots) snapshots.set(ymOf(k), holds.map(h => ({ y: h.y, buyYm: h.buyYm, buyPx: h.buyPx, curPx: h.last, basis: h.basis, sh: h.sh, score: h.buyScore, feats: h.buyFeats })));
   }
@@ -261,7 +271,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   }
   liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots };
+  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led };
 }
 function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };
@@ -400,6 +410,11 @@ for (const dep of LOT_DEPOSITS) {
   R.push({ n: `A4 tp2x금리유예2달 단위제한${dLabel}`, s: summ(simulate(lk, 4, C1lot, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true }, dep)) });
 }
 progress('단위제한', 1); process.stdout.write('\n');
+// 실제 주문 가능한 수량(한국·미국 모두 정수 주, 못 산 몫은 현금): 매매일지와 같은 설정, 월 입금액별
+for (const dep of LOT_DEPOSITS) {
+  const lk = ym => (scored[kA].get(ym) || []).slice(0, 4);
+  R.push({ n: `A4 tp2x금리유예2달 정수주문(한·미)${dep / 10000}만`, s: summ(simulate(lk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true }, dep)) });
+}
 
 // ── 1. 손절 실험: A4 tp2x트레일 × sl(10%·15%·20%·25% 하락 시 손절)
 const SL_VALS = [0.10, 0.15, 0.20, 0.25];
@@ -537,7 +552,7 @@ fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
 
 // ── 매매일지(trades.json): A4 tp2x트레일+금리유예2달, 월 100만원
 progress('매매일지', 0);
-const journalSim = simulate(A4pk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, log: true });
+const journalSim = simulate(A4pk, 4, C1, { tpTrail: 2, grace: 2, graceRate: true, lotSize: true, lotAll: true, log: true });   // 실제 주문 가능한 정수 주(한국·미국), 못 산 몫은 현금으로 남김
 const listData = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const nameMap = new Map(listData.map(s => [s.y, { name: s.name, market: s.mk, code: s.code }]));
 const journal = {
@@ -562,4 +577,19 @@ journal.open = [...openMap.values()];
 fs.writeFileSync(path.join(DATA, 'trades.json'), JSON.stringify(journal));
 progress('매매일지', 1); process.stdout.write('\n');
 require('./8_bars.js');
-require('./9_ledger.js');                                    // 매매일지 장부(ledger.json): 달별 입금·매수·매도·세금·현금                                      // 매매일지 차트용 월봉(bars.json)
+// 매매일지 장부(ledger.json): 시뮬레이션이 달마다 직접 기록한 입금·매도·세금·매수·못 산 종목·월말 현금 (복원이 아니라 실제 값)
+{
+  const nm = y => nameMap.get(y)?.name || y, r0 = x => Math.round(x);
+  const months = {};
+  for (const [ym, m] of (journalSim.ledger || new Map())) {
+    months[ym] = {
+      dep: m.dep, tax: r0(m.tax), cash: r0(m.cash), holdVal: r0(m.holdVal), fx: +m.fx.toFixed(2),
+      buys: m.buys.map(x => ({ y: x.y, name: nm(x.y), us: x.us, sh: x.sh, px: x.px, amt: r0(x.amt), gross: r0(x.gross), fee: r0(x.fee), feeRate: x.feeRate,
+        fxUsed: x.fx == null ? null : +x.fx.toFixed(2), score: +x.score.toFixed(4) })),
+      sells: m.sells.map(x => ({ y: x.y, name: nm(x.y), us: x.us, sh: x.sh, px: x.px, amt: r0(x.amt), basis: r0(x.basis), gross: r0(x.gross), fee: r0(x.fee),
+        feeRate: x.feeRate, tax: r0(x.tax), taxRate: x.taxRate, fxUsed: x.fx == null ? null : +x.fx.toFixed(2), ret: +x.ret.toFixed(4), reason: x.reason, buyYm: x.buyYm })),
+      skipped: m.skipped.map(x => ({ y: x.y, name: nm(x.y), us: x.us, px: x.px, one: r0(x.pKrw), per: r0(x.per) }))
+    };
+  }
+  fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 산 몫은 현금' }, months }));
+}                                      // 매매일지 차트용 월봉(bars.json)
