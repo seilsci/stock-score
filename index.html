@@ -40,9 +40,15 @@ h1{font-size:20px;margin:0}
 .ch-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:0 2px 6px}
 .ch-n{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ch-p{white-space:nowrap;font-weight:600}
-.ch-l{display:flex;gap:12px;font-size:11.5px;color:var(--mut);padding:2px 2px 0}
+.ch-l{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:11.5px;color:var(--mut);padding:2px 2px 0}
+.ch-l span{white-space:nowrap}
 .ch-l i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
 canvas{display:block;width:100%;height:230px}
+#ctip{position:fixed;z-index:300;display:none;pointer-events:none;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-variant-numeric:tabular-nums}
+#ctip table{border-collapse:collapse;margin-top:4px}
+#ctip td{padding:1px 0}
+#ctip td:first-child{color:var(--mut);padding-right:14px}
+#ctip td:last-child{text-align:right}
 .row{cursor:pointer}
 .row.sel{background:var(--chip)}
 footer{padding:0 16px 28px;color:var(--mut);font-size:12px;line-height:1.6}
@@ -100,7 +106,7 @@ a{color:inherit}
   <div class="chartbox"><div class="chart">
     <div class="ch-h"><div class="ch-n" id="cn">&nbsp;</div><div class="ch-p" id="cp"></div></div>
     <canvas id="cv"></canvas>
-    <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span>월봉 최근 3년 · 아래는 거래량</span></div>
+    <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span>월봉 3년 · 아래는 거래대금(≈월 거래량×종가)</span></div>
   </div></div>
   <div class="list" id="L"><div class="msg">불러오는 중…</div></div>
   <footer>
@@ -195,6 +201,7 @@ function drawChart() {
   var r = SEL;
   if (!r) { cn.textContent = '\u00a0'; cp.textContent = ''; return; }
   var kr = r['시장'] !== 'US';
+  var ckey = r['시장'] + '|' + r['코드']; if (cv._key !== ckey) { cv._key = ckey; cv._hi = null; }
   cn.innerHTML = esc(r['이름']) + ' <span class="cd">' + esc(r['코드']) + '</span>';
   var gp = (r['최근종가'] / r['10이평'] - 1) * 100;
   cp.innerHTML = px(r, kr) + ' <span class="meta gap ' + (r['신호'] === '매수' ? 'b' : 's') + '">10이평 ' +
@@ -215,7 +222,7 @@ function drawChart() {
   var N = Math.min(36, d.length), st = d.length - N, bars = d.slice(st), mas = ma.slice(st);
   var lo = Infinity, hi = -Infinity, vmax = 0;
   bars.forEach(function (x, i) {
-    lo = Math.min(lo, x[3]); hi = Math.max(hi, x[2]); vmax = Math.max(vmax, x[5]);
+    lo = Math.min(lo, x[3]); hi = Math.max(hi, x[2]); vmax = Math.max(vmax, x[5] * x[4]);      // 거래대금 ≈ 월 거래량 × 종가
     if (mas[i] != null) { lo = Math.min(lo, mas[i]); hi = Math.max(hi, mas[i]); }
   });
   var padR = 48, plotW = W - padR, pH = H * 0.72, vTop = pH + 14, vH = H - vTop - 14;
@@ -239,15 +246,18 @@ function drawChart() {
       g.fillStyle = mut; g.fillText(String(x[0]).slice(0, 4), xx, H - 1);
     }
   });
-  // 캔들 + 거래량
+  // 가리킨 달 강조
+  if (cv._hi != null && cv._hi >= 0 && cv._hi < N) { g.fillStyle = 'rgba(128,128,128,.16)'; g.fillRect(cv._hi * step, 0, step, H - 12); }
+  // 캔들 + 거래대금
   bars.forEach(function (x, i) {
     var xx = i * step + step / 2, o = x[1], h = x[2], l = x[3], c = x[4], col = c >= o ? up : dn;
     g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 1;
     g.beginPath(); g.moveTo(xx, y(h)); g.lineTo(xx, y(l)); g.stroke();
     var y1 = y(Math.max(o, c)), y2 = y(Math.min(o, c));
     g.fillRect(xx - bw / 2, y1, bw, Math.max(1, y2 - y1));
-    if (vmax > 0) { var vh = x[5] / vmax * vH; g.globalAlpha = 0.45; g.fillRect(xx - bw / 2, vTop + vH - vh, bw, vh); g.globalAlpha = 1; }
+    if (vmax > 0) { var vh = x[5] * x[4] / vmax * vH; g.globalAlpha = 0.45; g.fillRect(xx - bw / 2, vTop + vH - vh, bw, vh); g.globalAlpha = 1; }
   });
+  if (vmax > 0) { g.fillStyle = mut; g.font = '9.5px -apple-system,sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText('거래대금', plotW + 4, vTop + 6); g.fillText(bigNum(vmax, !kr), plotW + 4, vTop + 19); }
   // 10이평 선
   g.strokeStyle = css('--ma'); g.lineWidth = 2; g.beginPath();
   var started = false;
@@ -257,7 +267,52 @@ function drawChart() {
     if (!started) { g.moveTo(xx, y(m)); started = true; } else g.lineTo(xx, y(m));
   });
   g.stroke();
+  cv._g = { bars: bars, mas: mas, N: N, step: step, plotW: plotW, kr: kr };
+  bindChart(cv);
 }
+
+/* ───── 월에 올리면(터치는 탭·좌우 드래그) 시가·고가·저가·종가·거래대금 ───── */
+function bigNum(v, us) {                      // 거래대금: 한국 원(조·억·만), 미국 달러(B·M·K)
+  if (!(v > 0)) return '-';
+  if (us) return '$' + (v >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : Math.round(v));
+  if (v >= 1e12) return (v / 1e12).toFixed(2) + '조원';
+  if (v >= 1e8) return Math.round(v / 1e8).toLocaleString() + '억원';
+  return Math.round(v / 1e4).toLocaleString() + '만원';
+}
+var CTIP = null;
+function hideTip() { if (CTIP) CTIP.style.display = 'none'; var cv = document.getElementById('cv'); if (cv && cv._hi != null) { cv._hi = null; drawChart(); } }
+function chartTip(cv, ev, i) {
+  var G = cv._g, x = G.bars[i], prev = i > 0 ? G.bars[i - 1] : null, m = G.mas[i], kr = G.kr;
+  var fm = function (v) { return kr ? Math.round(v).toLocaleString() + '원' : '$' + (+v).toFixed(2); };
+  var cc = function (v) { return '<span style="color:' + (v >= 0 ? 'var(--buy)' : 'var(--sell)') + '">' + (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%</span>'; };
+  var ym = String(x[0]), t = CTIP || (CTIP = document.createElement('div'));
+  if (!t.id) { t.id = 'ctip'; document.body.appendChild(t); document.addEventListener('pointerdown', function (e) { if (e.target.tagName !== 'CANVAS') hideTip(); }); }
+  t.innerHTML = '<b>' + ym.slice(0, 4) + '-' + ym.slice(4) + '</b><table>' +
+    '<tr><td>시가</td><td>' + fm(x[1]) + '</td></tr><tr><td>고가</td><td>' + fm(x[2]) + '</td></tr><tr><td>저가</td><td>' + fm(x[3]) + '</td></tr><tr><td>종가</td><td><b>' + fm(x[4]) + '</b></td></tr>' +
+    (prev ? '<tr><td>전월 대비</td><td>' + cc(x[4] / prev[4] - 1) + '</td></tr>' : '') +
+    (x[5] > 0 ? '<tr><td>거래대금</td><td>≈ ' + bigNum(x[5] * x[4], !kr) + '</td></tr><tr><td>거래량</td><td>' + Math.round(x[5]).toLocaleString() + '주</td></tr>' : '') +
+    (m != null ? '<tr><td>10이평</td><td>' + fm(m) + ' (' + cc(x[4] / m - 1) + ')</td></tr>' : '') + '</table>';
+  t.style.display = 'block';
+  var w = t.offsetWidth, h = t.offsetHeight, px0 = ev.clientX + 14, py0 = ev.clientY - h - 14;
+  if (px0 + w > window.innerWidth - 8) px0 = ev.clientX - w - 14;
+  if (px0 < 8) px0 = 8; if (py0 < 8) py0 = ev.clientY + 18;
+  t.style.left = px0 + 'px'; t.style.top = py0 + 'px';
+}
+function bindChart(cv) {
+  if (cv._bound) return; cv._bound = true; cv.style.touchAction = 'pan-y';
+  var move = function (ev) {
+    var G = cv._g; if (!G) return;
+    var r = cv.getBoundingClientRect(), x = ev.clientX - r.left;
+    if (x < 0 || x > G.plotW) return;
+    var i = Math.max(0, Math.min(G.N - 1, Math.floor(x / G.step)));
+    if (cv._hi !== i) { cv._hi = i; drawChart(); }
+    chartTip(cv, ev, i);
+  };
+  cv.addEventListener('pointermove', move);
+  cv.addEventListener('pointerdown', move);
+  cv.addEventListener('pointerleave', function (ev) { if (ev.pointerType === 'mouse') hideTip(); });
+}
+
 
 
 /* ───── 점수 설명: 기준값 + 지표별 가감 = 예측값 → 순위 → 점수 (나무) ───── */
