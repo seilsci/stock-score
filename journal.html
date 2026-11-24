@@ -579,12 +579,15 @@ function renderLedger(){
   m.sells.forEach(function(x){
     bal+=x.amt;
     var hm=holdMonths(x.buyYm,ym), rr=REASON[x.reason]||x.reason||'';
+    var buyTr=DATA.trades.filter(function(t){ return t.y===x.y && String(t.buyYm)===String(x.buyYm); })[0];
+    var sv=scoreOf(x.y,x.buyYm), buyScore=sv!=null?sv:(buyTr?Math.round(buyTr.score*100):'-');
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
     var cost='− 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span>'
       +(x.tax>0?' − 거래세 '+won(x.tax)+' <span class="meta">('+(x.taxRate*100).toFixed(2)+'%)</span>':'')
       +' = <b>'+won(x.amt)+'</b>'+(x.us?'<br><span class="meta">미국 양도세는 12월에 한꺼번에 계산해 아래 "세금" 줄에서 뺍니다</span>':'');
     add('sell','판매',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      calc+'<br>'+cost+'<br><span class="'+(x.ret>=0?'p':'n')+'">수익 '+pc(x.ret)+'</span> · '+hm+'개월 · '+esc(rr),
+      calc+'<br>'+cost+'<br><span class="'+(x.ret>=0?'p':'n')+'">수익 '+pc(x.ret)+'</span> · '+hm+'개월 · '+esc(rr)
+      +'<br>구매 당시 점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+x.buyYm+'" data-sn="'+esc(x.name)+'" data-sp="'+(buyTr?buyTr.score:'')+'">'+buyScore+'</span> <span class="meta">('+fmt(x.buyYm)+' 매수, 눌러서 이유 보기)</span>',
       signWon(x.amt),bal,{y:x.y,end:ym,buy:x.buyYm,sell:ym});
   });
   if(m.tax>0){ bal-=m.tax; add('tax','세금','미국 주식 양도세','그해 미국 주식 실현 이익에서 250만원 공제 후 22%, 12월에 한꺼번에',signWon(-m.tax),bal); }
@@ -606,7 +609,7 @@ function renderLedger(){
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">월말 현금</div></div><div class="lr-a">'+won(m.cash)+'</div></div></div>';
   list.innerHTML=html;
   list.querySelectorAll('.lr-sc').forEach(function(c){
-    c.onclick=function(ev){ ev.stopPropagation(); showScoreTree(c.dataset.sy,+c.dataset.sb,c.dataset.sn,+c.dataset.sp); };
+    c.onclick=function(ev){ ev.stopPropagation(); showScoreTree(c.dataset.sy,+c.dataset.sb,c.dataset.sn,c.dataset.sp===''?null:+c.dataset.sp); };
   });
   list.querySelectorAll('.lr-h[data-r], .lr-d[data-r]').forEach(function(h){
     h.onclick=function(){
