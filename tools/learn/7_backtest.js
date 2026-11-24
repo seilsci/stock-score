@@ -277,7 +277,8 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         if (ma) {
           if (h.last < ma) {
             // opt.graceRate: 금리 조건부 유예 — 금리 인상 중(ff_chg12>0)이면 유예 없이 바로 매도
-            const ff = opt.graceRate ? ((opt.rateKR && !h.us) ? krChg12(k) : ffChg12(k)) : null;   // rateKR: 한국 종목은 한국 금리로 판단(미국 종목은 미국 금리)
+            let ff = opt.graceRate ? ((opt.rateKR && !h.us) ? krChg12(k) : ffChg12(k)) : null;   // rateKR: 한국 종목은 한국 금리로 판단(미국 종목은 미국 금리)
+            if (opt.rateFn) { const v = opt.rateFn(k); ff = v === true ? 1 : v === false ? 0 : null; }   // rateFn(k): 금리가 오르는 중이면 true (모르면 null = 규칙 안 씀)
             const graceN = (ff != null && ff > 0) ? 1 : opt.grace;  // 금리 인상 중→ 1달(=즉시), 아니면 N달
             h.graceCnt = (h.graceCnt || 0) + 1;
             if (h.graceCnt >= graceN) { cash += sellCash(h, k, ff != null && ff > 0 ? 'ma10-금리인상' : 'ma10-유예만료'); continue; }
@@ -1028,7 +1029,54 @@ if (process.env.STAGE5 !== '0') {
   progress('종목 절반 되풀이', 1); process.stdout.write('\n');
   BS.n = B; BS.eff = eff;
 }
+// ── 금리 규칙 판단 기준 비교(STAGE6=0이면 건너뜀, data/rates.json 필요 = 2e_rates.js): "금리가 오르는 중이면 유예 없이 즉시 매도"의 오름 판단을 여러 방식으로.
+//    금리 값은 모두 "그 달 마지막 날"에 이미 알던 값(하루 단위 FRED). 판매 판단이 월말이라 같은 달 값을 써도 미래 정보 아님. 현재 방식(FEDFUNDS 월평균 12개월 변화, 한 달 늦게)과 비교.
+const RT6 = { rows: null };
+if (process.env.STAGE6 !== '0' && fs.existsSync(path.join(DATA, 'rates.json'))) {
+  const RT = JSON.parse(fs.readFileSync(path.join(DATA, 'rates.json'))), rt = k => RT[ymOf(k)] || {};
+  const ch = (f, w) => k => { const a = rt(k)[f], b = rt(k - w)[f]; return a != null && b != null ? a - b : null; };
+  const df = (a, b) => k => { const x = rt(k)[a], y = rt(k)[b]; return x != null && y != null ? x - y : null; };
+  const gt = (g, t = 0) => k => { const v = g(k); return v == null ? null : v > t; };
+  const or = (a, b) => k => { const x = a(k), y = b(k); return (x === true || y === true) ? true : (x === null && y === null ? null : false); };
+  const VAR = [
+    ['규칙 없음 (유예2만)', { graceRate: false }],
+    ['현재: 월평균 금리 12개월 변화>0 (한 달 늦게)', { graceRate: true }],
+    ['목표금리 3개월 변화>0', { rateFn: gt(ch('tgt', 3)) }], ['목표금리 6개월 변화>0', { rateFn: gt(ch('tgt', 6)) }], ['목표금리 12개월 변화>0', { rateFn: gt(ch('tgt', 12)) }],
+    ['목표금리 12개월 +0.25%p 이상', { rateFn: gt(ch('tgt', 12), 0.24) }],
+    ['실효금리(하루) 3개월 변화>0', { rateFn: gt(ch('dff', 3)) }], ['실효금리(하루) 6개월 변화>0', { rateFn: gt(ch('dff', 6)) }], ['실효금리(하루) 12개월 변화>0', { rateFn: gt(ch('dff', 12)) }],
+    ['국채2년 − 실효금리 > 0 (시장이 인상 예상)', { rateFn: gt(df('dgs2', 'dff'), 0) }], ['국채2년 − 실효금리 > 0.25', { rateFn: gt(df('dgs2', 'dff'), 0.25) }], ['국채2년 − 실효금리 > 0.5', { rateFn: gt(df('dgs2', 'dff'), 0.5) }],
+    ['국채1년 − 실효금리 > 0', { rateFn: gt(df('dgs1', 'dff'), 0) }], ['국채1년 − 실효금리 > 0.25', { rateFn: gt(df('dgs1', 'dff'), 0.25) }],
+    ['국채10년 3개월 변화>0', { rateFn: gt(ch('dgs10', 3)) }], ['국채10년 6개월 변화>0', { rateFn: gt(ch('dgs10', 6)) }], ['국채10년 12개월 변화>0', { rateFn: gt(ch('dgs10', 12)) }],
+    ['국채2년 12개월 변화>0', { rateFn: gt(ch('dgs2', 12)) }],
+    ['목표금리 6개월 변화>0 또는 (2년물−실효>0.25)', { rateFn: or(gt(ch('tgt', 6)), gt(df('dgs2', 'dff'), 0.25)) }]
+  ];
+  const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  const B = +process.env.RT_HALVES || 12, topL6 = ym => scored[kA].get(ym) || [];
+  const run6 = (v, cand) => summ(simulate(ym => cand(ym).slice(0, 4), 4, C1, { lotSize: true, lotAll: true, fill: true, cand, firstDay: true, tpTrail: 2, grace: 2, ...v[1] }));
+  const rows = []; let vi = 0;
+  VAR.forEach(v => { progress('금리 판단 비교', vi++ / VAR.length); rows.push({ name: v[0], full: run6(v, topL6), halves: [] }); });
+  for (let b = 1; b <= B; b++) {
+    progress('금리 판단 비교(절반)', (b - 1) / B);
+    const cand = ym => topL6(ym).filter(e => hash(e.r.y + '|' + b) < 0.5);
+    VAR.forEach((v, i) => rows[i].halves.push(run6(v, cand).cagr));
+  }
+  progress('금리 판단 비교(절반)', 1); process.stdout.write('\n');
+  RT6.rows = rows;
+}
 // ── 걸어가며 설정 고르기 보고
+// ── 금리 판단 기준 보고
+if (RT6.rows) {
+  const Rr = RT6.rows, none = Rr[0], pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
+  const early = YEARS_ALL.filter(y => y <= 2019), late = YEARS_ALL.filter(y => y > 2019), mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  log(''); log('## 금리 규칙의 "오르는 중" 판단 기준 비교 (점수 상위 4, 유예2 + tp2x, 첫날 체결, 월 100만원; 금리가 오르는 중이면 유예 없이 즉시 매도)');
+  log('기준                                          전체    앞쪽    뒤쪽    낙폭    규칙 없음 대비 효과(종목 절반 되풀이 평균 · 표준편차 · 이긴 비율)');
+  Rr.forEach(r => {
+    const d = r.halves.map((h, i) => h - none.halves[i]);
+    const sd = Math.sqrt(mean(d.map(x => (x - mean(d)) ** 2)));
+    log(`${r.name.padEnd(44)} ${pc1(r.full.cagr).padStart(7)} ${pc1(cagrOver(r.full.yearly, early)).padStart(7)} ${pc1(cagrOver(r.full.yearly, late)).padStart(7)} ${pc1(r.full.mdd).padStart(7)}    ${r === none ? '(기준)' : `${pp(mean(d)).padStart(7)} · ${(sd * 100).toFixed(1)}%p · ${(d.filter(x => x > 0).length / d.length * 100).toFixed(0)}%`}`);
+  });
+  log('※ 효과의 평균이 표준편차보다 크고 이긴 비율이 90% 이상이어야 믿을 만함. 같은 데이터로 20가지 가까이 비교한 것이라 최고값은 과장됨. 두 종목 범위(시총·거래대금)에서 같은 방향인지 볼 것.');
+}
 // ── 종목 절반 되풀이 보고
 if (BS.eff) {
   const E = BS.eff, mean = a => a.reduce((x, y) => x + y, 0) / a.length, sd = a => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); }, med = a => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
