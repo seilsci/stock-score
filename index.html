@@ -337,6 +337,25 @@ function featsOf(d, r) {
     prev_fail: pf, ma_up6: mu, close_pos: (c[i] - last.low) / hl, gap_prev: c[i - 1] / ma[i - 1] - 1
   };
 }
+// 예측값 → 점수(0~100): 시트와 같은 표(pct)로 바꿈
+function rawToScore(raw) {
+  var pct = W.pct, lo = 0, hi = pct.length - 1;
+  while (lo < hi) { var mid = (lo + hi) >> 1; if (pct[mid] < raw) lo = mid + 1; else hi = mid; }
+  return lo / (pct.length - 1) * 100;
+}
+// 항목별 "점수 몫": 기준값에서 시작해 항목을 하나씩 더할 때 점수가 오른 만큼을, 더하는 순서를 1500번 섞어 평균냄(샤플리 값).
+// 어떤 순서로 더해도 합은 (최종 점수 - 기준 점수)가 되고, 순서에 따른 유불리가 없음
+function shapleyPoints(contribs, b) {
+  var n = contribs.length, phi = [], P = 1500, idx = [], seed = 12345, i, k;
+  for (i = 0; i < n; i++) { phi.push(0); idx.push(i); }
+  var rnd = function () { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  for (var t = 0; t < P; t++) {
+    for (i = n - 1; i > 0; i--) { k = Math.floor(rnd() * (i + 1)); var tmp = idx[i]; idx[i] = idx[k]; idx[k] = tmp; }
+    var r = b, prev = rawToScore(b);
+    for (i = 0; i < n; i++) { r += contribs[idx[i]]; var cur = rawToScore(r); phi[idx[i]] += cur - prev; prev = cur; }
+  }
+  return phi.map(function (x) { return x / P; });
+}
 // 지표별 가감과 최종 점수
 function explain(r) {
   if (!W || !r['차트'] || !r['차트'].length) return null;
@@ -347,9 +366,9 @@ function explain(r) {
     var cl = Math.min(w.hi, Math.max(w.lo, v)), contrib = (cl - w.m) / w.sd * w.w;
     raw += contrib; items.push({ f: w.f, v: v, contrib: contrib });
   });
-  var pct = W.pct, lo = 0, hi = pct.length - 1;
-  while (lo < hi) { var mid = (lo + hi) >> 1; if (pct[mid] < raw) lo = mid + 1; else hi = mid; }
-  return { raw: raw, score: Math.round(lo / (pct.length - 1) * 100), items: items, b: W.b };
+  var pts = shapleyPoints(items.map(function (x) { return x.contrib; }), W.b);
+  items.forEach(function (x, i) { x.pts = pts[i]; });
+  return { raw: raw, score: Math.round(rawToScore(raw)), base: rawToScore(W.b), items: items, b: W.b };
 }
 function fmtV(f, v) {
   var P = function (x, dg) { return (x > 0 ? '+' : '') + (x * 100).toFixed(dg == null ? 1 : dg) + '%'; };
@@ -363,6 +382,7 @@ function fmtV(f, v) {
   return P(v);
 }
 function sgn(x) { return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x * 100).toFixed(1); }
+function sp(x) { return (x > 0.05 ? '+' : x < -0.05 ? '−' : '') + Math.abs(x).toFixed(1) + '점'; }
 
 function showScore(r) {
   var body = document.getElementById('sc-body'), modal = document.getElementById('sc-modal');
@@ -373,27 +393,28 @@ function showScore(r) {
   }
   var byF = {}; e.items.forEach(function (x) { byF[x.f] = x; });
   var gs = GROUPS.map(function (g) {
-    var its = g[1].map(function (k) { return byF[k]; }).filter(Boolean).sort(function (a, b) { return Math.abs(b.contrib) - Math.abs(a.contrib); });
-    return { n: g[0], items: its, sum: its.reduce(function (t, x) { return t + x.contrib; }, 0) };
+    var its = g[1].map(function (k) { return byF[k]; }).filter(Boolean).sort(function (a, b) { return Math.abs(b.pts) - Math.abs(a.pts); });
+    return { n: g[0], items: its, sum: its.reduce(function (t, x) { return t + x.pts; }, 0), rsum: its.reduce(function (t, x) { return t + x.contrib; }, 0) };
   }).sort(function (a, b) { return Math.abs(b.sum) - Math.abs(a.sum); });
   var maxG = Math.max.apply(null, gs.map(function (g) { return Math.abs(g.sum); })) || 1;
-  var maxF = Math.max.apply(null, e.items.map(function (x) { return Math.abs(x.contrib); })) || 1;
+  var maxF = Math.max.apply(null, e.items.map(function (x) { return Math.abs(x.pts); })) || 1;
   var bar = function (x, m) { var w = Math.min(50, Math.abs(x) / m * 50); return '<div class="tr-bar"><i class="' + (x >= 0 ? 'pos' : 'neg') + '" style="width:' + w + '%"></i></div>'; };
+  var total = e.score - Math.round(e.base);
   var h = '<h2>' + esc(r['이름']) + ' · ' + e.score + '점은 왜?</h2>'
-    + '<div class="sc-sub">모델은 "기준값"에서 시작해 지표마다 점수를 더하고 빼서 <b>예측값</b>을 만듭니다. 그 예측값이 학습 때 본 매수 신호들 중 몇 등인지를 0~100으로 바꾼 게 점수예요. 항목을 눌러 펼쳐 보세요.</div>'
-    + '<div class="tr-root"><span class="big">' + e.score + '점</span><span>예측 수익 ' + sgn(e.raw) + '% → 학습 때 신호 중 상위 ' + Math.max(1, 100 - e.score) + '%</span></div>'
+    + '<div class="sc-sub">평범한 신호의 점수(기준)에서 시작해, 항목마다 점수를 올리고 내려서 최종 점수가 됩니다. 아래 숫자가 <b>그 항목이 점수를 몇 점 올리거나 내렸는지</b>예요. 항목을 눌러 펼쳐 보세요.</div>'
+    + '<div class="tr-root"><span class="big">' + e.score + '점</span><span>= 기준 ' + Math.round(e.base) + '점 ' + (total >= 0 ? '+ ' : '− ') + Math.abs(total) + '점<br><span class="meta">학습 때 신호 중 상위 ' + Math.max(1, 100 - e.score) + '%</span></span></div>'
     + '<div class="tr-kids">'
-    + '<div class="tr-node"><div class="tr-base"><span><b>기준값</b> <span class="meta">(모든 신호의 평균 예측)</span></span><b>' + sgn(e.b) + '%</b></div></div>';
+    + '<div class="tr-node"><div class="tr-base"><span><b>기준</b> <span class="meta">(평균적인 매수 신호, 예측 수익 ' + sgn(e.b) + '%)</span></span><b>' + Math.round(e.base) + '점</b></div></div>';
   gs.forEach(function (g, gi) {
     h += '<div class="tr-node"><details class="tr-g"' + (gi < 2 ? ' open' : '') + '><summary><span class="nm2">' + g.n + '</span>' + bar(g.sum, maxG)
-      + '<span class="tr-v ' + (g.sum >= 0 ? 'p' : 'n') + '">' + sgn(g.sum) + '%p</span></summary><div class="tr-kids">';
+      + '<span class="tr-v ' + (g.sum >= 0 ? 'p' : 'n') + '">' + sp(g.sum) + '</span></summary><div class="tr-kids">';
     g.items.forEach(function (x) {
       h += '<div class="tr-node"><div class="tr-f"><div><div class="fn">' + FN[x.f] + ' <span class="meta">' + fmtV(x.f, x.v) + '</span></div><div class="fd">' + FD[x.f] + '</div></div>'
-        + bar(x.contrib, maxF) + '<span class="tr-v ' + (x.contrib >= 0 ? 'p' : 'n') + '">' + sgn(x.contrib) + '%p</span></div></div>';
+        + bar(x.pts, maxF) + '<span class="tr-v ' + (x.pts >= 0 ? 'p' : 'n') + '">' + sp(x.pts) + '</span></div></div>';
     });
     h += '</div></details></div>';
   });
-  h += '</div><div class="sc-note">숫자는 예측 수익(%)에 더해지는 몫(%p)입니다. 기준값 + 모든 항목 = 예측값. 빨강은 점수를 올리고 파랑은 내립니다.<br>'
+  h += '</div><div class="sc-note">각 항목의 점수는 "그 항목을 더하는 순서를 모두 평균낸 몫"이라 어떤 순서로 더해도 합이 같습니다. 합은 최종 점수 − 기준 점수(' + total + '점)이고, 소수점 반올림 때문에 ±1점 차이가 날 수 있어요. 점수는 중간 구간에서는 예측 수익 1%p에 약 4~5점이 움직이고 양 끝(0·100점 근처)에서는 거의 안 움직입니다.<br>'
     + '시장 지수 관련 3개 항목은 현재 사이트 점수 계산에서 0으로 처리됩니다. 과거 성과 기반 모델의 참고용 점수이며 수익을 보장하지 않습니다.</div>';
   if (r['점수'] !== '' && r['점수'] != null && +r['점수'] !== e.score)
     h += '<div class="sc-note">※ 시트 점수는 ' + r['점수'] + '점입니다. 시트가 아직 예전 방식으로 차트를 보내고 있어 계산 구간이 조금 달라 ' + Math.abs(+r['점수'] - e.score) + '점 차이가 납니다(시트 갱신 후 일치).</div>';
