@@ -7,6 +7,7 @@ const file = y => path.join(RAW, y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json');
 const j = JSON.parse(fs.readFileSync(path.join(DATA, 'trades.json')));
 const keys = new Set(j.trades.map(t => t.y));
 Object.values(j.snapshots).forEach(h => h.forEach(x => keys.add(x.y)));
+try { Object.values(JSON.parse(fs.readFileSync(path.join(DATA, 'ledger.json'))).months).forEach(m => (m.cands || []).forEach(c => keys.add(c.y))); } catch (e) {}   // 장부의 후보 종목(못 사면 대체하는 종목)도 월봉이 있어야 시작 시점 재계산이 됨
 const out = {};
 let local = 0, net = 0, miss = 0;
 const sig = v => +(+v).toPrecision(9);        // 9자리: 매매일지 "시작 시점 바꾸기"가 가격으로 현금·수량을 다시 계산하므로 반올림 오차가 거의 없게

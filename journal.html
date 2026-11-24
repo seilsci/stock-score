@@ -887,6 +887,24 @@ function usGainYtdOf(nowYm){            // 그해 1월~지난달 미국 주식 �
   return g;
 }
 
+function exitFor(y,buyYm){                 // 그 달에 샀다면 언제·왜 파는지(수량과 무관). 익절 트레일 → 10이평 아래 유예(금리 상승 달이면 즉시)
+  var b=barsOf(y); if(!b) return undefined;  // 월봉이 없으면 알 수 없음
+  var iBuy=b.pos[buyYm]; if(iBuy==null) return undefined;
+  var tp=false, gc=0;
+  for(var m=iBuy+1;m<b.yms.length;m++){
+    var ym=String(b.yms[m]), L0=LED0.months[ym]; if(!L0) break;                       // 장부 마지막 달까지만
+    var ma=ma10At(b.cs,m); if(ma==null) continue;
+    var px=b.cs[m], reason=null;
+    if(px>=2*ma) tp=true; else if(tp) reason='tpTrail';
+    if(!reason){
+      if(px<ma){ gc++; var need=L0.rateUp?1:2; if(gc>=need) reason=L0.rateUp?'ma10-금리인상':'ma10-유예만료'; }
+      else gc=0;
+    }
+    if(reason) return {ym:ym,reason:reason};
+  }
+  return null;                               // 끝까지 보유
+}
+
 function loadPlan(){
   if(PLAN_BUSY||PLAN) return; PLAN_BUSY=true; PLAN_ERR=null;
   var ps=[
@@ -1012,15 +1030,18 @@ function simulateFrom(S){
     cash+=dep;                                                                      // 입금을 먼저 받고
     if(mo===12){ tax=C.us.cg_tax_rate*Math.max(0,(usGain[Y]||0)-C.us.cg_exemption_krw); usGain[Y]=0; cash=Math.max(0,cash-tax); }   // 12월 세금을 먼저 낸 뒤 남은 돈으로 산다
     var buys=[], skipped=[], slots=4;
-    var cands=(M0.order&&M0.order.length)?M0.order.map(function(y){ return M0.buys.filter(function(b){ return b.y===y; })[0]||M0.skipped.filter(function(b){ return b.y===y; })[0]; }).filter(Boolean):M0.buys.concat(M0.skipped);
-    for(var li=0; li<cands.length && slots>0; li++){                          // 원래 일지가 점수 순서대로 본 후보를 같은 규칙으로(못 사면 다음, 모자라면 있는 만큼 나눔)
-      var r=cands[li], per=cash/Math.min(slots,cands.length-li);
-      var isBuy=M0.buys.some(function(b){ return b.y===r.y; });
-      var fee=r.us?usFee:krFee, pKrw=r.px*(r.us?fx:1), lots=isBuy?Math.floor(Math.min(per,cash)*(1-fee)/pKrw):0;   // 원래도 못 산 종목은 월봉 데이터가 없어 건너뜀
+    var hasCands=!!(M0.cands&&M0.cands.length);                              // 새 장부: 그달 점수 상위 후보 12개 / 옛 장부: 원래 일지가 본 후보만
+    var cands=hasCands?M0.cands:((M0.order&&M0.order.length)?M0.order.map(function(y){ return M0.buys.filter(function(b){ return b.y===y; })[0]||M0.skipped.filter(function(b){ return b.y===y; })[0]; }).filter(Boolean):M0.buys.concat(M0.skipped));
+    for(var li=0; li<cands.length && slots>0; li++){                          // 점수 순위대로: 1주도 못 사면 건너뛰고 다음 순위를 산다, 후보가 모자라면 있는 만큼 나눔
+      var r=cands[li], per=cash/Math.min(slots,cands.length-li), ex, isBuy;
+      if(hasCands){
+        var bb=barsOf(r.y); isBuy=!!(bb&&bb.pos[ym]!=null);                    // 월봉이 있어야 보유 평가·판매 시점을 계산할 수 있음
+        ex=EX[r.y+'|'+ym]; if(ex===undefined){ ex=isBuy?exitFor(r.y,+ym):undefined; if(ex===undefined) isBuy=false; }   // 원래 일지가 산 종목은 실제 판매 기록, 아니면 같은 규칙으로 계산
+      } else { isBuy=M0.buys.some(function(b){ return b.y===r.y; }); ex=EX[r.y+'|'+ym]; }
+      var fee=r.us?usFee:krFee, pKrw=r.px*(r.us?fx:1), lots=isBuy?Math.floor(Math.min(per,cash)*(1-fee)/pKrw):0;
       if(lots<1){ skipped.push({y:r.y,name:r.name,us:r.us,px:r.px,one:pKrw,per:Math.min(per,cash)}); continue; }
       var a=lots*pKrw/(1-fee); cash-=a; slots--;
-      var ex=EX[r.y+'|'+ym];
-      holds.push({y:r.y,name:r.name,us:r.us,etf:isEtfHold({y:r.y,buyYm:+ym}),sh:lots,buyYm:+ym,buyPx:r.px,basis:a,last:r.px,score:r.score,exit:ex?ex.ym:null,exitReason:ex?ex.reason:null});
+      holds.push({y:r.y,name:r.name,us:r.us,etf:(r.etf!==undefined?r.etf:isEtfHold({y:r.y,buyYm:+ym})),sh:lots,buyYm:+ym,buyPx:r.px,basis:a,last:r.px,score:r.score,exit:ex?ex.ym:null,exitReason:ex?ex.reason:null});
       buys.push({y:r.y,name:r.name,us:r.us,sh:lots,px:r.px,fxUsed:r.us?fx:null,gross:a*(1-fee),fee:a*fee,feeRate:fee,amt:a,score:r.score});
     }
     var hv=0;

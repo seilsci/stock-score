@@ -622,14 +622,17 @@ for (const h of (journalSim.snapshots || new Map()).values()) for (const x of h)
 journal.open = [...openMap.values()];
 fs.writeFileSync(path.join(DATA, 'trades.json'), JSON.stringify(journal));
 progress('매매일지', 1); process.stdout.write('\n');
-require('./8_bars.js');
 // 매매일지 장부(ledger.json): 시뮬레이션이 달마다 직접 기록한 입금·매도·세금·매수·못 산 종목·월말 현금 (복원이 아니라 실제 값)
 {
   const nm = y => nameMap.get(y)?.name || y, r0 = x => Math.round(x);
   const months = {};
+  const CAND_N = 12;
+  const candsOf = (ymKey, k) => (scored[kA].get(ymKey) || []).slice(0, CAND_N).map(e => { const o = px(e.r.y), p = o.m.get(k); return p === undefined ? null : { y: e.r.y, name: nm(e.r.y), us: e.r.x[US] === 1, etf: e.r.x[ETF] === 1, px: p, score: +e.s.toFixed(4) }; }).filter(Boolean);
   for (const [ym, m] of (journalSim.ledger || new Map())) {
     months[ym] = {
       dep: m.dep, tax: r0(m.tax), cash: r0(m.cash), holdVal: r0(m.holdVal), fx: +m.fx.toFixed(2),
+      rateUp: (ffChg12(m.k) ?? 0) > 0,                    // 그달 기준금리 상승 중(판매 유예를 건너뛰는 조건): 시작 시점을 바꿔 다시 계산할 때 판매 시점을 구하는 데 씀
+      cands: candsOf(ym, m.k),                            // 그달 점수 상위 후보 12개: 못 사면 다음 순위로 채우는 계산(시작 시점 바꾸기)에 씀
       buys: m.buys.map(x => ({ y: x.y, name: nm(x.y), us: x.us, sh: x.sh, px: x.px, amt: r0(x.amt), gross: r0(x.gross), fee: r0(x.fee), feeRate: x.feeRate,
         fxUsed: x.fx == null ? null : +x.fx.toFixed(2), score: +x.score.toFixed(4) })),
       sells: m.sells.map(x => ({ y: x.y, name: nm(x.y), us: x.us, sh: x.sh, px: x.px, amt: r0(x.amt), basis: r0(x.basis), gross: r0(x.gross), fee: r0(x.fee),
@@ -639,4 +642,5 @@ require('./8_bars.js');
     };
   }
   fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 사면 다음 점수 순위, 추천이 모자라면 있는 만큼 나눔' }, months }));
+  require('./8_bars.js');                                  // 매매일지 차트용 월봉(bars.json): 거래한 종목 + 장부의 후보 종목
 }                                      // 매매일지 차트용 월봉(bars.json)
