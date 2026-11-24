@@ -5,7 +5,7 @@
  * 매도: 전달 종가 ≥ 전달 10이평  그리고  이번 달 최근 종가 < 이번 달 10이평
  * 10이평 = 최근 10개월 월말 종가 평균(이번 달은 최근 종가를 그 달 종가로 씀)
  *
- * 대상: 코스피 시총 상위 300(ETF·ETN·우선주 포함) + 코스닥 상위 200 + 미국 상위 500
+ * 대상: 코스피 시총 상위 300(ETF·ETN·우선주 포함, 채권·금리·레버리지·인버스형은 제외) + 코스닥 상위 200 + 미국 상위 500
  * 데이터: 한국 = 네이버 시총 순위 + 야후 월봉(15:30 종가, 없으면 네이버)
  *         미국 = 네이버 시총 순위·월봉(막히면 야후)
  *
@@ -76,6 +76,10 @@ function updateKR() {
        Math.round((Date.now() - t0) / 1000) + '초');
 }
 
+// 제외 종목: 채권·금리(CD·KOFR)·머니마켓·단기채 등 가격이 거의 안 움직이는 상품, 레버리지·인버스(음의 복리)
+// tools/learn/1_lists.js의 EXCLUDE와 같은 규칙으로 유지할 것
+var EXCLUDE_RE = /채권|국채|통안채|금리|머니마켓|레버리지|인버스|곱버스|\b[23]X\b/;
+
 function naverTop_(market, n) {
   var out = [];
   for (var page = 1; out.length < n; page++) {
@@ -84,7 +88,7 @@ function naverTop_(market, n) {
     var d = JSON.parse(UrlFetchApp.fetch(url, { headers: CFG.UA }).getContentText());
     if (!d.stocks || !d.stocks.length) break;
     d.stocks.forEach(function (x) {
-      if (out.length < n) out.push({
+      if (out.length < n && !EXCLUDE_RE.test(x.stockName)) out.push({
         market: market, code: x.itemCode, name: x.stockName, type: x.stockEndType,
         cap: num_(x.marketValue), capUnit: '억원'
       });
