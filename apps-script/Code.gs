@@ -23,7 +23,7 @@ var CFG = {
 };
 
 var HEAD = ['시장', '코드', '이름', '종류', '시총', '시총단위', '최근종가', '10이평',
-            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트'];
+            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수'];
 
 /* ───────── 처음 한 번 실행 ───────── */
 function setup() {
@@ -208,6 +208,74 @@ function parseYahooMonthly_(txt) {
   } catch (e) { return null; }
 }
 
+/* ───────── 점수 계산 (weights.json 기반, GitHub raw에서 받음) ───────── */
+var WEIGHTS_URL = 'https://raw.githubusercontent.com/seilsci/stock-score/main/tools/learn/result/weights.json';
+var WEIGHTS = null;
+function getWeights_() {
+  if (WEIGHTS) return WEIGHTS;
+  try {
+    WEIGHTS = JSON.parse(UrlFetchApp.fetch(WEIGHTS_URL, { headers: CFG.UA }).getContentText());
+  } catch (e) { WEIGHTS = null; }
+  return WEIGHTS;
+}
+// 월봉 배열 → 학습 지표 → 점수 (0~100)
+function scoreMonthly_(mon, s) {
+  var W = getWeights_();
+  if (!W || mon.length < 25) return '';
+  var n = mon.length, c = mon.map(function (x) { return x.close; });
+  var ma = c.map(function (x, i) { return i >= 9 ? avg_(c.slice(i - 9, i + 1)) : null; });
+  var above = c.map(function (x, i) { return ma[i] == null ? null : x > ma[i]; });
+  var i = n - 1;
+  var v = mon.map(function (x) { return x.vol || 0; });
+  var vAvg = avg_(v.slice(i - 12, i)) || 1;
+  var v3 = avg_(v.slice(i - 2, i + 1)), v12 = avg_(v.slice(i - 14, i - 3)) || 1;
+  var hi24 = Math.max.apply(null, mon.slice(i - 24, i).map(function (x) { return x.high; }));
+  var hi36 = Math.max.apply(null, mon.slice(Math.max(0, i - 36), i).map(function (x) { return x.high; }));
+  var lr = []; for (var k = i - 11; k <= i; k++) lr.push(Math.log(c[k] / c[k - 1]));
+  var mm = avg_(lr), volat = Math.sqrt(lr.reduce(function (t, x) { return t + (x - mm) * (x - mm); }, 0) / 12);
+  var ma12 = avg_(c.slice(i - 11, i + 1)), ma24 = avg_(c.slice(i - 23, i + 1));
+  var ma60 = n >= 60 ? avg_(c.slice(i - 59, i + 1)) : ma12;
+  var last = mon[i], prev = mon[i - 1];
+  var cross = 0, ab = 0, below = 0;
+  for (var k = i - 24; k < i; k++) { if (above[k] !== above[k - 1]) cross++; if (above[k]) ab++; }
+  for (var k = i - 1; k >= 0 && above[k] === false; k--) below++;
+  var hl = (last.high - last.low) || 1;
+  var up = 0, mu = 0;
+  for (var k = i - 5; k <= i; k++) { if (c[k] > c[k - 1]) up++; if (ma[k] > ma[k - 1]) mu++; }
+  var pf = 0;
+  for (var k = Math.max(11, i - 36); k < i - 1; k++)
+    if (c[k - 1] <= ma[k - 1] && c[k] > ma[k]) { for (var j = k + 1; j <= Math.min(k + 3, i - 1); j++) if (!above[j]) { pf++; break; } }
+  var feats = {
+    gap: c[i] / ma[i] - 1, slope1: ma[i] / ma[i - 1] - 1, slope3: ma[i] / ma[i - 3] - 1,
+    cross24: cross, below: below, above24: ab / 24, c_ma12: c[i] / ma12 - 1, ma10_ma24: ma[i] / ma24 - 1,
+    vol: Math.log((last.vol + 1) / (vAvg + 1)), vol3: Math.log((v3 + 1) / (v12 + 1)),
+    body: (c[i] - last.open) / last.open, upwick: (last.high - Math.max(last.open, c[i])) / hl,
+    lowwick: (Math.min(last.open, c[i]) - last.low) / hl, range: hl / last.open,
+    ret1: c[i] / c[i - 1] - 1, ret3: c[i] / c[i - 3] - 1, ret12: c[i] / c[i - 12] - 1,
+    high24: c[i] / hi24 - 1, dd36: c[i] / hi36 - 1, volat12: volat,
+    idx_above: 0, idx_slope: 0, idx_ret12: 0,
+    us: s.market === 'US' ? 1 : 0, etf: s.type === 'stock' ? 0 : 1,
+    turn: Math.log10(avg_(v.slice(i - 12, i)) * c[i] + 1), up6: up, slope6: ma[i] / ma[i - 6] - 1,
+    c_ma60: c[i] / ma60 - 1, hi12_break: c[i] >= Math.max.apply(null, mon.slice(i - 12, i).map(function (x) { return x.high; })) ? 1 : 0,
+    vol_max36: last.vol / (Math.max.apply(null, v.slice(Math.max(0, i - 36), i)) || 1),
+    prev_fail: pf, ma_up6: mu, close_pos: (c[i] - last.low) / hl, gap_prev: c[i - 1] / ma[i - 1] - 1
+  };
+  // 표준화 + 가중 합 → 점수
+  var raw = W.b;
+  W.feats.forEach(function (f) {
+    var v = feats[f.f];
+    if (v == null || isNaN(v)) v = f.m;
+    var cl = Math.min(f.hi, Math.max(f.lo, v));
+    raw += ((cl - f.m) / f.sd) * f.w;
+  });
+  // raw → 0~100 (pct 배열로 백분위 변환)
+  var pct = W.pct;
+  if (!pct || !pct.length) return '';
+  var lo = 0, hi = pct.length - 1;
+  while (lo < hi) { var mid = (lo + hi) >> 1; if (pct[mid] < raw) lo = mid + 1; else hi = mid; }
+  return Math.round(lo / (pct.length - 1) * 100);
+}
+
 /* ───────── 신호 계산 ───────── */
 function makeRow_(s, mon) {
   var n = mon.length, M = CFG.MONTHS, c = mon.map(function (x) { return x.close; });
@@ -227,8 +295,10 @@ function makeRow_(s, mon) {
       return [+x.ym, round_(x.open), round_(x.high), round_(x.low), round_(x.close), Math.round(x.vol || 0)];
     }));
   }
+  // 매수 신호 종목만 점수 계산
+  var scoreVal = sig === '매수' ? scoreMonthly_(mon, s) : '';
   return [s.market, s.code, s.name, s.type, s.cap, s.capUnit, round_(cur), round_(ma), n > 1 ? round_(prev) : '',
-          round_(pma), sig, mon[n - 1].date, n, chart];
+          round_(pma), sig, mon[n - 1].date, n, chart, scoreVal];
 }
 
 /* ───────── 사이트용 ───────── */
