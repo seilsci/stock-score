@@ -79,6 +79,41 @@ canvas{display:block;width:100%;height:200px}
 .rtag.tp{background:#fef3c7;color:#92400e}
 .rtag.rt{background:#e0f2fe;color:#075985}
 .rtag.ma{background:var(--chip);color:var(--mut)}
+
+/* 월 요약 */
+#sum-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.sum-t{font-weight:700;font-size:13px;margin-bottom:8px}
+.sum-g{display:grid;grid-template-columns:1fr;gap:6px}
+.sum-i{display:flex;justify-content:space-between;font-size:12px;gap:8px}
+.sum-i .k{color:var(--mut)}
+.sum-i b{font-variant-numeric:tabular-nums}
+.sum-big{font-size:15px;padding-bottom:6px;margin-bottom:2px;border-bottom:1px solid var(--line)}
+.sum-note{font-size:11px;color:var(--mut);margin-top:8px}
+.p{color:var(--buy)}.n{color:var(--sell)}
+
+/* 장부(거래 내역) */
+#led{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.lr{border-radius:10px;border:1px solid var(--line);overflow:hidden;background:var(--card)}
+.lr.buy{border-left:4px solid var(--sell);background:rgba(37,99,235,.06)}
+.lr.sell{border-left:4px solid var(--buy);background:rgba(217,54,62,.06)}
+.lr.tax{border-left:4px solid #16a34a;background:rgba(22,163,74,.07)}
+.lr.dep{border-left:4px solid var(--mut)}
+.lr-h{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:9px 11px;cursor:default}
+.lr.clk .lr-h{cursor:pointer}
+.lr-k{font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px;white-space:nowrap}
+.lr.buy .lr-k{background:var(--sell);color:#fff}
+.lr.sell .lr-k{background:var(--buy);color:#fff}
+.lr.tax .lr-k{background:#16a34a;color:#fff}
+.lr.dep .lr-k{background:var(--mut);color:var(--bg)}
+.lr-n{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lr-s{font-size:11px;color:var(--mut);margin-top:1px;font-variant-numeric:tabular-nums}
+.lr-a{text-align:right;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.lr-b{font-size:11px;color:var(--mut);font-weight:400}
+.lr-c{display:none;padding:0 11px 11px}
+.lr-c.open{display:block}
+.lr.end{background:var(--chip);border-style:dashed}
+.lr.end .lr-h{grid-template-columns:1fr auto}
+.empty{color:var(--mut);padding:14px;text-align:center;font-size:13px}
 </style>
 </head>
 <body>
@@ -91,19 +126,21 @@ canvas{display:block;width:100%;height:200px}
     <div class="mo-row" id="mo-row"></div>
   </div>
 
+  <div id="sum-card"></div>
+
+  <div class="sec-title" id="led-label">거래 내역</div>
+  <div id="led"></div>
+
+  <div class="sec-title">보유 종목</div>
   <div id="chart-box">
     <div class="ch-h"><div class="ch-n" id="ch-name">&nbsp;</div><div class="ch-p" id="ch-price"></div></div>
     <canvas id="cv"></canvas>
     <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span><i style="background:var(--fg)"></i>월 종가</span><span style="color:var(--buy)">▲ 매수</span><span style="color:var(--sell)">▼ 매도</span></div>
   </div>
-
   <div id="hold-panel">
     <div id="hold-title">연도·월을 선택하면 그달 말 보유 종목이 표시됩니다.</div>
     <div id="hold-list"></div>
   </div>
-
-  <div class="sec-title" id="trade-label">거래 내역</div>
-  <div id="trade-list"></div>
 </main>
 
 <!-- 점수 설명 모달 -->
@@ -115,7 +152,7 @@ canvas{display:block;width:100%;height:200px}
 </div>
 
 <script>
-var DATA = null, W = null;
+var DATA = null, W = null, LED = null;
 var SEL_YM = null, SEL_HOLD = null;
 var MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
 
@@ -190,7 +227,8 @@ function renderHoldings(){
     var ret=h.ret, cls=ret>=0?'p':'n';
     var isSel = SEL_HOLD && SEL_HOLD.y===h.y;
     var sc = Math.round(h.score*100);
-    var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx) : null;
+    var hUS = !/\.(KS|KQ)$/.test(h.y), fxv = LED && LED.months[ym] ? LED.months[ym].fx : 1;
+    var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx * (hUS ? fxv : 1)) : null;
     var buyAmt = h.basis ? Math.round(h.basis) : null;
     var shStr = h.sh ? (h.sh < 1 ? h.sh.toFixed(3)+'주' : Math.floor(h.sh)+'주') : '';
     return '<div class="h-row'+(isSel?' sel':'')+'" data-i="'+i+'">'
@@ -361,56 +399,81 @@ function showScoreModal(h){
 }
 document.getElementById('sc-modal').onclick=function(e){ if(e.target===this) this.classList.remove('open'); };
 
-/* ── 거래 목록 ── */
-function renderTrades(){
-  var ym=SEL_YM;
-  var label=document.getElementById('trade-label');
-  var list=document.getElementById('trade-list');
-  var trades;
-  if(ym){
-    trades=DATA.trades.filter(function(t){ return String(t.buyYm)===ym||String(t.sellYm)===ym; });
-    label.textContent=fmt(ym)+' 거래 ('+trades.length+'건)';
-  } else {
-    trades=DATA.trades.slice().sort(function(a,b){ return b.sellYm-a.sellYm; }).slice(0,20);
-    label.textContent='최근 거래 20건';
-  }
-  if(!trades.length){ list.innerHTML='<div style="color:var(--mut);padding:16px;text-align:center">거래 없음</div>'; return; }
-  list.innerHTML=trades.map(function(t,idx){
-    var ret=t.ret, cls=ret>=0?'p':'n';
-    var rr=t.reason||'';
-    var rtCls=rr.includes('tp')?'rtag tp':rr.includes('금리')?'rtag rt':'rtag ma';
-    var rtTxt=REASON[rr]||rr;
-    var hm=t.sellYm?holdMonths(t.buyYm,t.sellYm):0;
-    return '<div class="tc">'
-      +'<div class="tc-h" data-idx="'+idx+'">'
-        +'<div><div class="tc-name">'+esc(t.name||t.y)+'</div>'
-        +'<div class="tc-meta">'+fmt(t.buyYm)+' → '+fmt(t.sellYm)+'  '+hm+'개월</div></div>'
-        +'<div style="text-align:right"><div class="tc-ret '+cls+'">'+pc(ret)+'</div>'
-        +'<div class="tc-meta"><span class="'+rtCls+'">'+esc(rtTxt)+'</span></div></div>'
-      +'</div>'
-      +'<div class="tc-b">'
-        +'<div class="dr"><span class="dl">매수가</span><span>'+px(t.buyPx)+'</span></div>'
-        +'<div class="dr"><span class="dl">매도가</span><span>'+px(t.sellPx)+'</span></div>'
-        +'<div class="dr"><span class="dl">매수 점수</span><span>'+Math.round(t.score*100)+'점</span></div>'
-        +'<div class="dr"><span class="dl">보유</span><span>'+hm+'개월</span></div>'
-        +'<canvas class="tcv" data-y="'+esc(t.y)+'" data-b="'+t.buyYm+'" data-s="'+(t.sellYm||'')+'" style="margin-top:8px"></canvas>'
-      +'</div>'
-    +'</div>';
-  }).join('');
-  list.querySelectorAll('.tc-h').forEach(function(h){
+/* ── 월 요약 · 장부(거래 내역) ── */
+function won(n){ return Math.round(n).toLocaleString()+'원'; }
+function signWon(n){ return (n>=0?'+':'−')+Math.abs(Math.round(n)).toLocaleString()+'원'; }
+function qtyS(sh,us){ return (us ? String(+(+sh).toFixed(2)) : Math.round(sh).toLocaleString())+'주'; }
+function pxS(v,us){ return us ? '$'+(+v).toFixed(2) : Math.round(v).toLocaleString()+'원'; }
+function prevYmOf(ym){ ym=+ym; return String(ym%100===1 ? ym-89 : ym-1); }
+
+function renderSummary(){
+  var el=document.getElementById('sum-card'), ym=SEL_YM, m=LED&&ym&&LED.months[ym];
+  if(!m){ el.style.display='none'; return; }
+  el.style.display='block';
+  var yms=Object.keys(LED.months).sort(), idx=yms.indexOf(String(ym));
+  var cumDep=LED.meta.dep*(idx+1), total=m.cash+m.holdVal, pl=total-cumDep, pr=total/cumDep-1;
+  var sellSum=m.sells.reduce(function(t,x){return t+x.amt;},0), buySum=m.buys.reduce(function(t,x){return t+x.amt;},0);
+  var cls=pl>=0?'p':'n';
+  el.innerHTML='<div class="sum-t">'+fmt(ym)+' 월말 현황</div><div class="sum-g">'
+    +'<div class="sum-i sum-big"><span class="k">총자산</span><b>'+won(total)+'</b></div>'
+    +'<div class="sum-i"><span class="k">누적 입금</span><b>'+won(cumDep)+'</b></div>'
+    +'<div class="sum-i"><span class="k">평가손익</span><b class="'+cls+'">'+signWon(pl)+' ('+pc(pr)+')</b></div>'
+    +'<div class="sum-i"><span class="k">월말 현금</span><b>'+won(m.cash)+'</b></div>'
+    +'<div class="sum-i"><span class="k">보유 평가금</span><b>'+won(m.holdVal)+'</b></div>'
+    +'<div class="sum-i"><span class="k">이달 매도</span><b>'+(m.sells.length?m.sells.length+'건 '+won(sellSum):'없음')+'</b></div>'
+    +'<div class="sum-i"><span class="k">이달 매수</span><b>'+(m.buys.length?m.buys.length+'건 '+won(buySum):'없음')+'</b></div>'
+    +'</div><div class="sum-note">매달 입금액과 매도금을 전부 4종목에 똑같이 나눠 사기 때문에 월말 현금은 거의 0원입니다. 미국 종목은 월말 환율('+Math.round(m.fx).toLocaleString()+'원/$)로 환산했고, 팔 때 드는 세금·수수료는 팔 때 반영됩니다.</div>';
+}
+
+function renderLedger(){
+  var ym=SEL_YM, label=document.getElementById('led-label'), list=document.getElementById('led');
+  var m=LED&&ym&&LED.months[ym];
+  if(!ym){ label.textContent='거래 내역'; list.innerHTML=''; return; }
+  if(!m){ label.textContent=fmt(ym)+' 거래 내역'; list.innerHTML='<div class="empty">장부 데이터(ledger.json)를 불러오지 못했습니다.</div>'; return; }
+  label.textContent=fmt(ym)+' 거래 내역 (매도 '+m.sells.length+' · 매수 '+m.buys.length+')';
+  var pm=LED.months[prevYmOf(ym)], bal=pm?pm.cash:0, html='', rows=[], row=0;
+  var add=function(cls,k,name,sub,amt,after,drawArgs){
+    rows.push(drawArgs||null);
+    html+='<div class="lr '+cls+(drawArgs?' clk':'')+'"><div class="lr-h"'+(drawArgs?' data-r="'+(rows.length-1)+'"':'')+'>'
+      +'<span class="lr-k">'+k+'</span>'
+      +'<div style="min-width:0"><div class="lr-n">'+name+'</div>'+(sub?'<div class="lr-s">'+sub+'</div>':'')+'</div>'
+      +'<div class="lr-a">'+amt+'<div class="lr-b">잔액 '+won(after)+'</div></div></div>'
+      +(drawArgs?'<div class="lr-c"><canvas></canvas></div>':'')+'</div>';
+  };
+  html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">전달 이월 현금</div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
+  bal+=m.dep; add('dep','입금','월 적립금','',signWon(m.dep),bal);
+  m.sells.forEach(function(x){
+    bal+=x.amt;
+    var hm=holdMonths(x.buyYm,ym), rr=REASON[x.reason]||x.reason||'';
+    add('sell','판매',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
+      qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+' · <span class="'+(x.ret>=0?'p':'n')+'">'+pc(x.ret)+'</span> · '+hm+'개월 · '+esc(rr),
+      signWon(x.amt),bal,{y:x.y,end:ym,buy:x.buyYm,sell:ym});
+  });
+  if(m.tax>0){ bal-=m.tax; add('tax','세금','미국 주식 양도세','그해 실현 이익 − 250만원 공제 × 22%',signWon(-m.tax),bal); }
+  m.buys.forEach(function(x){
+    bal-=x.amt;
+    var tr=DATA.trades.filter(function(t){return t.y===x.y&&String(t.buyYm)===ym;})[0];
+    var endYm=tr?tr.sellYm:Object.keys(LED.months).sort().pop();
+    add('buy','구매',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
+      qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+' · 점수 '+Math.round(x.score*100),
+      signWon(-x.amt),bal,{y:x.y,end:endYm,buy:ym,sell:tr?tr.sellYm:null});
+  });
+  html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">월말 현금</div></div><div class="lr-a">'+won(m.cash)+'</div></div></div>';
+  list.innerHTML=html;
+  list.querySelectorAll('.lr-h[data-r]').forEach(function(h){
     h.onclick=function(){
-      var body=h.nextElementSibling; body.classList.toggle('open');
-      var c=body.querySelector('.tcv');
-      if(c && body.classList.contains('open')) drawChart(c, c.dataset.y, c.dataset.s||c.dataset.b, c.dataset.b, c.dataset.s||null);
+      var box=h.nextElementSibling; box.classList.toggle('open');
+      if(box.classList.contains('open')){ var a=rows[+h.dataset.r]; drawChart(box.querySelector('canvas'),a.y,a.end,a.buy,a.sell); }
     };
   });
 }
 
-function renderAll(){ renderNav(); renderHoldings(); renderTrades(); document.getElementById('chart-box').style.display='none'; }
+function renderAll(){ renderNav(); renderSummary(); renderLedger(); renderHoldings(); document.getElementById('chart-box').style.display='none'; }
 
 fetch('tools/learn/result/weights.json').then(function(r){ return r.json(); }).then(function(w){ W=w; }).catch(function(){});
 fetch('tools/learn/result/bars.json').then(function(r){ return r.json(); }).then(function(b){ BARS=b; }).catch(function(){});
-fetch('tools/learn/result/trades.json').then(function(r){ return r.json(); }).then(function(d){
+fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).then(function(l){ LED=l; }).catch(function(){})
+.then(function(){ return fetch('tools/learn/result/trades.json'); }).then(function(r){ return r.json(); }).then(function(d){
   DATA=d;
   var yms=Object.keys(d.snapshots).sort();
   SEL_YM=yms[yms.length-1]||null;

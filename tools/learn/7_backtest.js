@@ -561,4 +561,5 @@ for (const h of (journalSim.snapshots || new Map()).values()) for (const x of h)
 journal.open = [...openMap.values()];
 fs.writeFileSync(path.join(DATA, 'trades.json'), JSON.stringify(journal));
 progress('매매일지', 1); process.stdout.write('\n');
-require('./8_bars.js');                                      // 매매일지 차트용 월봉(bars.json)
+require('./8_bars.js');
+require('./9_ledger.js');                                    // 매매일지 장부(ledger.json): 달별 입금·매수·매도·세금·현금                                      // 매매일지 차트용 월봉(bars.json)
