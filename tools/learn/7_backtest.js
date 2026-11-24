@@ -432,10 +432,14 @@ const cmpBottomL = ym => [...cmpAll(ym)].reverse();                             
 const cmpMiddleL = ym => { const a = cmpAll(ym), m = (a.length - 1) / 2; return a.map((x, i) => [x, Math.abs(i - m)]).sort((p, q) => p[1] - q[1]).map(p => p[0]); };   // 가운데부터 바깥으로
 const cmpTurnL = ym => [...(byYm.get(ym) || [])].sort((a, b) => b.r.x[TURN] - a.r.x[TURN]);                                                                      // 거래대금 큰 순
 const cmpRandL = rnd => ym => { const a = [...(byYm.get(ym) || [])]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };   // 무작위 순서
+const CAP_KRW = new Map();                                                           // 종목의 "현재" 시총(원화 환산, 대략): 과거 시점 시총이 없어 현재 값으로 순서만 정함 → 미래 정보가 섞여 유리하게 나올 수 있음
+try { JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json'))).forEach(x => CAP_KRW.set(x.y, x.mk === 'US' ? x.cap / 1e5 * 1300 : x.cap)); } catch (e) {}
+const cmpCapL = ym => [...(byYm.get(ym) || [])].sort((a, b) => (CAP_KRW.get(b.r.y) || 0) - (CAP_KRW.get(a.r.y) || 0));
+const cmpCap = ym => cmpCapL(ym).slice(0, 4);
 const cmpTop = ym => cmpTopL(ym).slice(0, 4), cmpBottom = ym => cmpBottomL(ym).slice(0, 4), cmpMiddle = ym => cmpMiddleL(ym).slice(0, 4), cmpTurn = ym => cmpTurnL(ym).slice(0, 4);
 const cmpRand = rnd => ym => cmpRandL(rnd)(ym).slice(0, 4);
 const CMP_NAMES = [];
-const cmpRun = (name, fn) => { progress('점수효과', CMP_NAMES.length / 5); CMP_NAMES.push(name); R.push({ n: name, s: fn() }); };
+const cmpRun = (name, fn) => { progress('점수효과', CMP_NAMES.length / 6); CMP_NAMES.push(name); R.push({ n: name, s: fn() }); };
 cmpRun('점수효과 · 점수 상위 4', () => summ(simulate(cmpTop, 4, C1, { ...CMP_OPT, cand: cmpTopL })));
 cmpRun('점수효과 · 점수 중간 4', () => summ(simulate(cmpMiddle, 4, C1, { ...CMP_OPT, cand: cmpMiddleL })));
 cmpRun('점수효과 · 점수 하위 4', () => summ(simulate(cmpBottom, 4, C1, { ...CMP_OPT, cand: cmpBottomL })));
@@ -443,7 +447,47 @@ const CMP_SEEDS = Math.max(SEEDS, +process.env.CMP_SEEDS || 100);               
 let CMP_RAND_CAGR = [];
 cmpRun(`점수효과 · 무작위 4 (평균 ${CMP_SEEDS}회)`, () => { const l = []; for (let sd = 1; sd <= CMP_SEEDS; sd++) l.push(summ(simulate(cmpRand(rng(sd)), 4, C1, { ...CMP_OPT, cand: cmpRandL(rng(sd)) }))); CMP_RAND_CAGR = l.map(x => x.cagr); return avgSumm(l); });
 cmpRun('점수효과 · 거래대금 큰 4', () => summ(simulate(cmpTurn, 4, C1, { ...CMP_OPT, cand: cmpTurnL })));
+cmpRun('점수효과 · 시총 큰 4 (현재 시총 기준)', () => summ(simulate(cmpCap, 4, C1, { ...CMP_OPT, cand: cmpCapL })));
 progress('점수효과', 1); process.stdout.write('\n');
+
+// ── 점수 효과 보강 ①: 한국·미국 따로 (각 시장 안에서 점수 상위 4 / 하위 4 / 무작위 4)
+const MK_RES = [];
+for (const [mkName, us] of [['한국', false], ['미국', true]]) {
+  progress('점수효과(시장별)', MK_RES.length / 2);
+  const inMk = e => (e.r.x[US] === 1) === us;
+  const flt = ym => cmpAll(ym).filter(inMk), fltRev = ym => [...flt(ym)].reverse();
+  const fltRand = rnd => ym => { const a = (byYm.get(ym) || []).filter(inMk).slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const top = summ(simulate(ym => flt(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand: flt }));
+  const bot = summ(simulate(ym => fltRev(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand: fltRev }));
+  const capF = ym => cmpCapL(ym).filter(inMk);
+  const capR = summ(simulate(ym => capF(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand: capF }));
+  const rr = []; for (let sd = 1; sd <= CMP_SEEDS; sd++) rr.push(summ(simulate(ym => fltRand(rng(sd))(ym).slice(0, 4), 4, C1, { ...CMP_OPT, cand: fltRand(rng(sd)) })).cagr);
+  MK_RES.push({ mk: mkName, top, bot, cap: capR, rand: rr.sort((a, b) => a - b) });
+}
+progress('점수효과(시장별)', 1); process.stdout.write('\n');
+
+// ── 점수 효과 보강 ②: 앞쪽 연도로 설정을 고르고 뒤쪽 연도로 검증
+//    설정 = 점수 상위 N(2~10) × 판매 규칙 4가지(28가지). 앞쪽 연도의 연평균이 가장 좋은 설정을 고른 뒤, 뒤쪽 연도에서 같은 설정으로 무작위 N개를 산 경우와 비교
+const GRID_N = [2, 3, 4, 5, 6, 8, 10];
+const GRID_EXIT = [['이탈 즉시 판매', {}], ['2배 익절 트레일', { tpTrail: 2 }], ['2배 익절+금리유예2달', { tpTrail: 2, grace: 2, graceRate: true }], ['3배 익절+금리유예2달', { tpTrail: 3, grace: 2, graceRate: true }]];
+const YEARS_ALL = Object.keys(R[0].s.yearly).map(Number).sort((a, b) => a - b);
+const cagrOver = (yearly, years) => Math.pow(years.reduce((p, y) => p * (1 + (yearly[y] ?? 0)), 1), 1 / Math.max(1, years.length)) - 1;
+const GRID = [];
+GRID_EXIT.forEach(([en, eo]) => GRID_N.forEach(N => {
+  progress('앞뒤검증', GRID.length / (GRID_EXIT.length * GRID_N.length));
+  const sm = summ(simulate(ym => cmpAll(ym).slice(0, N), N, C1, { ...eo, lotSize: true, lotAll: true, fill: true, cand: cmpAll }));
+  GRID.push({ name: `${en} · 상위 ${N}`, N, eo, en, yearly: sm.yearly });
+}));
+const SPLITS = [2019, 2022].map(lastEarly => {
+  const early = YEARS_ALL.filter(y => y <= lastEarly), late = YEARS_ALL.filter(y => y > lastEarly);
+  const rows = GRID.map(g => ({ g, e: cagrOver(g.yearly, early), l: cagrOver(g.yearly, late) }));
+  const best = rows.reduce((a, b) => (b.e > a.e ? b : a));
+  const lateRank = 1 + rows.filter(r => r.l > best.l).length;                       // 뒤쪽 연도에서 28가지 중 몇 등인지
+  const rl = []; for (let sd = 1; sd <= 30; sd++) { const sm = summ(simulate(ym => cmpRandL(rng(sd))(ym).slice(0, best.g.N), best.g.N, C1, { ...best.g.eo, lotSize: true, lotAll: true, fill: true, cand: cmpRandL(rng(sd)) })); rl.push(cagrOver(sm.yearly, late)); }
+  rl.sort((a, b) => a - b);
+  return { lastEarly, early, late, rows, best, lateRank, rl };
+});
+progress('앞뒤검증', 1); process.stdout.write('\n');
 
 // ── 1. 손절 실험: A4 tp2x트레일 × sl(10%·15%·20%·25% 하락 시 손절)
 const SL_VALS = [0.10, 0.15, 0.20, 0.25];
@@ -586,6 +630,7 @@ R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).
   cmpRows.forEach(r => log(`${r.n.padEnd(34)} ${pc(r.s.cagr).padStart(7)} ${pc(r.s.cum).padStart(10)} ${pc(r.s.mdd).padStart(9)} ${won(r.s.liq).padStart(12)} ${pc(r.s.irr).padStart(7)}   ${ksY ? Ys.filter(Y => r.s.yearly[Y] > (ksY[Y] ?? 0)).length + '/' + Ys.length : ''}`));
   const g = n => (cmpRows.find(r => r.n.includes(n)) || { s: { cagr: NaN } }).s.cagr;
   log(`→ 점수 상위 4 − 무작위 4 = ${((g('상위') - g('무작위')) * 100).toFixed(1)}%p/년,  상위 4 − 하위 4 = ${((g('상위') - g('하위')) * 100).toFixed(1)}%p/년  (0 근처이거나 음수면 점수가 수익에 기여하지 못한 것)`);
+  log('   ※ 시총 큰 4는 "현재" 시총 순서입니다(과거 시점 시총 데이터가 없음). 지금은 커졌지만 당시엔 작았던 종목이 앞순위에 들어가 미래 정보가 섞이므로 실제보다 유리하게 나올 수 있습니다.');
   if (CMP_RAND_CAGR.length) {                                                        // 무작위 4 분포: 상위 4가 운이 아닌지
     const a = [...CMP_RAND_CAGR].sort((x, y) => x - y), q = p => a[Math.min(a.length - 1, Math.floor(p * (a.length - 1)))];
     const top = g('상위'), beat = a.filter(x => x >= top).length;
@@ -593,6 +638,28 @@ R.forEach(r => log(`${r.n.padEnd(26)} ${pc(r.s.cum).padStart(9)} ${pc(r.s.cagr).
     log(`→ 점수 상위 4(${pc(top)})보다 높았던 무작위는 ${beat}/${a.length}번. 무작위 중 이 정도가 나올 확률 ≈ ${((beat + 1) / (a.length + 1) * 100).toFixed(1)}% (작을수록 운일 가능성이 낮음)`);
     log('   ※ 점수 상위 4는 설정(N·판매 규칙)을 같은 데이터로 골랐기 때문에, 이 확률은 실제보다 유리하게 나올 수 있음');
   }
+}
+// ── 점수 효과 보강 보고
+{
+  log(''); log('## 점수 효과 보강 ① 한국·미국 따로 (각 시장 안에서만 고름, 같은 판매 규칙·정수 주문·월 100만원)');
+  log('시장   점수 상위 4    점수 하위 4    시총 큰 4(현재 시총)   무작위 4(중앙값 · 하위10% ~ 상위10%)           상위 4보다 높은 무작위');
+  MK_RES.forEach(r => {
+    const a = r.rand, q = p => a[Math.min(a.length - 1, Math.floor(p * (a.length - 1)))], beat = a.filter(x => x >= r.top.cagr).length;
+    log(`${r.mk.padEnd(4)}  ${pc(r.top.cagr).padStart(9)}    ${pc(r.bot.cagr).padStart(9)}    ${pc(r.cap.cagr).padStart(12)}      ${pc(q(0.5)).padStart(8)} · ${pc(q(0.1))} ~ ${pc(q(0.9))}   ${beat}/${a.length}번 (${((beat + 1) / (a.length + 1) * 100).toFixed(1)}%)`);
+  });
+  log('→ 한쪽 시장에서만 점수가 일하고 다른 쪽은 무작위와 비슷하면, 전체 결과는 한 시장 덕일 수 있음');
+
+  log(''); log('## 점수 효과 보강 ② 앞쪽 연도로 설정을 고르고 뒤쪽 연도로 검증 (설정 28가지 = 점수 상위 N 2~10 × 판매 규칙 4가지)');
+  SPLITS.forEach(sp => {
+    const a = sp.rl, q = p => a[Math.min(a.length - 1, Math.floor(p * (a.length - 1)))], beat = a.filter(x => x >= sp.best.l).length;
+    log(`- 앞쪽 ${sp.early[0]}~${sp.early[sp.early.length - 1]} / 뒤쪽 ${sp.late[0]}~${sp.late[sp.late.length - 1]}`);
+    log(`  앞쪽 연평균 최고 설정: ${sp.best.g.name}  (앞쪽 ${pc(sp.best.e)} → 뒤쪽 ${pc(sp.best.l)})`);
+    log(`  이 설정을 뒤쪽에서 28가지 중 ${sp.lateRank}등. 같은 설정으로 무작위 ${sp.best.g.N}개를 산 경우(30번): 중앙값 ${pc(q(0.5))} · 하위10% ${pc(q(0.1))} ~ 상위10% ${pc(q(0.9))}, 그보다 높은 무작위 ${beat}/${a.length}번`);
+    log(`  → 뒤쪽 연도에서 점수로 고른 설정이 무작위보다 ${sp.best.l - q(0.5) >= 0 ? '+' : ''}${((sp.best.l - q(0.5)) * 100).toFixed(1)}%p/년 ${sp.best.l > q(0.9) ? '(무작위 상위 10%보다도 좋음: 앞쪽에서 고른 설정이 뒤쪽에서도 통함)' : sp.best.l > q(0.5) ? '(무작위보다 낫지만 크게는 아님)' : '(무작위와 비슷하거나 나쁨: 설정을 같은 데이터로 골라 생긴 과장일 수 있음)'}`);
+  });
+  const sp0 = SPLITS[0];
+  log(''); log(`설정 28가지의 앞쪽(${sp0.early[0]}~${sp0.early[sp0.early.length - 1]}) 대 뒤쪽(${sp0.late[0]}~${sp0.late[sp0.late.length - 1]}) 연평균 (뒤쪽 높은 순)`);
+  [...sp0.rows].sort((x, y) => y.l - x.l).forEach(r => log(`  ${r.g.name.padEnd(34)} 앞쪽 ${pc(r.e).padStart(8)}   뒤쪽 ${pc(r.l).padStart(8)}`));
 }
 fs.writeFileSync(path.join(DATA, 'backtest.txt'), out.join('\n') + '\n');
 
