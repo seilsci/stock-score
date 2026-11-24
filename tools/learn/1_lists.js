@@ -1,8 +1,12 @@
 // 1단계-1: 종목 목록 (네이버 시총 순) → data/lists.json
 const { fs, path, DATA, getJSON } = require('./common');
 const num = s => +String(s || '').replace(/[^0-9.]/g, '') || 0;
-const US_N = +process.env.US_N || 3000;      // 미국은 시총 상위 N개만
-const KR_N = +process.env.KR_N || 99999;     // 한국은 전부
+// 학습 대상 범위 = 사이트(apps-script/Code.gs의 KOSPI_N·KOSDAQ_N·US_N)와 같게 유지: 코스피 300 + 코스닥 200 + 미국 500 (시총 순)
+// 넓게 보려면 WIDE=1 (한국 전 종목 + 미국 3000). 개수는 KOSPI_N·KOSDAQ_N·US_N 환경변수로도 바꿀 수 있음
+const WIDE = process.env.WIDE === '1';
+const KOSPI_N = +process.env.KOSPI_N || (WIDE ? 99999 : 300);
+const KOSDAQ_N = +process.env.KOSDAQ_N || (WIDE ? 99999 : 200);
+const US_N = +process.env.US_N || (WIDE ? 3000 : 500);
 
 async function pages(base) {
   const first = await getJSON(base + 'page=1&pageSize=100');
@@ -21,9 +25,10 @@ async function pages(base) {
       us.push({ mk: 'US', code: x.symbolCode, name: x.stockName, type: x.stockEndType || 'stock',
                 cap: num(x.marketValue), y: String(x.symbolCode).replace(/\s+/g, '-') }));
   kr.sort((a, b) => b.cap - a.cap); us.sort((a, b) => b.cap - a.cap);
-  const list = kr.slice(0, KR_N).concat(us.slice(0, US_N));
+  const krSel = kr.filter(x => x.mk === 'KOSPI').slice(0, KOSPI_N).concat(kr.filter(x => x.mk === 'KOSDAQ').slice(0, KOSDAQ_N));
+  const list = krSel.concat(us.slice(0, US_N));
   const LIMIT = +process.env.LIMIT || 0;      // 시험용: 앞에서 N개만
   const out = LIMIT ? kr.slice(0, LIMIT / 2).concat(us.slice(0, LIMIT / 2)) : list;
   fs.writeFileSync(path.join(DATA, 'lists.json'), JSON.stringify(out));
-  console.log(`목록: 한국 ${kr.length}개 중 ${Math.min(kr.length, KR_N)}, 미국 ${us.length}개 중 ${Math.min(us.length, US_N)} → ${out.length}종목`);
+  console.log(`목록(${WIDE ? '넓은 범위' : '사이트와 같은 범위'}): 한국 ${krSel.length}개(코스피 ${Math.min(kr.filter(x => x.mk === 'KOSPI').length, KOSPI_N)} + 코스닥 ${Math.min(kr.filter(x => x.mk === 'KOSDAQ').length, KOSDAQ_N)}), 미국 ${Math.min(us.length, US_N)}개 → ${out.length}종목`);
 })().catch(e => { console.error(e); process.exit(1); });
