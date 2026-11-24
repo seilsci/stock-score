@@ -385,11 +385,9 @@ function hideTip(){ if(CTIP) CTIP.style.display='none'; document.querySelectorAl
 function chartTip(cv, ev, i){                // i = 월 위치
   var G=cv._g, u=G.u, us=!/\.(KS|KQ)$/.test(G.y), ym=u.yms[i], fm=function(v){ return pxS(v,us); };
   var prev=i>0?u.c[i-1]:null, chg=prev?(u.c[i]/prev-1):null, m=G.ma[i], tags=[];
-  var buys={}, sells={};
-  DATA.trades.forEach(function(t){ if(t.y!==G.y) return; buys[t.buyYm]=1; if(t.sellYm) sells[t.sellYm]=1; });
-  if(G.buyYm) buys[G.buyYm]=1; if(G.sellYm) sells[G.sellYm]=1;
-  if(buys[ym]) tags.push('<span style="color:var(--buy)">▲ 구매</span>');
-  if(sells[ym]) tags.push('<span style="color:var(--sell)">▼ 판매</span>');
+  var nb=G.evB[ym]||0, ns=G.evS[ym]||0;
+  if(nb) tags.push('<span style="color:var(--buy)">▲ 구매'+(nb>1?' ×'+nb:'')+'</span>');
+  if(ns) tags.push('<span style="color:var(--sell)">▼ 판매'+(ns>1?' ×'+ns:'')+'</span>');
   var cc=function(v){ return v==null?'':'<span style="color:'+(v>=0?'var(--buy)':'var(--sell)')+'">'+pc(v)+'</span>'; };
   var t=ctip();
   t.innerHTML='<b>'+fmt(ym)+'</b> '+tags.join(' ')+
@@ -496,18 +494,25 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
   g.strokeStyle=maC; g.lineWidth=1.6; g.lineJoin='round'; g.beginPath(); var st=false;
   for(var i=s0;i<=e;i++){ if(ma[i]==null) continue; var mx=X(i), my=Y(ma[i]); if(!st){ g.moveTo(mx,my); st=true; } else g.lineTo(mx,my); }
   g.stroke();
-  // 이 종목의 매수·매도 표시 (구매 ▲는 캔들 아래, 판매 ▼는 캔들 위)
-  var mark=function(ym, up){
+  // 이 종목의 매수·매도 표시 (구매 ▲는 캔들 아래, 판매 ▼는 캔들 위). 같은 달에 여러 번이면 겹치지 않게 쌓아서 그림
+  var evB={}, evS={};
+  DATA.trades.forEach(function(t){ if(t.y!==y) return; evB[t.buyYm]=(evB[t.buyYm]||0)+1; if(t.sellYm) evS[t.sellYm]=(evS[t.sellYm]||0)+1; });
+  if(buyYm && !evB[buyYm]) evB[buyYm]=1;                                         // 보유 중인 마지막 구매·예정 주문은 거래 기록에 아직 없음
+  if(sellYm && !evS[sellYm]) evS[sellYm]=1;
+  var mark=function(ym, up, cnt){
     var p=posOf(ym); if(p<s0||p>e) return;
-    var x=X(p), yy=up?Y(u.l[p])+4:Y(u.h[p])-4;
-    g.fillStyle=up?buyC:sellC; g.beginPath();
-    if(up){ g.moveTo(x,yy); g.lineTo(x-5,yy+9); g.lineTo(x+5,yy+9); }
-    else { g.moveTo(x,yy); g.lineTo(x-5,yy-9); g.lineTo(x+5,yy-9); }
-    g.closePath(); g.fill();
+    var x=X(p);
+    for(var q=0;q<cnt;q++){
+      var yy=up?Y(u.l[p])+4+q*11:Y(u.h[p])-4-q*11;
+      g.fillStyle=up?buyC:sellC; g.beginPath();
+      if(up){ g.moveTo(x,yy); g.lineTo(x-5,yy+9); g.lineTo(x+5,yy+9); }
+      else { g.moveTo(x,yy); g.lineTo(x-5,yy-9); g.lineTo(x+5,yy-9); }
+      g.closePath(); g.fill();
+    }
   };
-  DATA.trades.forEach(function(t){ if(t.y!==y) return; mark(t.buyYm,true); if(t.sellYm) mark(t.sellYm,false); });
-  if(buyYm) mark(buyYm,true); if(sellYm) mark(sellYm,false);                  // 지금 보는 거래·보유의 구매·판매 표시(보유 중인 마지막 구매·예정 주문은 거래 기록에 아직 없음)
-  cv._g={y:y,u:u,ma:ma,s0:s0,e:e,L:L,pw:pw,step:step,rawMode:!!rawOverride,buyYm:buyYm,sellYm:sellYm};
+  Object.keys(evB).forEach(function(k){ mark(k,true,evB[k]); });
+  Object.keys(evS).forEach(function(k){ mark(k,false,evS[k]); });
+  cv._g={y:y,u:u,ma:ma,s0:s0,e:e,L:L,pw:pw,step:step,evB:evB,evS:evS};
   bindChart(cv);
 }
 
