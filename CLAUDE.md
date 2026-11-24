@@ -17,7 +17,7 @@
 ## 꼭 지킬 규칙
 - Apps Script는 수정 후 **배포 → 배포 관리 → 연필(수정) → 새 버전**으로 배포(URL 유지). 웹 앱 액세스는 "모든 사용자".
 - 개인정보·API 키·시트 링크는 저장소에 넣지 않음. **apix 키는 `~/apix-key.txt`(저장소 밖)에만.** 로그·커밋에 키가 찍히지 않게.
-- 학습·시뮬레이션은 **사용자가 PC에서 bat(`tools/learn/run_learn.bat`)으로 직접 돌림(토큰 0)**. Claude는 코드 수정·결과 분석만 하고, 돌려야 할 때는 "bat을 돌려 주세요"라고 안내(설명 `tools/learn/README-PC.md`). 꼭 Claude가 돌려야 하면 `tools/learn/run.sh --yes > tools/learn/data/run.out 2>&1`로 출력을 파일로 돌리고, 끝난 뒤 `result/*.txt`만 읽기(진행 줄이 \r로 덮어써져 로그가 지저분하고 출력이 토큰을 먹음).
+- **학습·시뮬레이션(`tools/learn/run.sh` 전체 실행)은 절대 Claude가 클라우드에서 돌리지 않음. 예외 없음.** 사용자 PC가 더 빠르고, 결과(`result/`)는 PC에서 만든 것만 저장소에 넣음. 사용자는 바탕화면 `stock_learn.bat`(= `tools/learn/run_learn.bat`: `git pull && tools/learn/run.sh`, 끝에 올릴지 묻고 `result/`에 커밋·push)로 돌림(토큰 0). Claude는 코드 수정·결과 분석만 하고, 돌려야 할 때는 "PC에서 stock_learn.bat을 돌려 주세요"라고 안내. 단 PC는 `git pull`로 코드를 받으므로 **고친 코드가 PC가 pull하는 브랜치(main)에 있어야 함** → 코드를 main에 올려도 되는지 "올려" 확인부터 받을 것. 가벼운 한 줄 확인(파일 문법·작은 계산)만 클라우드에서 가능(`tools/learn/README-PC.md`).
 - 이 PC의 Claude Code는 제3자 API(apix)라 크레딧이 한정됨: `/model`로 Sonnet, 파일은 필요한 부분만 읽기.
 
 ## 지금 상태 (2026-11-24)
