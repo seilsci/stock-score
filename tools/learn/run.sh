@@ -9,6 +9,7 @@ for a in "$@"; do [ "$a" = "--no-push" ] && YES=0; done
 command -v node >/dev/null || { echo "node가 없어요. https://nodejs.org 에서 LTS 설치 후 다시"; exit 1; }
 # 종목 범위: 현재 시총 순 목록 대신 넓은 목록(한국 전 종목 + 미국 3000) + 매달 그 시점 거래대금 상위(한국 500·미국 500)만 인정. 예전 방식: WIDE=0 LIQ_KR=0 LIQ_US=0 tools/learn/run.sh
 export WIDE=${WIDE:-1} LIQ_KR=${LIQ_KR:-500} LIQ_US=${LIQ_US:-500}
+export SCORE_MODEL=${SCORE_MODEL:-gbm}      # 점수 모델: gbm(트리, 기본) 또는 ridge(옛 선형). 매매일지·장부 점수도 이것을 씀
 D=${DATA:-data}; mkdir -p "$D"
 export T0=$(date +%s)
 LOG=$D/run.log; : > $LOG
@@ -35,6 +36,7 @@ LAST=$(date +%s)
 PFROM=$B3 PTO=$B4 node 3_build.js | tee -a $LOG
 done_ "매수 신호·정답·지표 (3/8)"; mark build
 PFROM=$B4 PTO=$B5 node 4_train.js | tee -a $LOG
+PFROM=$B4 PTO=$B5 node 4b_gbm.js | tee -a $LOG       # 사이트용 트리 점수 모델 → data/gbm.json
 done_ "학습·검증 (4/8)"; mark train
 PFROM=$B5 PTO=$B6 node 5_explore.js | tee -a $LOG
 done_ "여러 실험 (5/8)"; mark explore
@@ -50,7 +52,7 @@ echo; say "100% 완료 · 보고서: tools/learn/data/report.txt"
 if [ -n "$LIMIT" ]; then say "시험 실행(LIMIT)이라 올리지 않아요."; exit 0; fi
 if [ $YES = 0 ]; then A=n; else A=y; fi        # 묻지 않음: 기본은 올림(--no-push면 안 올림)
 if [ "$A" = "y" ] || [ "$A" = "Y" ]; then
-  mkdir -p result; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; for f in trades.json bars.json ledger.json; do [ -f $D/$f ] && cp $D/$f result/ || true; done
+  mkdir -p result; cp $D/weights.json $D/gbm.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; for f in trades.json bars.json ledger.json; do [ -f $D/$f ] && cp $D/$f result/ || true; done
   git -c core.safecrlf=false add result
   git commit -q -m "학습 결과: 월봉 10이평 매수 신호 가중치 ($(date '+%Y-%m-%d'))" && git pull --rebase --autostash -q && git push -q && say "■ 올림 끝 (8/8). Claude에게 '올렸어'라고 알려 주세요."
 else

@@ -82,6 +82,22 @@ years.forEach((Y, yi) => {
 });
 Object.values(scoredMk).forEach(m => m.forEach(a => a.sort((x, y) => y.s - x.s)));
 scored.forEach(m => m.forEach(a => a.sort((x, y) => y.s - x.s)));
+// 점수 모델 선택: SCORE_MODEL=gbm이면 점수 모델 'A'(점수 상위 N·매매일지·장부)를 트리 모델(gbm.js)로 바꿈. 해마다 그 전까지 알던 정답(첫날 진입 + 지금 판매 규칙 수익)만으로 학습, 씨앗 3개 평균, 지수 지표 제외(사이트 계산과 같은 입력)
+const SCORE_MODEL = process.env.SCORE_MODEL || 'ridge';
+const scoredRidgeA = scored[KA0];
+if (SCORE_MODEL === 'gbm') {
+  const SLg = require('./strat'), noidx = modelDefs(F).PRICE.filter(j => !F[j].startsWith('idx_'));
+  const labsG = ALL.map(r => SLg.label(r.y, r.ym, { entry: 'fd', tp: 2, grace: 2, rate: true }, END)), gm = new Map();
+  years.forEach((Y, yi) => {
+    progress('트리 점수', yi / years.length);
+    const tr0 = trainSetL(ALL, labsG, Y, 12), te = ALL.filter(r => Math.floor(r.ym / 100) === Y);
+    if (tr0.length < 500 || !te.length) return;
+    const ms = [1, 2, 3].map(sd => GBM.fit(tr0.map(r => r.x), tr0.map(r => clipT(r.t)), noidx, { seed: sd }));
+    te.forEach(r => { let v = 0; ms.forEach(M => { v += GBM.predict(M, r.x); }); const a = gm.get(r.ym) || []; a.push({ r, s: v / ms.length }); gm.set(r.ym, a); });
+  });
+  gm.forEach(a => a.sort((x, y) => y.s - x.s));
+  scored[KA0] = gm; progress('트리 점수', 1); process.stdout.write('\n');
+}
 
 // ── 매도 유예 모델: 매도 신호(종가<10이평) 달의 가격 지표 → 3개월 뒤 수익 예측 → 높으면 유예
 // 매도 신호 이벤트를 원시 월봉에서 직접 생성 (종가·이평만으로 계산 가능한 가격 지표 사용)
@@ -890,7 +906,7 @@ if (process.env.STAGE3 !== '0') {
     const res = mk(), map = res instanceof Map ? res : res.map, skip = res instanceof Map ? null : res.skip;
     S3.rows.push({ g, name, ...evalMap(map, skip) });
     if (i === 0) {                                                  // 검산: 기준 변형이 기존 A 점수(scored[kA])와 같아야 함(같은 정답·같은 학습 → 모순 확인)
-      let mx = 0, n = 0, miss = 0; scored[kA].forEach((a, ym) => { const b = map.get(ym) || []; const m2 = new Map(b.map(e => [e.r, e.s])); a.forEach(e => { const v = m2.get(e.r); if (v === undefined) miss++; else if (!(Number.isNaN(v) && Number.isNaN(e.s))) mx = Math.max(mx, Math.abs(v - e.s)); n++; }); });
+      let mx = 0, n = 0, miss = 0; scoredRidgeA.forEach((a, ym) => { const b = map.get(ym) || []; const m2 = new Map(b.map(e => [e.r, e.s])); a.forEach(e => { const v = m2.get(e.r); if (v === undefined) miss++; else if (!(Number.isNaN(v) && Number.isNaN(e.s))) mx = Math.max(mx, Math.abs(v - e.s)); n++; }); });
       S3.check = { max: mx, n, miss };
     }
   });
