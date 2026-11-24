@@ -46,6 +46,12 @@ function setup() {
   log_('setup', '탭·자동 갱신 예약 완료');
 }
 
+/* ───────── 한 번에 갱신: 이 함수 하나만 실행하면 한국·미국 둘 다 갱신 ───────── */
+function updateAll() {
+  updateKR();
+  updateUS();
+}
+
 /* ───────── 한국 ───────── */
 function updateKR() {
   var t0 = Date.now();
