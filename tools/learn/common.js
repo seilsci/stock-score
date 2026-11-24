@@ -1,7 +1,9 @@
 // 공통: 받기·저장·월봉 정리
 const fs = require('fs'), path = require('path');
 const DATA = process.env.DATA || path.join(__dirname, 'data');
-fs.mkdirSync(path.join(DATA, 'raw'), { recursive: true });
+// 월봉 저장 폴더: raw2 (옛 raw 폴더는 야후가 3개월 간격으로 준 오류 자료라 쓰지 않음)
+const RAW = path.join(DATA, 'raw2');
+fs.mkdirSync(RAW, { recursive: true });
 const UA = { 'User-Agent': 'Mozilla/5.0' };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -68,4 +70,10 @@ function yahooMonthly(j) {
   });
 }
 
-module.exports = { fs, path, DATA, getJSON, pool, sleep, yahooMonthly, progress };
+// 월 간격이 1개월인지 검사(2008년 이후 구간): 1개월이 아닌 간격 비율
+function gapBad(m) {
+  const mi = ym => Math.floor(ym / 100) * 12 + ym % 100; let n = 0, bad = 0;
+  for (let i = 1; i < m.length; i++) if (m[i][0] >= 200801) { n++; if (mi(m[i][0]) - mi(m[i - 1][0]) !== 1) bad++; }
+  return n ? bad / n : 0;
+}
+module.exports = { gapBad, fs, path, DATA, RAW, getJSON, pool, sleep, yahooMonthly, progress };

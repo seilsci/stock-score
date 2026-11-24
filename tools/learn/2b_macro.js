@@ -53,5 +53,6 @@ const back = (ym, k) => { let y = Math.floor(ym / 100), mo = ym % 100 - k; while
     };
   }
   fs.writeFileSync(path.join(DATA, 'macro.json'), JSON.stringify(out));
+  if (M.DEXKOUS) fs.writeFileSync(path.join(DATA, 'fx.json'), JSON.stringify(Object.fromEntries(M.DEXKOUS)));   // 월말 원/달러
   console.log(`거시 지표: ${ok}/${S.length}개 받음` + (ok < S.length ? ' (못 받은 건 빈 값으로 학습)' : ''));
 })();

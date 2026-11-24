@@ -6,7 +6,7 @@ function load() {
   const head = lines[0].split(','), NH = head.indexOf('mk120') + 1, F = head.slice(NH);
   const L = lines.slice(1).map(l => {
     const p = l.split(',');
-    return { ym: +p[1], hold: +p[3], t: p[5] === '' ? null : +p[5], exoff: p[6] === '' ? null : +p[6],
+    return { y: p[0], ym: +p[1], hold: +p[3], t: p[5] === '' ? null : +p[5], exoff: p[6] === '' ? null : +p[6],
              mk: p.slice(7, 7 + MK.length).map(v => v === '' ? null : +v), x: p.slice(NH).map(v => v === '' ? NaN : +v) };
   });
   return { F, L, MK };
@@ -24,4 +24,19 @@ function trainSet(L, Y) {
   }
   return out;
 }
-module.exports = { load, trainSet, MK };
+// 비교할 모델들(6_check·7_backtest 공통)
+function modelDefs(F) {
+  const fi = n => F.indexOf(n), all = F.map((_, j) => j), MAC = all.filter(j => F[j].startsWith('m_'));
+  const MKT = all.filter(j => F[j].startsWith('idx_') || F[j] === 'us');
+  const PRICE = all.filter(j => !F[j].startsWith('m_')), STOCK = PRICE.filter(j => !MKT.includes(j));
+  const MODELS = [
+    { n: 'A 가격만(35)', cols: PRICE, lam: 1000 },
+    { n: 'B 가격+거시 전부', cols: PRICE.concat(MAC), lam: 1000 },
+    { n: 'C 가격+기준금리변화', cols: PRICE.concat([fi('m_ff_chg12')]), lam: 1000 },
+    { n: 'D 시장 요소만(지수·거시)', cols: MKT.concat(MAC), lam: 1000 },
+    { n: 'E 종목 요소만(달 평균 뺀 수익)', cols: STOCK, lam: 1000, demean: true },
+    { n: 'F 가격35(달 평균 뺀 수익)', cols: PRICE, lam: 1000, demean: true }
+  ];
+  return { PRICE, MAC, MKT, STOCK, MODELS };
+}
+module.exports = { load, trainSet, MK, modelDefs };

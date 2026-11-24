@@ -1,7 +1,7 @@
 // 2·3단계: 과거 매수 신호 전부 찾기 + 정답(12개월 유지) + 후보 지표 → data/events.csv
-const { fs, path, DATA, progress } = require('./common');
+const { fs, path, DATA, RAW, progress } = require('./common');
 const list = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
-const load = y => { try { return JSON.parse(fs.readFileSync(path.join(DATA, 'raw', y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'))); } catch (e) { return null; } };
+const load = y => { try { return JSON.parse(fs.readFileSync(path.join(RAW, y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'))); } catch (e) { return null; } };
 const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1;   // 이번 달(진행 중)
 const HOLD = 12;
 const MK = [3, 6, 9, 12, 18, 24, 36, 48, 60, 72, 96, 120];
