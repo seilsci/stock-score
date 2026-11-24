@@ -550,7 +550,7 @@ const journal = {
     ret: +t.ret.toFixed(4), score: +t.score.toFixed(4), reason: t.reason,
     feats: t.feats ? F.map((f, i) => [f, +((t.feats[i] || 0)).toFixed(4)]) : []
   })),
-  snapshots: journalSim.snapshots ? Object.fromEntries([...journalSim.snapshots].map(([ym, h]) => [ym, h.map(x => ({ y: x.y, name: nameMap.get(x.y)?.name || x.y, code: nameMap.get(x.y)?.code || '', buyYm: x.buyYm, buyPx: x.buyPx, curPx: x.curPx, ret: x.curPx ? +((x.curPx / x.buyPx - 1)).toFixed(4) : 0, score: +x.score.toFixed(4) }))])) : {}
+  snapshots: journalSim.snapshots ? Object.fromEntries([...journalSim.snapshots].map(([ym, h]) => [ym, h.map(x => ({ y: x.y, name: nameMap.get(x.y)?.name || x.y, code: nameMap.get(x.y)?.code || '', buyYm: x.buyYm, buyPx: x.buyPx, curPx: x.curPx, sh: x.sh ? +x.sh.toFixed(4) : null, basis: x.basis ? Math.round(x.basis) : null, ret: x.curPx ? +((x.curPx / x.buyPx - 1)).toFixed(4) : 0, score: +x.score.toFixed(4) }))])) : {}
 };
 fs.writeFileSync(path.join(DATA, 'trades.json'), JSON.stringify(journal));
 progress('매매일지', 1); process.stdout.write('\n');
