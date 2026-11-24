@@ -20,7 +20,7 @@ var CFG = {
   US_N: 500,
   MONTHS: 10,          // 이동평균 개월 수
   CHART_N: 45,         // 차트용으로 저장하는 개월 수(화면 36개월 + 10이평 계산용 9개월)
-  BATCH: 40,           // 한 번에 동시에 받는 개수
+  BATCH: 100,          // 한 번에 동시에 받는 개수(느리면 40으로 되돌리기: 접속이 막히면 오히려 실패가 늘 수 있음)
   UA: { 'User-Agent': 'Mozilla/5.0' }
 };
 
@@ -59,6 +59,7 @@ function newTimer_() {
   var start = new Date(), parts = [];
   return {
     lap: function (label, t0) { parts.push(label + ' ' + ((new Date() - t0) / 1000).toFixed(1)); },
+    note: function (txt) { if (txt) parts.push(txt); },
     text: function () { return '[' + parts.join(' / ') + ' / 총 ' + ((new Date() - start) / 1000).toFixed(1) + '초]'; }
   };
 }
@@ -101,8 +102,8 @@ function updateKR() {
   }
   rows.sort(function (a, b) { return b[4] - a[4]; });
   t = new Date();
-  writeRows_('한국', rows);
-  T.lap('시트쓰기', t);
+  var wd = writeRows_('한국', rows);
+  T.lap('시트쓰기', t); T.note(wd);
   log_('updateKR', rows.length + '종목, 네이버 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
        Math.round((Date.now() - t0) / 1000) + '초 ' + T.text());
 }
@@ -179,8 +180,8 @@ function updateUS() {
   }
   rows.sort(function (a, b) { return b[4] - a[4]; });
   t = new Date();
-  writeRows_('미국', rows);
-  T.lap('시트쓰기', t);
+  var wd = writeRows_('미국', rows);
+  T.lap('시트쓰기', t); T.note(wd);
   log_('updateUS', rows.length + '종목, 야후 대체 ' + (retry.length - fail) + ', 실패 ' + fail + ', ' +
        Math.round((Date.now() - t0) / 1000) + '초 ' + T.text());
 }
@@ -443,19 +444,42 @@ function fetchAll_(urls) {
   return out;
 }
 
+// 시트에 쓰기: Sheets API(고급 서비스)로 지우기 1회 + 쓰기 1회, 안 되면 SpreadsheetApp 방식으로 대체. 단계별 시간을 문자열로 돌려줌
 function writeRows_(name, rows) {
   var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(name) || ss.insertSheet(name);
-  var fresh = sh.getLastRow() === 0;             // 새 탭일 때만 서식을 지정(서식은 clearContents로 지워지지 않음)
-  sh.clearContents();
+  var tm = [], t, sec = function (t0) { return ((new Date() - t0) / 1000).toFixed(1); };
+  var stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  var values = [HEAD].concat(rows);
+  var fresh = sh.getLastRow() === 0;             // 새 탭일 때만 서식·고정행 지정(서식은 지우기로 지워지지 않음)
   if (fresh) {
+    t = new Date();
     // 코드(005930)·기준일·갱신 시각이 숫자·날짜로 바뀌지 않게 텍스트로
     ['B:D', 'F:F', 'K:L', 'N:N', 'Q1:R1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
+    sh.setFrozenRows(1);
+    tm.push('서식 ' + sec(t));
   }
-  // 머리글 + 데이터를 한 번에 쓰기(호출 1번), 갱신 시각도 한 번에
-  sh.getRange(1, 1, rows.length + 1, HEAD.length).setValues([HEAD].concat(rows));
-  sh.getRange('Q1:R1').setValues([['갱신', Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm')]]);
-  sh.setFrozenRows(1);
-  cacheClear_();                                 // 새 데이터가 들어왔으니 저장해 둔 응답을 지움
+  var done = false;
+  try {
+    var id = ss.getId(), q = "'" + name + "'";
+    t = new Date();
+    Sheets.Spreadsheets.Values.batchClear({ ranges: [q] }, id);
+    tm.push('API지우기 ' + sec(t));
+    t = new Date();
+    Sheets.Spreadsheets.Values.batchUpdate({
+      valueInputOption: 'RAW',                   // 코드 '005930'이 숫자로 바뀌지 않게 입력 그대로
+      data: [{ range: q + '!A1', majorDimension: 'ROWS', values: values },
+             { range: q + '!Q1:R1', majorDimension: 'ROWS', values: [['갱신', stamp]] }]
+    }, id);
+    tm.push('API쓰기 ' + sec(t));
+    done = true;
+  } catch (e) { tm.push('API안됨→기존방식'); }
+  if (!done) {
+    t = new Date(); sh.clearContents(); tm.push('지우기 ' + sec(t));
+    t = new Date(); sh.getRange(1, 1, values.length, HEAD.length).setValues(values); tm.push('쓰기 ' + sec(t));
+    t = new Date(); sh.getRange('Q1:R1').setValues([['갱신', stamp]]); tm.push('갱신시각 ' + sec(t));
+  }
+  t = new Date(); cacheClear_(); tm.push('캐시 ' + sec(t));   // 새 데이터가 들어왔으니 저장해 둔 응답을 지움
+  return '(' + tm.join(', ') + ')';
 }
 
 function log_(what, msg) {
