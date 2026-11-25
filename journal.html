@@ -39,6 +39,8 @@ h1{font-size:18px;margin:0 0 2px;font-weight:700}
 .my-l .tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px}.my-l .tag.b{background:color-mix(in srgb,var(--buy) 14%,var(--card));color:var(--buy)}.my-l .tag.s{background:color-mix(in srgb,var(--sell) 14%,var(--card));color:var(--sell)}
 .my-l .tx{flex:1;min-width:0}.my-l .tx small{display:block;color:var(--mut);font-size:11.5px}
 .my-l .x{border:none;background:transparent;color:var(--mut);font-size:18px;cursor:pointer;padding:0 4px}
+.my-auto{font-style:normal;font-size:10.5px;font-weight:700;color:var(--acc)}
+.my-sync{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:var(--mut);margin:-2px 0 10px}.my-sync button{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
 .my-bk{font-size:12px;color:var(--mut);margin-top:6px}.my-bk summary{cursor:pointer}.my-bk textarea{width:100%;height:90px;font:11px/1.4 monospace;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px;margin-top:6px}
 .my-bk button{margin:6px 6px 0 0;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);font:inherit;font-size:12px;cursor:pointer}
 
@@ -272,6 +274,7 @@ canvas{display:block;width:100%;height:230px}
 
   <div id="my-card" class="my-card">
     <div class="my-h"><span class="my-t">내 체결 내역</span><span class="my-c" id="my-cnt"></span></div>
+    <div class="my-sync"><span id="my-sync-t">동기화 확인 중…</span><button type="button" id="my-sync-k">동기화 키 설정</button></div>
     <div class="my-form">
       <label>날짜<input id="my-d" type="date"></label>
       <label>구분<div class="my-seg"><button type="button" class="b on" data-side="B">매수</button><button type="button" class="s" data-side="S">매도</button></div></label>
@@ -281,8 +284,8 @@ canvas{display:block;width:100%;height:230px}
       <label>체결 가격<input id="my-p" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
       <label>통화<select id="my-c2"><option value="KRW">원(KRW)</option><option value="USD">달러(USD)</option></select></label>
       <label id="my-fxl" style="display:none">환율(원/$)<input id="my-fx" type="number" inputmode="decimal" min="0" step="any" placeholder="1334"></label>
-      <label>수수료(원, 비우면 0)<input id="my-f" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
-      <label>세금(원, 매도 때만)<input id="my-t2" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
+      <label>수수료(원) <em class="my-auto" id="my-fa">자동</em><input id="my-f" type="number" inputmode="decimal" min="0" step="any" placeholder="자동 계산"></label>
+      <label>세금(원, 매도 때) <em class="my-auto" id="my-ta">자동</em><input id="my-t2" type="number" inputmode="decimal" min="0" step="any" placeholder="자동 계산"></label>
       <div class="my-msg" id="my-msg"></div>
       <button type="button" class="my-add" id="my-add">체결 추가</button>
     </div>
@@ -293,7 +296,7 @@ canvas{display:block;width:100%;height:230px}
       <textarea id="my-bk-t" placeholder="내보내기를 누르면 여기에 내 체결 내역이 글자로 나와요. 다른 기기에서는 이 글을 붙여 넣고 불러오기를 누르세요."></textarea>
       <button type="button" id="my-exp">내보내기(복사)</button><button type="button" id="my-imp">불러오기(덮어쓰기)</button>
     </details>
-    <p class="amt-note" style="margin:8px 0 0">내 체결 내역은 이 브라우저에만 저장돼요(서버로 보내지 않아요). 평가금은 월봉 자료의 최근 종가 기준이라 실제 현재가와 다를 수 있어요. 이동평균 단가로 계산하고, 수수료·세금은 직접 입력한 값만 반영해요.</p>
+    <p class="amt-note" style="margin:8px 0 0">동기화 키를 설정하면 내 체결·금액·시작 시점이 서버(내 시트)에 저장돼 폰·PC가 같아져요. 평가금은 직전 마감 종가 기준이고, 이동평균 단가로 계산해요. 수수료·세금은 자동 계산한 값이며 직접 고칠 수 있어요(미국 양도세는 연말 정산이라 넣지 않아요, 국내 ETF는 세금 0).</p>
   </div>
 
   <div id="cum-card"></div>
@@ -1617,6 +1620,7 @@ function simulateFrom(S){
   });
   return {meta:Object.assign({},LED0.meta,{dep:dep,init:curInit()}),months:months,snaps:snaps};
 }
+function userStart(S){ if(XMODE){ stampSettings(); } applyStart(S); if(XMODE) syncSoon(); }
 function applyStart(S){
   if(XMODE){ try{ localStorage.setItem('jstart',S); }catch(e){} }
   START_YM=S; START_Y=S.slice(0,4); PLAN=null; PLAN_BUSY=false; PLAN_ERR=null;
@@ -1665,6 +1669,7 @@ function wireAmtInputs(){
     var oi=Math.round(curInit()/10000), od=Math.round(curDep()/10000); if(ni===oi && nd===od) return;
     AMT.init=ni*10000; AMT.dep=nd*10000;
     try{ localStorage.setItem('jinit',String(AMT.init)); localStorage.setItem('jdep',String(AMT.dep)); }catch(e){}
+    if(XMODE&&!SYNC.applying){ stampSettings(); syncSoon(); }
     if(START_YM) applyStart(START_YM);
   };
   [a,b].forEach(function(el){ el.addEventListener('input',showKor); el.addEventListener('change',apply); el.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); el.blur(); } }); });
@@ -1684,10 +1689,10 @@ function renderStartCard(){
   card.querySelectorAll('[data-sy]').forEach(function(b){
     b.onclick=function(){
       var y=b.dataset.sy, first=yms.filter(function(ym){ return ym.slice(0,4)===y; })[0];     // 그 해의 첫 달(보통 1월, 2011년은 12월)
-      START_Y=y; if(first && first!==START_YM) applyStart(first); else renderStartCard();
+      START_Y=y; if(first && first!==START_YM) userStart(first); else renderStartCard();
     };
   });
-  card.querySelectorAll('[data-sm]').forEach(function(b){ b.onclick=function(){ if(b.dataset.sm!==START_YM) applyStart(b.dataset.sm); else renderStartCard(); }; });
+  card.querySelectorAll('[data-sm]').forEach(function(b){ b.onclick=function(){ if(b.dataset.sm!==START_YM) userStart(b.dataset.sm); else renderStartCard(); }; });
 }
 
 
@@ -1742,7 +1747,71 @@ function renderSoldList(){
 /* ── 내 체결 내역 (?x=1): 직접 입력한 매수·매도를 이 브라우저에 저장하고, 이동평균 단가로 보유·손익을 계산 ── */
 var MY=[], MY_SIDE='B';
 try{ MY=JSON.parse(localStorage.getItem('jmy')||'[]')||[]; if(!Array.isArray(MY)) MY=[]; }catch(e){ MY=[]; }
-function mySave(){ try{ localStorage.setItem('jmy',JSON.stringify(MY)); }catch(e){} }
+var MYDEL=[]; try{ MYDEL=JSON.parse(localStorage.getItem('jmydel')||'[]')||[]; }catch(e){ MYDEL=[]; }
+function mySave(){ try{ localStorage.setItem('jmy',JSON.stringify(MY)); localStorage.setItem('jmydel',JSON.stringify(MYDEL)); }catch(e){} syncSoon(); }
+
+/* ── 서버 동기화(Apps Script '내일지' 탭): 폰·PC 어디서 열어도 같은 체결·금액·시작 시점. 동기화 키가 맞아야 읽고 씀 ── */
+var SYNC={key:'',rev:0,applying:false,timer:null,busy:false,again:false,msg:''}, SSTS=0;
+try{ SYNC.key=localStorage.getItem('jkey')||''; SYNC.rev=+localStorage.getItem('jrev')||0; SSTS=+localStorage.getItem('jsts')||0; }catch(e){}
+function stampSettings(){ SSTS=Date.now(); try{ localStorage.setItem('jsts',String(SSTS)); }catch(e){} }
+function syncMsg(t){ SYNC.msg=t; var el=document.getElementById('my-sync-t'); if(el) el.textContent=t; }
+function getState(){ return {v:1,trades:MY,del:MYDEL,init:AMT.init,dep:AMT.dep,start:START_YM||null,sts:SSTS}; }
+function mergeState(a,b){                     // a=이 기기, b=서버: 체결은 합치고(지운 것은 계속 지움), 금액·시작 시점은 더 늦게 바꾼 쪽을 따름
+  var del={}; (a.del||[]).concat(b.del||[]).forEach(function(i){ del[i]=1; });
+  var seen={}, tr=[]; (a.trades||[]).concat(b.trades||[]).forEach(function(t){ if(del[t.id]||seen[t.id]) return; seen[t.id]=1; tr.push(t); });
+  var S=(a.sts||0)>=(b.sts||0)?a:b;
+  return {v:1,trades:tr,del:Object.keys(del).map(Number),init:S.init==null?null:S.init,dep:S.dep==null?null:S.dep,start:S.start||null,sts:Math.max(a.sts||0,b.sts||0)};
+}
+function sameState(a,b){ return JSON.stringify(a)===JSON.stringify(b); }
+function applyState(s){                       // 합친 결과를 화면·저장소에 반영(금액·시작 시점이 바뀌면 다시 계산)
+  var before=[AMT.init,AMT.dep,START_YM];
+  SYNC.applying=true;
+  MY=s.trades||[]; MYDEL=s.del||[]; SSTS=s.sts||0;
+  AMT.init=s.init>0?s.init:null; AMT.dep=s.dep!=null&&s.dep>=0?s.dep:null;
+  try{ localStorage.setItem('jmy',JSON.stringify(MY)); localStorage.setItem('jmydel',JSON.stringify(MYDEL)); localStorage.setItem('jsts',String(SSTS));
+    if(AMT.init!=null) localStorage.setItem('jinit',String(AMT.init)); else localStorage.removeItem('jinit');
+    if(AMT.dep!=null) localStorage.setItem('jdep',String(AMT.dep)); else localStorage.removeItem('jdep'); }catch(e){}
+  var st=s.start, ok=st&&(st===PLAN_YM||(LED0&&LED0.months[st]));
+  var changed=before[0]!==AMT.init||before[1]!==AMT.dep||(ok&&st!==START_YM);
+  if(changed&&LED0) applyStart(ok?st:START_YM); else renderAll();
+  SYNC.applying=false;
+}
+function syncPost(op,extra){
+  var body=Object.assign({k:SYNC.key,op:op},extra||{});
+  return fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}).then(function(r){ return r.json(); });
+}
+function syncErr(r){ return r&&r.err==='badkey'?'동기화 키가 달라요. 키를 다시 설정해 주세요.':r&&r.err==='nokey'?'서버에 키(MY_KEY)가 아직 없어요. Apps Script 설정을 확인해 주세요.':'동기화 실패: '+(r&&r.err||'연결 안 됨'); }
+function syncRevSave(){ try{ localStorage.setItem('jrev',String(SYNC.rev)); }catch(e){} }
+function syncPull(){
+  if(!XMODE) return Promise.resolve();
+  if(!SYNC.key){ syncMsg('이 기기에만 저장 중 · 동기화 키를 설정하면 폰·PC가 같아져요'); return Promise.resolve(); }
+  syncMsg('동기화 중…');
+  return syncPost('load').then(function(r){
+    if(!r.ok){ syncMsg(syncErr(r)); return; }
+    var local=getState(), srv=r.data;
+    SYNC.rev=r.rev||0; syncRevSave();
+    if(!srv){ if(local.trades.length||local.sts) return syncPush(); syncMsg('동기화 켜짐 (저장된 내용 없음)'); return; }
+    var merged=mergeState(local,srv);
+    if(!sameState(merged,local)) applyState(merged);
+    if(!sameState(merged,srv)) return syncPush();
+    syncMsg('동기화됨 '+new Date().toTimeString().slice(0,5));
+  }).catch(function(e){ syncMsg('동기화 실패: 연결 안 됨'); });
+}
+function syncPush(tries){
+  if(!XMODE||!SYNC.key) return Promise.resolve();
+  tries=tries||0;
+  return syncPost('save',{base:SYNC.rev,data:getState()}).then(function(r){
+    if(r.ok){ SYNC.rev=r.rev; syncRevSave(); syncMsg('동기화됨 '+new Date().toTimeString().slice(0,5)); return; }
+    if(r.err==='conflict'&&tries<2){ SYNC.rev=r.rev; syncRevSave(); var merged=mergeState(getState(),r.data||{trades:[],del:[],sts:0}); applyState(merged); return syncPush(tries+1); }
+    syncMsg(syncErr(r));
+  }).catch(function(){ syncMsg('동기화 실패: 연결 안 됨 (나중에 다시 시도해요)'); });
+}
+function syncSoon(){ if(!XMODE||!SYNC.key||SYNC.applying) return; clearTimeout(SYNC.timer); SYNC.timer=setTimeout(function(){ syncPush(); },700); }
+function syncSetKey(){
+  var k=prompt('동기화 키를 입력하세요 (Apps Script 스크립트 속성 MY_KEY와 같은 글자). 폰·PC 모두 같은 키를 쓰면 같은 내용이 보여요.',SYNC.key||'');
+  if(k===null) return; k=k.trim(); SYNC.key=k; try{ if(k) localStorage.setItem('jkey',k); else localStorage.removeItem('jkey'); }catch(e){}
+  SYNC.rev=0; syncRevSave(); syncPull();
+}
 function myKey(t){ return (t.code||t.name||'').toUpperCase().replace(/\s+/g,''); }
 function myAmt(t){ return t.qty*t.px*(t.cur==='USD'?t.fx:1); }
 function myBarKey(code){                       // 입력한 코드 → 월봉 자료 키(국내 6자리는 .KS/.KQ 순서로 찾음)
@@ -1761,13 +1830,33 @@ function myCalc(){                              // 날짜 순으로 이동평균
   return {pos:Object.keys(P).map(function(k){ return P[k]; }),realized:real,rlist:rlist};
 }
 function myFxNow(){ var ks=LED0?Object.keys(LED0.months).sort():[]; return ks.length?LED0.months[ks[ks.length-1]].fx:1334; }
+function myEtf(name){ return /ETF|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|SOL |ACE |RISE|PLUS|KOSEF|TIMEFOLIO/i.test(name||''); }
+function myAutoFee(){                          // 수수료·세금 자동 계산(costs.json): 국내 수수료 0.015%·매도 거래세(연월별), 미국 수수료 0.25%+환전 0.1%(양도세는 연말 정산이라 0). 직접 고치면 그 값을 씀
+  var $=function(id){ return document.getElementById(id); }; if(!$('my-f')||!COSTS) return;
+  var q=+$('my-q').value, p=+$('my-p').value, us=$('my-c2').value==='USD', fx=+$('my-fx').value||myFxNow(), d=$('my-d').value||'';
+  var f=$('my-f'), t=$('my-t2'), amt=q>0&&p>0?q*p*(us?fx:1):0, ym=+d.slice(0,4)*100+ +d.slice(5,7);
+  var fee=us?amt*(COSTS.us.commission+COSTS.us.fx_spread):amt*COSTS.kr.commission;
+  var tax=(MY_SIDE==='S'&&!us&&!(COSTS.kr.etf_exempt&&myEtf($('my-n').value)))?amt*krTaxY(ym||202601):0;
+  if(!f.dataset.man){ f.value=amt>0?Math.round(fee):''; }
+  if(!t.dataset.man){ t.value=MY_SIDE==='S'&&amt>0?Math.round(tax):''; }
+  $('my-fa').textContent=f.dataset.man?'직접 입력':'자동'; $('my-ta').textContent=t.dataset.man?'직접 입력':'자동';
+}
+var MYPX={}, MYPX_T=0, MYPX_BUSY=false, MYPX_TRY={};
+function myFetchPx(codes){                    // 보유 종목의 직전 마감 종가를 시트(Apps Script ?px=)에서 받음: 새 종목이 생기거나 30분이 지나면 다시 받음
+  if(MYPX_BUSY||!codes.length) return; var now=Date.now();
+  var missing=codes.filter(function(c){ return !MYPX[c]&&(!MYPX_TRY[c]||now-MYPX_TRY[c]>300000); }), stale=now-MYPX_T>1800000;
+  if(!missing.length&&!stale) return; MYPX_BUSY=true; codes.forEach(function(c){ MYPX_TRY[c]=now; });
+  fetch(API+(API.indexOf('?')>=0?'&':'?')+'px='+encodeURIComponent(codes.join(','))).then(function(r){ return r.json(); }).then(function(o){ MYPX=Object.assign({},MYPX,o||{}); MYPX_T=Date.now(); MYPX_BUSY=false; renderMy(); }).catch(function(){ MYPX_BUSY=false; });
+}
 function renderMy(){
   var card=document.getElementById('my-card'); if(!card) return;
   if(!XMODE){ card.style.display='none'; return; }
   card.style.display='block';
-  var fx=myFxNow(), R=myCalc(), open=R.pos.filter(function(p){ return p.qty>0; }), cost=0, val=0, unk=0, rows='';
+  var fx=myFxNow(), R=myCalc(), open=R.pos.filter(function(p){ return p.qty>0; }), cost=0, val=0, unk=0, rows='', pxDates={}, monthly=0;
+  myFetchPx(open.map(function(p){ return (p.code||'').toUpperCase(); }).filter(function(c){ return c; }));
   open.forEach(function(p){
-    var bk=myBarKey(p.code), u=bk&&barsOf(bk), px=u?u.cs[u.cs.length-1]:null, isUS=bk?!/\.(KS|KQ)$/.test(bk):(p.cur==='USD');
+    var cc=(p.code||'').toUpperCase(), q1=MYPX[cc], bk=myBarKey(p.code), u=bk&&barsOf(bk), px=q1?q1.px:(u?u.cs[u.cs.length-1]:null), isUS=q1?q1.cur!=='KRW':(bk?!/\.(KS|KQ)$/.test(bk):(p.cur==='USD'));
+    if(q1) pxDates[q1.date]=1; else if(px!=null) monthly++;
     var v=px!=null?p.qty*px*(isUS?fx:1):null; cost+=p.cost; if(v!=null) val+=v; else { val+=p.cost; unk++; }
     var pl=v!=null?v-p.cost:null, avg=p.cost/p.qty;
     rows+='<tr><td>'+esc(p.name||p.code)+'</td><td>'+(+p.qty.toFixed(4)).toLocaleString()+'</td><td>'+Math.round(avg).toLocaleString()+'</td><td>'+(v!=null?Math.round(v).toLocaleString():'-')+'</td><td class="'+(pl==null?'':pl>=0?'p':'n')+'">'+(pl==null?'-':(pl>=0?'+':'−')+Math.abs(Math.round(pl)).toLocaleString()+' ('+(pl>=0?'+':'')+(pl/p.cost*100).toFixed(1)+'%)')+'</td></tr>';
@@ -1775,20 +1864,24 @@ function renderMy(){
   var unrl=val-cost, tot=unrl+R.realized, cls=function(x){ return x>=0?'p':'n'; };
   document.getElementById('my-cnt').textContent=MY.length+'건';
   document.getElementById('my-sum').innerHTML=MY.length?'<div class="my-sum"><div>보유 원가<b>'+won(cost)+'</b></div><div>보유 평가금<b>'+won(val)+'</b></div><div>평가손익<b class="'+cls(unrl)+'">'+signWon(unrl)+'</b></div><div>실현손익<b class="'+cls(R.realized)+'">'+signWon(R.realized)+'</b></div><div style="grid-column:1/-1">합계 손익<b class="'+cls(tot)+'">'+signWon(tot)+'</b></div></div>':'';
-  document.getElementById('my-hold').innerHTML=open.length?'<table class="my-tb"><tr><th>보유 종목</th><th>수량</th><th>평균단가(원)</th><th>평가금(원)</th><th>평가손익</th></tr>'+rows+'</table>'+(unk?'<p class="amt-note" style="margin:0 0 8px">코드를 비웠거나 월봉에 없는 종목('+unk+')은 평가금을 매입 원가로 보여요.</p>':''):'';
+  document.getElementById('my-hold').innerHTML=open.length?'<table class="my-tb"><tr><th>보유 종목</th><th>수량</th><th>평균단가(원)</th><th>평가금(원)</th><th>평가손익</th></tr>'+rows+'</table>'+'<p class="amt-note" style="margin:0 0 8px">평가금 기준: '+(Object.keys(pxDates).length?'직전 마감 종가('+Object.keys(pxDates).sort().join(', ')+')':'월봉 자료의 최근 종가')+(monthly&&Object.keys(pxDates).length?' · 일부는 월봉 최근 종가':'')+(unk?' · 코드를 비웠거나 시세를 못 찾은 종목('+unk+')은 매입 원가로 보여요':'')+'</p>':'';
   var T=MY.slice().sort(function(a,b){ return a.d<b.d?1:a.d>b.d?-1:b.id-a.id; });
   document.getElementById('my-list').innerHTML=T.map(function(t){
     var a=myAmt(t), px=t.cur==='USD'?'$'+(+t.px).toLocaleString():(+t.px).toLocaleString()+'원';
     return '<div class="my-l"><span class="tag '+(t.side==='B'?'b':'s')+'">'+(t.side==='B'?'매수':'매도')+'</span><div class="tx">'+esc(t.name||t.code)+' <small>'+esc(t.d)+' · '+(+t.qty.toFixed(4)).toLocaleString()+'주 × '+px+(t.cur==='USD'?' (환율 '+Math.round(t.fx).toLocaleString()+')':'')+' = '+won(a)+(t.fee||t.tax?' · 수수료 '+Math.round(t.fee||0).toLocaleString()+(t.tax?' · 세금 '+Math.round(t.tax).toLocaleString():''):'')+'</small></div><button class="x" data-del="'+t.id+'" aria-label="삭제">×</button></div>';
   }).join('');
-  card.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ if(!confirm('이 체결을 지울까요?')) return; MY=MY.filter(function(t){ return String(t.id)!==b.dataset.del; }); mySave(); renderMy(); }; });
+  card.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ if(!confirm('이 체결을 지울까요?')) return; var did=+b.dataset.del; MY=MY.filter(function(t){ return t.id!==did; }); if(MYDEL.indexOf(did)<0) MYDEL.push(did); mySave(); renderMy(); }; });
 }
 function wireMy(){
   var card=document.getElementById('my-card'); if(!card||card._w||!XMODE) return; card._w=1;
   var $=function(id){ return document.getElementById(id); }, today=new Date(), z=function(n){ return (n<10?'0':'')+n; };
   $('my-d').value=today.getFullYear()+'-'+z(today.getMonth()+1)+'-'+z(today.getDate());
-  card.querySelectorAll('.my-seg button').forEach(function(b){ b.onclick=function(){ MY_SIDE=b.dataset.side; card.querySelectorAll('.my-seg button').forEach(function(x){ x.classList.toggle('on',x===b); }); }; });
+  card.querySelectorAll('.my-seg button').forEach(function(b){ b.onclick=function(){ MY_SIDE=b.dataset.side; myAutoFee(); card.querySelectorAll('.my-seg button').forEach(function(x){ x.classList.toggle('on',x===b); }); }; });
   $('my-c2').onchange=function(){ var us=$('my-c2').value==='USD'; $('my-fxl').style.display=us?'flex':'none'; if(us&&!$('my-fx').value) $('my-fx').value=Math.round(myFxNow()); };
+  $('my-sync-k').onclick=syncSetKey;
+  loadCosts(function(){ myAutoFee(); });
+  ['my-d','my-n','my-q','my-p','my-fx','my-c2'].forEach(function(id){ $(id).addEventListener('input',myAutoFee); $(id).addEventListener('change',myAutoFee); });
+  ['my-f','my-t2'].forEach(function(id){ $(id).addEventListener('input',function(){ $(id).dataset.man=$(id).value===''?'':'1'; myAutoFee(); }); });
   $('my-add').onclick=function(){
     var t={id:Date.now(),d:$('my-d').value,side:MY_SIDE,name:$('my-n').value.trim(),code:$('my-k').value.trim().toUpperCase(),qty:+$('my-q').value,px:+$('my-p').value,cur:$('my-c2').value,fx:+$('my-fx').value||1,fee:+$('my-f').value||0,tax:+$('my-t2').value||0}, m=$('my-msg');
     if(!t.d){ m.textContent='날짜를 넣어 주세요.'; return; }
@@ -1797,10 +1890,10 @@ function wireMy(){
     if(t.cur==='USD'&&!(t.fx>0)){ m.textContent='달러 체결은 환율을 넣어 주세요.'; return; }
     if(t.side==='S'){ var h=myCalc().pos.filter(function(p){ return p.key===myKey(t); })[0]; if(!h||h.qty+1e-9<t.qty){ m.textContent='보유 수량보다 많이 팔 수 없어요(보유 '+(h?+h.qty.toFixed(4):0)+'주).'; return; } }
     m.textContent=''; MY.push(t); mySave();
-    ['my-q','my-p','my-f','my-t2'].forEach(function(id){ $(id).value=''; }); renderMy();
+    ['my-q','my-p','my-f','my-t2'].forEach(function(id){ $(id).value=''; $(id).dataset.man=''; }); myAutoFee(); renderMy();
   };
   $('my-exp').onclick=function(){ var tx=JSON.stringify(MY); $('my-bk-t').value=tx; try{ navigator.clipboard.writeText(tx); }catch(e){} $('my-bk-t').select(); };
-  $('my-imp').onclick=function(){ try{ var a=JSON.parse($('my-bk-t').value); if(!Array.isArray(a)) throw 0; if(!confirm('지금 저장된 내 체결 '+MY.length+'건을 지우고 '+a.length+'건으로 바꿀까요?')) return; MY=a; mySave(); renderMy(); }catch(e){ alert('불러올 수 없는 글이에요. 내보내기로 만든 글을 그대로 붙여 넣어 주세요.'); } };
+  $('my-imp').onclick=function(){ try{ var a=JSON.parse($('my-bk-t').value); if(!Array.isArray(a)) throw 0; if(!confirm('지금 저장된 내 체결 '+MY.length+'건을 지우고 '+a.length+'건으로 바꿀까요?')) return; MY=a; MYDEL=MYDEL.filter(function(d){ return !a.some(function(t){ return t.id===d; }); }); mySave(); renderMy(); }catch(e){ alert('불러올 수 없는 글이에요. 내보내기로 만든 글을 그대로 붙여 넣어 주세요.'); } };
 }
 function renderAll(){
   try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) sl.textContent=DATA.meta.firstDay?'10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매) · tp2x트레일+국채10년 금리 유예2달':DATA.meta.strategy; }catch(e){}
@@ -1827,9 +1920,11 @@ fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).th
   var S0=null; if(XMODE){ try{ S0=localStorage.getItem('jstart'); }catch(e){} if(!S0) S0='202611'; if(!(S0===PLAN_YM || (LED0&&LED0.months[S0]))) S0=null; }
   if(S0) applyStart(S0);
   else if(!isDefaultAmt() && START_YM) applyStart(START_YM); else renderAll();                      // 저장해 둔 금액이 기본값이 아니면 그 금액으로 다시 계산
+  if(XMODE) syncPull();                                                                              // 내 일지: 서버에 저장된 체결·금액·시작 시점을 받아 합침
 }).catch(function(){
   document.querySelector('main').innerHTML='<p style="color:var(--mut);padding:40px;text-align:center">데이터를 불러오지 못했어요.</p>';
 });
+document.addEventListener('visibilitychange',function(){ if(XMODE&&document.visibilityState==='visible'&&DATA) syncPull(); });
 </script>
 </body>
 </html>

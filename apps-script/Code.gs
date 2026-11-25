@@ -519,6 +519,7 @@ function holdRows_(param) {
 
 // ?all=1 이면 모든 종목, 아니면 매수·매도·유예 신호만
 function doGet(e) {
+  if (e && e.parameter && e.parameter.px) return ContentService.createTextOutput(JSON.stringify(pxRows_(e.parameter.px))).setMimeType(ContentService.MimeType.JSON);
   if (e && e.parameter && e.parameter.hold) return ContentService.createTextOutput(JSON.stringify(holdRows_(e.parameter.hold))).setMimeType(ContentService.MimeType.JSON);
   var all = e && e.parameter && e.parameter.all;
   var key = 'doGet:' + (all ? 'all' : 'sig');
@@ -600,6 +601,70 @@ function writeRows_(name, rows) {
   }
   t = new Date(); cacheClear_(); tm.push('캐시 ' + sec(t));   // 새 데이터가 들어왔으니 저장해 둔 응답을 지움
   return '(' + tm.join(', ') + ')';
+}
+
+/* 매매일지 '내 체결 내역' 평가용: 코드(쉼표로 여러 개)별 직전 마감 종가. 국내 6자리 코드는 .KS → .KQ 순으로 찾음.
+ * 오늘 장이 아직 안 끝났으면 오늘 봉은 빼고 직전 마감일 종가를 줌 → { 코드: {px, date(거래소 현지 날짜), cur:'KRW'|'USD', key} } */
+function pxRows_(list) {
+  var codes = String(list).split(',').map(function (x) { return x.trim().toUpperCase(); }).filter(String).slice(0, 25);
+  var reqs = [], meta = [];
+  codes.forEach(function (c) {
+    var ys = /^\d{6}$/.test(c) ? [c + '.KS', c + '.KQ'] : [c];
+    ys.forEach(function (y) {
+      reqs.push({ url: 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(y) + '?range=10d&interval=1d', muteHttpExceptions: true, headers: CFG.UA });
+      meta.push([c, y]);
+    });
+  });
+  var res = reqs.length ? UrlFetchApp.fetchAll(reqs) : [], out = {}, now = Date.now() / 1000;
+  res.forEach(function (r, i) {
+    var c = meta[i][0], y = meta[i][1]; if (out[c]) return;
+    try {
+      var j = JSON.parse(r.getContentText()).chart.result[0], ts = j.timestamp, q = j.indicators.quote[0].close, m = j.meta;
+      var reg = m.currentTradingPeriod && m.currentTradingPeriod.regular, last = -1;
+      for (var k = ts.length - 1; k >= 0; k--) {
+        if (q[k] == null) continue;
+        if (reg && ts[k] >= reg.start && now < reg.end) continue;           // 오늘 장이 아직 안 끝났으면 그 봉은 뺌(직전 마감일 종가를 씀)
+        last = k; break;
+      }
+      if (last < 0) return;
+      out[c] = { px: q[last], date: Utilities.formatDate(new Date((ts[last] + (m.gmtoffset || 0)) * 1000), 'UTC', 'yyyy-MM-dd'), cur: /\.(KS|KQ)$/.test(y) ? 'KRW' : (m.currency || 'USD'), key: y };
+    } catch (err) { }
+  });
+  return out;
+}
+
+/* ── 내 일지 동기화(매매일지 ?x=1): 폰·PC에서 같은 체결·금액·시작 시점을 보게 함 ──
+ * 스크립트 속성 MY_KEY(나만 아는 긴 글자)가 맞아야 읽고 씀. 데이터는 시트 '내일지' 탭(A열 한 칸당 4만 자)에 저장.
+ * 요청(POST, 본문 JSON): {k:키, op:'load'} 또는 {k:키, op:'save', base:내가 마지막으로 본 rev, data:{…}}
+ * 응답: {ok, rev, data} / 충돌이면 {ok:false, err:'conflict', rev, data} / 키가 틀리면 {ok:false, err:'badkey'} */
+function doPost(e) {
+  var out = function (o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); };
+  try {
+    var b = JSON.parse(e.postData.contents), key = PropertiesService.getScriptProperties().getProperty('MY_KEY');
+    if (!key) return out({ ok: false, err: 'nokey' });
+    if (!b || b.k !== key) return out({ ok: false, err: 'badkey' });
+    var lock = LockService.getScriptLock(); lock.waitLock(15000);
+    try {
+      var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName('내일지') || ss.insertSheet('내일지');
+      var rev = +sh.getRange('B1').getValue() || 0, readData = function () {
+        var n = sh.getLastRow(); if (n < 2) return null;
+        var txt = sh.getRange(2, 1, n - 1, 1).getValues().map(function (r) { return r[0]; }).join('');
+        try { return JSON.parse(txt); } catch (err) { return null; }
+      };
+      if (b.op === 'load') return out({ ok: true, rev: rev, data: readData() });
+      if (b.op === 'save') {
+        if (rev > 0 && (+b.base || 0) < rev) return out({ ok: false, err: 'conflict', rev: rev, data: readData() });   // 내가 모르는 새 저장이 있었음 → 합쳐서 다시 보내야 함
+        var txt = JSON.stringify(b.data || {}), parts = [], i;
+        for (i = 0; i < txt.length; i += 40000) parts.push([txt.substr(i, 40000)]);
+        sh.clearContents();
+        var nrev = Math.max(Date.now(), rev + 1);
+        sh.getRange('A1:B1').setValues([['내일지 (비공개 데이터, 지우지 마세요)', nrev]]);
+        if (parts.length) sh.getRange(2, 1, parts.length, 1).setValues(parts);
+        return out({ ok: true, rev: nrev });
+      }
+      return out({ ok: false, err: 'badop' });
+    } finally { lock.releaseLock(); }
+  } catch (err) { return out({ ok: false, err: String(err && err.message || err) }); }
 }
 
 function log_(what, msg) {
