@@ -44,6 +44,7 @@ h1{font-size:18px;margin:0 0 2px;font-weight:700}
 .my-ac div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 11px;font-size:14px;color:var(--fg);cursor:pointer;border-bottom:1px solid var(--line)}
 .my-ac div:last-child{border-bottom:none}.my-ac div:hover,.my-ac div.on{background:color-mix(in srgb,var(--acc) 12%,var(--card))}
 .my-ac small{color:var(--mut);font-size:11.5px;white-space:nowrap}
+.my-lv{font-size:11px;font-weight:700}.my-lv.p{color:var(--buy)}.my-lv.n{color:var(--sell)}
 .my-auto{font-style:normal;font-size:10.5px;font-weight:700;color:var(--acc)}
 .my-sync{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:var(--mut);margin:-2px 0 10px}.my-sync button{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
 .my-bk{font-size:12px;color:var(--mut);margin-top:6px}.my-bk summary{cursor:pointer}.my-bk textarea{width:100%;height:90px;font:11px/1.4 monospace;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px;margin-top:6px}
@@ -1882,6 +1883,16 @@ function myAutoFee(){                          // 수수료·세금 자동 계�
   if(!t.dataset.man){ t.value=MY_SIDE==='S'&&amt>0?Math.round(tax):''; }
   $('my-fa').textContent=f.dataset.man?'직접 입력':'자동'; $('my-ta').textContent=t.dataset.man?'직접 입력':'자동';
 }
+var MYLIVE={}, MYLIVE_BUSY=false, MYLIVE_TIMER=null, MYLIVE_CODES='';
+function myLivePoll(){                        // 보유 종목 현재가를 시트(Apps Script ?live=)에서 받음: 국내=네이버(거의 실시간), 미국=야후(약 15분 지연)
+  if(MYLIVE_BUSY||!MYLIVE_CODES||document.visibilityState==='hidden') return; MYLIVE_BUSY=true;
+  fetch(API+(API.indexOf('?')>=0?'&':'?')+'live='+encodeURIComponent(MYLIVE_CODES)).then(function(r){ return r.json(); }).then(function(o){ MYLIVE=Object.assign({},MYLIVE,o||{}); MYLIVE_BUSY=false; renderMy(); }).catch(function(){ MYLIVE_BUSY=false; });
+}
+function myLiveStart(codes){                  // 보유 종목이 바뀌면 목록을 갱신하고, 화면이 보이는 동안 30초마다 받음
+  var k=codes.join(','); if(k!==MYLIVE_CODES){ MYLIVE_CODES=k; if(k) myLivePoll(); }
+  if(k&&!MYLIVE_TIMER) MYLIVE_TIMER=setInterval(myLivePoll,30000);
+  if(!k&&MYLIVE_TIMER){ clearInterval(MYLIVE_TIMER); MYLIVE_TIMER=null; }
+}
 var MYPX={}, MYPX_T=0, MYPX_BUSY=false, MYPX_TRY={};
 function myFetchPx(codes){                    // 보유 종목의 직전 마감 종가를 시트(Apps Script ?px=)에서 받음: 새 종목이 생기거나 30분이 지나면 다시 받음
   if(MYPX_BUSY||!codes.length) return; var now=Date.now();
@@ -1893,19 +1904,20 @@ function renderMy(){
   var card=document.getElementById('my-card'); if(!card) return;
   if(!XMODE){ card.style.display='none'; return; }
   card.style.display='block';
-  var fx=myFxNow(), R=myCalc(), open=R.pos.filter(function(p){ return p.qty>0; }), cost=0, val=0, unk=0, rows='', pxDates={}, monthly=0;
-  myFetchPx(open.map(function(p){ return (p.code||'').toUpperCase(); }).filter(function(c){ return c; }));
+  var fx=myFxNow(), R=myCalc(), open=R.pos.filter(function(p){ return p.qty>0; }), cost=0, val=0, unk=0, rows='', pxDates={}, monthly=0, liveN=0, liveT=0, liveSrc={};
+  var openCodes=open.map(function(p){ return (p.code||'').toUpperCase(); }).filter(function(c){ return c; });
+  myFetchPx(openCodes); myLiveStart(openCodes);
   open.forEach(function(p){
-    var cc=(p.code||'').toUpperCase(), q1=MYPX[cc], bk=myBarKey(p.code), u=bk&&barsOf(bk), px=q1?q1.px:(u?u.cs[u.cs.length-1]:null), isUS=q1?q1.cur!=='KRW':(bk?!/\.(KS|KQ)$/.test(bk):(p.cur==='USD'));
-    if(q1) pxDates[q1.date]=1; else if(px!=null) monthly++;
+    var cc=(p.code||'').toUpperCase(), lv=MYLIVE[cc], q1=lv?null:MYPX[cc], bk=myBarKey(p.code), u=bk&&barsOf(bk), px=lv?lv.px:(q1?q1.px:(u?u.cs[u.cs.length-1]:null)), isUS=lv?lv.cur!=='KRW':(q1?q1.cur!=='KRW':(bk?!/\.(KS|KQ)$/.test(bk):(p.cur==='USD')));
+    if(lv){ liveN++; liveT=Math.max(liveT,lv.t||0); liveSrc[lv.src]=1; } else if(q1) pxDates[q1.date]=1; else if(px!=null) monthly++;
     var v=px!=null?p.qty*px*(isUS?fx:1):null; cost+=p.cost; if(v!=null) val+=v; else { val+=p.cost; unk++; }
     var pl=v!=null?v-p.cost:null, avg=p.cost/p.qty;
-    rows+='<tr><td>'+esc(p.name||p.code)+'</td><td>'+(+p.qty.toFixed(4)).toLocaleString()+'</td><td>'+Math.round(avg).toLocaleString()+'</td><td>'+(v!=null?Math.round(v).toLocaleString():'-')+'</td><td class="'+(pl==null?'':pl>=0?'p':'n')+'">'+(pl==null?'-':(pl>=0?'+':'−')+Math.abs(Math.round(pl)).toLocaleString()+' ('+(pl>=0?'+':'')+(pl/p.cost*100).toFixed(1)+'%)')+'</td></tr>';
+    rows+='<tr><td>'+esc(p.name||p.code)+(lv?'<br><small class="my-lv '+(lv.chg>=0?'p':'n')+'">'+(isUS?'$'+(+lv.px).toLocaleString():Math.round(lv.px).toLocaleString()+'원')+(lv.pct!=null?' '+(lv.chg>=0?'▲':'▼')+Math.abs(lv.pct).toFixed(2)+'%':'')+'</small>':'')+'</td><td>'+(+p.qty.toFixed(4)).toLocaleString()+'</td><td>'+Math.round(avg).toLocaleString()+'</td><td>'+(v!=null?Math.round(v).toLocaleString():'-')+'</td><td class="'+(pl==null?'':pl>=0?'p':'n')+'">'+(pl==null?'-':(pl>=0?'+':'−')+Math.abs(Math.round(pl)).toLocaleString()+' ('+(pl>=0?'+':'')+(pl/p.cost*100).toFixed(1)+'%)')+'</td></tr>';
   });
   var unrl=val-cost, tot=unrl+R.realized, cls=function(x){ return x>=0?'p':'n'; };
   document.getElementById('my-cnt').textContent=MY.length+'건';
   document.getElementById('my-sum').innerHTML=MY.length?'<div class="my-sum"><div>보유 원가<b>'+won(cost)+'</b></div><div>보유 평가금<b>'+won(val)+'</b></div><div>평가손익<b class="'+cls(unrl)+'">'+signWon(unrl)+'</b></div><div>실현손익<b class="'+cls(R.realized)+'">'+signWon(R.realized)+'</b></div><div style="grid-column:1/-1">합계 손익<b class="'+cls(tot)+'">'+signWon(tot)+'</b></div></div>':'';
-  document.getElementById('my-hold').innerHTML=open.length?'<table class="my-tb"><tr><th>보유 종목</th><th>수량</th><th>평균단가(원)</th><th>평가금(원)</th><th>평가손익</th></tr>'+rows+'</table>'+'<p class="amt-note" style="margin:0 0 8px">평가금 기준: '+(Object.keys(pxDates).length?'직전 마감 종가('+Object.keys(pxDates).sort().join(', ')+')':'월봉 자료의 최근 종가')+(monthly&&Object.keys(pxDates).length?' · 일부는 월봉 최근 종가':'')+(unk?' · 코드를 비웠거나 시세를 못 찾은 종목('+unk+')은 매입 원가로 보여요':'')+'</p>':'';
+  document.getElementById('my-hold').innerHTML=open.length?'<table class="my-tb"><tr><th>보유 종목</th><th>수량</th><th>평균단가(원)</th><th>평가금(원)</th><th>평가손익</th></tr>'+rows+'</table>'+'<p class="amt-note" style="margin:0 0 8px">평가금 기준: '+(liveN?'현재가('+(liveSrc.naver?'국내 네이버 거의 실시간':'')+(liveSrc.naver&&liveSrc.yahoo?' · ':'')+(liveSrc.yahoo?'야후, 약 15분 지연':'')+', '+new Date(liveT).toTimeString().slice(0,8)+' 갱신, 30초마다 자동)'+(monthly||Object.keys(pxDates).length?' · 일부는 직전 종가':''):Object.keys(pxDates).length?'직전 마감 종가('+Object.keys(pxDates).sort().join(', ')+')':'월봉 자료의 최근 종가')+(monthly&&Object.keys(pxDates).length?' · 일부는 월봉 최근 종가':'')+(unk?' · 코드를 비웠거나 시세를 못 찾은 종목('+unk+')은 매입 원가로 보여요':'')+'</p>':'';
   var T=MY.slice().sort(function(a,b){ return a.d<b.d?1:a.d>b.d?-1:b.id-a.id; });
   document.getElementById('my-list').innerHTML=T.map(function(t){
     var a=myAmt(t), px=t.cur==='USD'?'$'+(+t.px).toLocaleString():(+t.px).toLocaleString()+'원';

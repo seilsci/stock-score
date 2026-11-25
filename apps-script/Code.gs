@@ -520,6 +520,7 @@ function holdRows_(param) {
 // ?all=1 이면 모든 종목, 아니면 매수·매도·유예 신호만
 function doGet(e) {
   if (e && e.parameter && e.parameter.q) return ContentService.createTextOutput(JSON.stringify(searchRows_(e.parameter.q))).setMimeType(ContentService.MimeType.JSON);
+  if (e && e.parameter && e.parameter.live) return ContentService.createTextOutput(JSON.stringify(liveRows_(e.parameter.live))).setMimeType(ContentService.MimeType.JSON);
   if (e && e.parameter && e.parameter.px) return ContentService.createTextOutput(JSON.stringify(pxRows_(e.parameter.px))).setMimeType(ContentService.MimeType.JSON);
   if (e && e.parameter && e.parameter.hold) return ContentService.createTextOutput(JSON.stringify(holdRows_(e.parameter.hold))).setMimeType(ContentService.MimeType.JSON);
   var all = e && e.parameter && e.parameter.all;
@@ -623,6 +624,41 @@ function searchRows_(q) {
     });
     return out.slice(0, 10);
   } catch (err) { return []; }
+}
+
+/* 매매일지 '내 체결 내역' 현재가: 코드(쉼표로 여러 개) → { 코드: {px, prev, chg, pct, cur, src, t} }
+ * 국내 6자리 코드는 네이버 시세(거의 실시간, 비공식 주소), 없거나 미국은 야후(약 15분 지연). prev = 전일 종가, chg·pct = 전일 대비 */
+function liveRows_(list) {
+  var codes = String(list).split(',').map(function (x) { return x.trim().toUpperCase(); }).filter(String).slice(0, 25), out = {}, now = Date.now();
+  var kr = codes.filter(function (c) { return /^\d{6}$/.test(c); });
+  if (kr.length) {
+    try {
+      var r = UrlFetchApp.fetch('https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:' + kr.join(','), { muteHttpExceptions: true, headers: CFG.UA });
+      var j = JSON.parse(r.getContentText()), areas = (j.result && j.result.areas) || [];
+      areas.forEach(function (a) {
+        (a.datas || []).forEach(function (d) {
+          var c = String(d.cd || ''), px = +d.nv, prev = +d.pcv; if (!c || !(px > 0)) return;
+          out[c] = { px: px, prev: prev > 0 ? prev : null, chg: prev > 0 ? px - prev : null, pct: prev > 0 ? (px / prev - 1) * 100 : null, cur: 'KRW', src: 'naver', t: now };
+        });
+      });
+    } catch (err) { }
+  }
+  var reqs = [], meta = [];
+  codes.forEach(function (c) {
+    if (out[c]) return;
+    var ys = /^\d{6}$/.test(c) ? [c + '.KS', c + '.KQ'] : [c];
+    ys.forEach(function (y) { reqs.push({ url: 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(y) + '?range=1d&interval=5m', muteHttpExceptions: true, headers: CFG.UA }); meta.push([c, y]); });
+  });
+  var res = reqs.length ? UrlFetchApp.fetchAll(reqs) : [];
+  res.forEach(function (rr, i) {
+    var c = meta[i][0], y = meta[i][1]; if (out[c]) return;
+    try {
+      var m = JSON.parse(rr.getContentText()).chart.result[0].meta, px = +m.regularMarketPrice, prev = +(m.chartPreviousClose || m.previousClose);
+      if (!(px > 0)) return;
+      out[c] = { px: px, prev: prev > 0 ? prev : null, chg: prev > 0 ? px - prev : null, pct: prev > 0 ? (px / prev - 1) * 100 : null, cur: /\.(KS|KQ)$/.test(y) ? 'KRW' : (m.currency || 'USD'), src: 'yahoo', t: now };
+    } catch (err) { }
+  });
+  return out;
 }
 
 /* 매매일지 '내 체결 내역' 평가용: 코드(쉼표로 여러 개)별 직전 마감 종가. 국내 6자리 코드는 .KS → .KQ 순으로 찾음.
