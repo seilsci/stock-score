@@ -171,7 +171,7 @@ const pickUsA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 
 const CO_NAME = new Map(); try { JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json'))).forEach(x => CO_NAME.set(x.y, x.name)); } catch (e) {}
 function coKey(y) {
   let n = CO_NAME.get(y); if (!n) return y;
-  n = n.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*(Class|클래스)\s*[A-C]\s*$/, '').replace(/\s+[A-C]$/, '');
+  n = n.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*(ADR|ADS)\s*$/, '').replace(/\s*(Class|클래스)\s*[A-C]\s*$/, '').replace(/\s+[A-C]$/, '');      // ADR·ADS는 한국 상장 원주와 같은 회사(SK하이닉스·SK텔레콤·KT·한국전력·우리금융지주)
   if (/[가-힣]/.test(n)) n = n.replace(/(우선주|2우B|3우B|우B|우C|우)$/, '');
   return n.trim() || y;
 }
