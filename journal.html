@@ -59,6 +59,9 @@ h1{font-size:18px;margin:0 0 2px;font-weight:700}
 .rc-r{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px}.rc-r small{display:block;color:var(--mut);font-size:11.5px}.rc-r b{font-variant-numeric:tabular-nums;white-space:nowrap}
 .my-auto{font-style:normal;font-size:10.5px;font-weight:700;color:var(--acc)}
 .my-sync{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:var(--mut);margin:-2px 0 10px}.my-sync button{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.my-rt{margin:4px 0 10px}.my-rt .my-h{margin:10px 0 6px}.my-rts{overflow-x:auto}
+.my-mt{border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums;min-width:100%}.my-mt th{font-weight:600;color:var(--mut);padding:4px 5px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}.my-mt td{padding:5px 5px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+.my-mt th:first-child,.my-mt td:first-child{text-align:left;position:sticky;left:0;background:var(--card)}.my-mt td.p{color:var(--buy)}.my-mt td.n{color:var(--sell)}.my-mt td.yr{font-weight:700;border-left:1px solid var(--line)}.my-mt td.na{color:var(--mut)}
 .my-bk{font-size:12px;color:var(--mut);margin-top:6px}.my-bk summary{cursor:pointer}.my-bk textarea{width:100%;height:90px;font:11px/1.4 monospace;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px;margin-top:6px}
 .my-bk button{margin:6px 6px 0 0;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);font:inherit;font-size:12px;cursor:pointer}
 
@@ -311,6 +314,7 @@ canvas{display:block;width:100%;height:230px}
     </div>
     <div id="my-sum"></div>
     <div id="my-hold"></div>
+    <div id="my-ret"></div>
     <div id="my-list"></div>
     <div id="my-rec" class="my-rec">
       <div class="my-h" style="margin-top:12px"><span class="my-t">내 보유 기준 추천 <span class="plan-tag">잠정</span></span><span class="my-c" id="my-rec-m"></span></div>
@@ -2035,6 +2039,38 @@ function myRecRender(open){
       showScoreTree(a.y,a.buyYm,a.name,null,{feats:Object.keys(a.feats).map(function(k){ return [k,a.feats[k]]; }),apiScore:null,label:a.label,note:a.note}); };
   });
 }
+function myMonthlyRet(){                       // 내 체결로 만든 월별 수익률: 월말 보유 평가금(월봉 종가·환율)과 그달 매수·매도로 계산 — 수익 = (월말 평가금 + 판 돈 − 월초 평가금 − 산 돈) ÷ (월초 평가금 + 산 돈)
+  var T=MY.slice().sort(function(a,b){ return a.d<b.d?-1:a.d>b.d?1:a.id-b.id; }); if(!T.length) return null;
+  var ymOfD=function(d){ return +d.slice(0,4)*100+ +d.slice(5,7); }, nowYm=myThisYm(), first=ymOfD(T[0].d), out=[], pos={}, last={}, ti=0, prevV=0;
+  var fxAt=function(ym){ var m=LED0&&LED0.months[ym]; return m?m.fx:myFxNow(); };
+  var priceAt=function(k,ym){                                              // 그 달 말 가격(원 환산 전): 현재 달은 현재가 → 직전 종가 → 월봉, 없으면 마지막 체결가
+    var q=pos[k], cc=(q.code||'').toUpperCase(), bk=myBarKey(q.code), u=bk&&barsOf(bk), px=null;
+    if(ym===nowYm){ if(MYLIVE[cc]) px=MYLIVE[cc].px; else if(MYPX[cc]) px=MYPX[cc].px; }
+    if(px==null&&u){ var i=u.pos[ym]; if(i!=null) px=u.cs[i]; }
+    if(px==null) px=last[k]; q.us=bk?!/\.(KS|KQ)$/.test(bk):(q.cur==='USD'); return px; };
+  for(var ym=first; ym<=nowYm; ym=(ym%100===12?ym+89:ym+1)){
+    var buys=0, proceeds=0;
+    while(ti<T.length&&ymOfD(T[ti].d)===ym){ var t=T[ti++], k=myKey(t), a=myAmt(t); if(!k) continue;
+      var q=pos[k]||(pos[k]={code:t.code,cur:t.cur,qty:0,us:t.cur==='USD'}); if(t.code) q.code=t.code; q.cur=t.cur; last[k]=t.px;
+      if(t.side==='B'){ q.qty+=t.qty; buys+=a+(t.fee||0); } else { q.qty=Math.max(0,q.qty-t.qty); proceeds+=a-(t.fee||0)-(t.tax||0); } }
+    var V=0; Object.keys(pos).forEach(function(k){ var q=pos[k]; if(q.qty<=1e-9) return; var px=priceAt(k,ym); if(px==null) return; V+=q.qty*px*(q.us?fxAt(ym):1); });
+    var den=prevV+buys, r=den>0?(V+proceeds-prevV-buys)/den:null;
+    out.push({ym:ym,r:r,v:V}); prevV=V;
+  }
+  return out;
+}
+function myRetRender(){
+  var host=document.getElementById('my-ret'); if(!host) return;
+  var M=myMonthlyRet(); if(!M||!M.length){ host.innerHTML=''; return; }
+  var pct=function(x){ return (x>=0?'+':'')+(x*100).toFixed(1); }, byY={}, cum=1;
+  M.forEach(function(m){ var y=Math.floor(m.ym/100); (byY[y]=byY[y]||{})[m.ym%100]=m.r; if(m.r!=null) cum*=1+m.r; });
+  var rows=Object.keys(byY).sort().map(function(y){ var ann=1, any=false, c='';
+    for(var mo=1;mo<=12;mo++){ var r=byY[y][mo]; if(r==null){ c+='<td class="na">'+(byY[y].hasOwnProperty(mo)?'-':'')+'</td>'; } else { any=true; ann*=1+r; c+='<td class="'+(r>=0?'p':'n')+'">'+pct(r)+'</td>'; } }
+    return '<tr><td>'+y+'</td>'+c+'<td class="yr '+(ann>=1?'p':'n')+'">'+(any?pct(ann-1):'')+'</td></tr>'; }).join('');
+  host.innerHTML='<div class="my-rt"><div class="my-h"><span class="my-t">내 수익률 <small style="color:var(--mut);font-weight:400">(월별 · %)</small></span><span class="my-c">누적 <b style="color:var(--'+(cum>=1?'buy':'sell')+')">'+pct(cum-1)+'%</b></span></div>'
+    +'<div class="my-rts"><table class="my-mt"><tr><th>연도</th>'+[1,2,3,4,5,6,7,8,9,10,11,12].map(function(m){ return '<th>'+m+'월</th>'; }).join('')+'<th>연간</th></tr>'+rows+'</table></div>'
+    +'<p class="amt-note" style="margin:6px 0 0">입력한 체결 날짜로 계산한 값이에요. 그달 말 보유 종목 평가금의 변화에 그달 사고판 돈을 반영했고(현금·입금은 빼요), 이번 달은 지금 가격 기준이라 진행 중이에요. 월봉이 없는 종목은 마지막 체결가로 계산해요.</p></div>';
+}
 function renderMy(){
   var card=document.getElementById('my-card'); if(!card) return;
   if(!XMODE){ card.style.display='none'; return; }
@@ -2077,7 +2113,7 @@ function renderMy(){
     var a=myAmt(t), px=t.cur==='USD'?'$'+(+t.px).toLocaleString():(+t.px).toLocaleString()+'원';
     return '<div class="my-l"><span class="tag '+(t.side==='B'?'b':'s')+'">'+(t.side==='B'?'매수':'매도')+'</span><div class="tx">'+esc(t.name||t.code)+' <small>'+esc(t.d)+' · '+(+t.qty.toFixed(4)).toLocaleString()+'주 × '+px+(t.cur==='USD'?' (환율 '+Math.round(t.fx).toLocaleString()+')':'')+' = '+won(a)+(t.fee||t.tax?' · 수수료 '+Math.round(t.fee||0).toLocaleString()+(t.tax?' · 세금 '+Math.round(t.tax).toLocaleString():''):'')+'</small></div><button class="x" data-del="'+t.id+'" aria-label="삭제">×</button></div>';
   }).join('');
-  myRecRender(open);
+  myRetRender(); myRecRender(open);
   card.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ if(!confirm('이 체결을 지울까요?')) return; var did=+b.dataset.del; MY=MY.filter(function(t){ return t.id!==did; }); if(MYDEL.indexOf(did)<0) MYDEL.push(did); mySave(); renderMy(); }; });
 }
 function wireMy(){
