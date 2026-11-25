@@ -1509,6 +1509,26 @@ if (process.env.STAGE14 !== '0') {
       log(`${''.padEnd(42)} · ${rk.join(' | ')}`);
     });
   }
+  if (process.env.AD8_TP === '1') {                                       // 2배 vs 2.5배: 어떤 거래·어떤 해에서 차이가 나는지, 큰 차이 종목을 하나씩 빼면 어떻게 되는지
+    const A = V[0], T1 = V[1], pct = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(0) + '%', pc1 = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%', pp = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%p';
+    const tr = v => { const o = simOpt(v.rule, v.o || {}); return (simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand, log: true }).trades || []); };
+    const tA = tr(A), tB = tr(T1), key = t => t.y + '|' + t.buyYm, mB = new Map(tB.map(t => [key(t), t]));
+    const diff = [];
+    tA.forEach(t => { const u = mB.get(key(t)); if (u && (u.sellYm !== t.sellYm || Math.abs((u.ret || 0) - (t.ret || 0)) > 1e-9)) diff.push({ y: t.y, buy: t.buyYm, sA: t.sellYm, sB: u.sellYm, rA: t.ret, rB: u.ret }); });
+    log(''); log(`## 익절 2배 vs 2.5배 — 거래별 차이 (같은 구매인데 판매 달·수익이 달라진 거래 ${diff.length}건, 전체 ${tA.length}거래)`);
+    log('종목          구매      2배: 판매 달 · 수익        2.5배: 판매 달 · 수익      수익 차이');
+    diff.sort((a, b) => Math.abs((b.rB || 0) - (b.rA || 0)) - Math.abs((a.rB || 0) - (a.rA || 0))).forEach(d => log(`${String(d.y).padEnd(12)} ${d.buy}   ${String(d.sA || '보유중').padEnd(7)} ${pct(d.rA || 0).padStart(6)}        ${String(d.sB || '보유중').padEnd(7)} ${pct(d.rB || 0).padStart(6)}        ${pct((d.rB || 0) - (d.rA || 0)).padStart(6)}`));
+    const onlyA = tA.filter(t => !mB.has(key(t))).length, onlyB = tB.length - (tA.length - onlyA);
+    log(`(구매 자체가 달라진 거래: 2배에만 ${onlyA}건 · 2.5배에만 ${onlyB}건 — 판매 시점이 달라 현금·후보 순서가 바뀐 영향)`);
+    log(''); log('## 해마다 수익률 (2배 → 2.5배)');
+    Object.keys(A.full.yearly).sort().forEach(y => { const a = A.full.yearly[y], b = T1.full.yearly[y]; if (Math.abs(a - b) > 1e-9) log(`${y}  ${pc1(a).padStart(8)} → ${pc1(b).padStart(8)}   ${pp(b - a)}`); });
+    log(`(위에 없는 해는 두 방식이 똑같음)`);
+    const top = []; diff.forEach(d => { if (!top.includes(d.y)) top.push(d.y); });
+    log(''); log('## 큰 차이 종목을 하나씩 뺐을 때 (전체 연평균: 2배 → 2.5배 · 차이)');
+    const base0 = A.full.cagr, base1 = T1.full.cagr; log(`(뺀 것 없음)                ${pc1(base0).padStart(8)} → ${pc1(base1).padStart(8)}   ${pp(base1 - base0)}`);
+    top.slice(0, 6).forEach(y => { const f = e => e.r.y !== y, a = run14(A, f).cagr, b = run14(T1, f).cagr; log(`${String(y).padEnd(24)} ${pc1(a).padStart(8)} → ${pc1(b).padStart(8)}   ${pp(b - a)}`); });
+    const f6 = e => !top.slice(0, 3).includes(e.r.y), a3 = run14(A, f6).cagr, b3 = run14(T1, f6).cagr; log(`위 3종목 모두 뺌             ${pc1(a3).padStart(8)} → ${pc1(b3).padStart(8)}   ${pp(b3 - a3)}`);
+  }
   AD8.sec = { V, base };
 }
 if (AD8.sec) {
