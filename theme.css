@@ -25,3 +25,6 @@ body{word-break:keep-all;overflow-wrap:break-word}
 h1.one{font-size:clamp(14px,5.2vw,22px);white-space:nowrap;letter-spacing:-.5px}
 h1.one{display:table;margin-left:auto;margin-right:auto;text-align:center}
 #pg-title{display:block;text-align:center}
+.sub{font-size:12px}
+.subtabs button{white-space:nowrap;font-size:13px !important;padding-left:0;padding-right:0}
+.sub>div{white-space:nowrap;font-size:clamp(9.5px,2.85vw,12px)}

@@ -294,7 +294,7 @@ canvas{display:block;width:100%;height:230px}
 <main>
   <div class="navtabs"><a class="ntab" href="index.html">📈 종목</a><a class="ntab on" href="#" data-p="log">📒 매매일지</a><a class="ntab" href="#" data-p="ret">📊 수익률</a></div>
   <h1 id="pg-title">매매일지</h1>
-  <div class="sub"><span id="strat-label">10이평 돌파 후 +10%·정배열 매수 · tp2x트레일+금리유예2달</span> · <span id="dep-label">월 100만원</span> · 비용·세금 반영</div>
+  <div class="sub"><div><span id="dep-label">첫달 100만원 · 월 100만원</span> · <span id="sell-label">tp2x트레일+국채10년 금리 유예2달</span> ·</div><div><span id="strat-label">10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매)</span> · 비용·세금 반영</div></div>
 
   <div class="subtabs" id="subtabs"><button type="button" data-v="how">📖 매매방법</button><button type="button" data-v="hist" class="on">🧾 거래내역 보기</button><button type="button" data-v="sold">💰 매도 거래 내역</button></div>
   <div id="view-sold" hidden>
@@ -2221,7 +2221,7 @@ function showPane(p){                          // 위쪽 탭: 매매일지(거�
 }
 document.querySelectorAll('.navtabs .ntab[data-p]').forEach(function(b){ b.onclick=function(ev){ ev.preventDefault(); showPane(b.dataset.p); }; });
 function renderAll(){
-  try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) sl.textContent=DATA.meta.firstDay?'10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매) · tp2x트레일+국채10년 금리 유예2달':DATA.meta.strategy; }catch(e){}
+  try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) { var fd=!!DATA.meta.firstDay; sl.textContent=fd?'10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매)':DATA.meta.strategy; var sx=document.getElementById('sell-label'); if(sx) sx.style.display=fd?'':'none'; } }catch(e){}
   wireMy(); if(XMODE&&!window._myb){ window._myb=1; loadBars(renderMy); } renderMy(); wireAmtInputs(); syncAmtInputs(); renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
