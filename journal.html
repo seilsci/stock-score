@@ -319,8 +319,12 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
   var title = document.getElementById('hold-title');
   var list = document.getElementById('hold-list');
   if(!ym){ title.textContent='연도·월을 선택하면 그달 말 보유 종목이 표시됩니다.'; list.innerHTML=''; return; }
-  var holds = over ? over.holds : (DATA.snapshots[ym] || []);
-  title.innerHTML = over ? fmt(ym)+' 예상 보유 종목 '+holds.length+'개 <span class="plan-tag">예정 주문 반영</span>' : fmt(ym)+' 말 보유 종목 '+holds.length+'개';
+  var holds = over ? over.holds : (DATA.snapshots[ym] || []), nxTag='';
+  if(!over && isFD() && LED && LED.months[ym]){                          // 첫날 구매 방식: 말일 보유 + 다음 달 1일 구매
+    var NXh=fdNextOf(ym);
+    if(NXh && NXh.buys && NXh.buys.length){ holds=holds.concat(NXh.buys.map(function(x){ return {y:x.y,name:x.name,buyYm:+NXh.ym,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:x.score}; })); nxTag=fmt(NXh.ym).slice(5)+'월 1일 구매 포함'; }
+  }
+  title.innerHTML = over ? fmt(ym)+' 말 + '+(over.nx?fmt(over.nx).slice(5)+'월 1일':'다음 달 1일')+' 예상 보유 종목 '+holds.length+'개 <span class="plan-tag">예정 주문 반영</span>' : fmt(ym)+' 말 보유 종목 '+holds.length+'개'+(nxTag?' <span class="plan-tag">'+nxTag+'</span>':'');
   if(!holds.length){ list.innerHTML='<div style="color:var(--mut);padding:4px 0">현금 보유</div>'; return; }
   list.innerHTML = holds.map(function(h,i){
     var ret=h.ret, cls=ret>=0?'p':'n';
@@ -1273,6 +1277,16 @@ function loadPlan(){
 
 function chartRaw(r){ var ch=r&&r['차트']; if(!ch||!ch.length) return undefined; var f=[]; ch.forEach(function(x){ var c=+x[4], o=+x[1]||c; f.push(+x[0],o,Math.max(+x[2]||0,o,c),Math.min(+x[3]||Infinity,o,c),c,+x[5]||0); }); return {s:6,a:f}; }
 
+function decPlanOf(P){                       // 다음 달 1일 구매(잠정): 지금 확정된 후보(점수 순)를 예상 월말 현금으로 첫날 종가(=지금 가격 가정)에 산다면
+  if(!P||!P.fd||!P.next||!P.next.length) return null;
+  if(P._dec) return P._dec;
+  var ym=PLAN_YM, dnx=nextYmOf(ym), nc=P.next.slice().sort(function(a,b){ return (+b['점수'])-(+a['점수']); }).map(function(r){
+    var us=r['시장']==='US'; return {y:us?r['코드']:r['코드']+(r['시장']==='KOSPI'?'.KS':'.KQ'),name:r['이름'],us:us,px:+r['최근종가'],score:+r['점수'],brk:+r['돌파월']||null,row:r}; });
+  var p2=planCore({nowYm:dnx,lastYm:ym,holds:planHoldings(P),cash:P.cashEnd,dep:LED.meta.dep,fx:P.fx,rateUp:false,picks:[],N:4,usGainYtd:0,fd:true,cands:nc});
+  var rowOf={}; nc.forEach(function(c){ rowOf[c.y]=c.row; });
+  P._dec={dnx:dnx,p2:p2,rowOf:rowOf};
+  return P._dec;
+}
 function planHoldings(P){                    // 예상 보유 = 지난달 보유 − 판매 예정 + 구매 예정 (현재 가격 기준)
   var nowYm=PLAN_YM, sold={}; P.sells.forEach(function(x){ sold[x.y+'|'+x.buyYm]=1; });
   var out=[];
@@ -1282,6 +1296,7 @@ function planHoldings(P){                    // 예상 보유 = 지난달 보유
     out.push({y:h.y,name:h.name,buyYm:h.buyYm,buyPx:h.buyPx,curPx:cur,sh:h.sh,basis:h.basis,ret:cur/h.buyPx-1,score:h.score});
   });
   P.buys.forEach(function(x){
+    if(P.fd&&sold[x.y+'|'+nowYm]) return;                                  // 첫날 구매 방식: 산 달 말에 판매 예정이면 보유에서 뺌
     out.push({y:x.y,name:x.name,buyYm:+nowYm,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:typeof x.score==='number'?x.score/100:null,row:x.row,apiScore:x.score,raw:chartRaw(x.row)});
   });
   return out;
@@ -1349,10 +1364,7 @@ function renderPlanView(){
   if(FDP){ sellRows(); depRow(); } else { depRow(); sellRows(); buyRows(); }      // 첫날 구매 방식: 이달 첫날 구매(이미 체결) → 월말 판매 예정 → 입금
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">예상 월말 현금</div></div><div class="lr-a">'+won(P.cashEnd)+'</div></div></div>';
   if(P.fd&&P.next&&P.next.length){                                         // 다음 달 1일 구매(잠정): 지금 확정된 후보(점수 순)를 예상 월말 현금으로 첫날에 산다면
-    var dnx=nextYmOf(ym), nc=P.next.slice().sort(function(a,b){ return (+b['점수'])-(+a['점수']); }).map(function(r){
-      var us=r['시장']==='US'; return {y:us?r['코드']:r['코드']+(r['시장']==='KOSPI'?'.KS':'.KQ'),name:r['이름'],us:us,px:+r['최근종가'],score:+r['점수'],brk:+r['돌파월']||null,row:r}; });
-    var p2=planCore({nowYm:dnx,lastYm:ym,holds:planHoldings(P),cash:P.cashEnd,dep:LED.meta.dep,fx:P.fx,rateUp:false,picks:[],N:4,usGainYtd:0,fd:true,cands:nc});
-    var rowOf={}; nc.forEach(function(c){ rowOf[c.y]=c.row; });
+    var D=decPlanOf(P), dnx=D.dnx, p2=D.p2, rowOf=D.rowOf;
     bal=P.cashEnd;
     html+='<div class="lr end" style="margin-top:8px"><div class="lr-h"><div><div class="lr-n">'+fmt(dnx)+' 1일 · 첫날 구매 <span class="plan-tag">잠정</span> <span class="meta">(지금 확정된 후보 기준, 월말에 바뀔 수 있음)</span></div></div></div></div>';
     p2.buys.forEach(function(x){
@@ -1546,7 +1558,7 @@ function renderAll(){
   renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
-    if(PLAN) renderHoldings({holds:planHoldings(PLAN),fx:PLAN.fx});
+    if(PLAN){ var hD=decPlanOf(PLAN), hh=planHoldings(PLAN); if(hD) hD.p2.buys.forEach(function(x){ hh.push({y:x.y,name:x.name,buyYm:+hD.dnx,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:typeof x.score==='number'?x.score/100:null,row:hD.rowOf[x.y],apiScore:x.score,raw:chartRaw(hD.rowOf[x.y])}); }); renderHoldings({holds:hh,fx:PLAN.fx,nx:hD?hD.dnx:null}); }
     else { document.getElementById('hold-title').textContent='예상 보유 종목을 계산하는 중…'; document.getElementById('hold-list').innerHTML=''; }
     document.getElementById('chart-box').style.display='none';
     if(!PLAN) loadPlan();
