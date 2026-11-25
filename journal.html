@@ -145,7 +145,7 @@ canvas{display:block;width:100%;height:230px}
 .rtag.ma{background:var(--chip);color:var(--mut)}
 
 /* 매도 완료 거래 목록 */
-#sold-ctl{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+#sold-ctl{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin:0 0 8px}#sold-ctl .sd-btn{padding:8px 0;font-size:13px;text-align:center;white-space:nowrap}
 .sd-btn{padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;font:inherit;font-size:12px;font-weight:600;color:var(--mut);cursor:pointer}
 .sd-btn.sel{background:color-mix(in srgb,var(--acc) 14%,var(--card));color:var(--acc);border-color:var(--acc)}
 .sd-sum{font-size:12px;color:var(--mut);margin:0 0 8px}
@@ -158,7 +158,7 @@ canvas{display:block;width:100%;height:230px}
 .sd-row{cursor:pointer}
 .sd-c{display:none;grid-column:1/3;padding-top:6px}
 .sd-c.open{display:block}
-.sd-s{font-size:11.5px;color:var(--mut);grid-column:1/3;font-variant-numeric:tabular-nums}
+.sd-s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;color:var(--mut);grid-column:1/3;font-variant-numeric:tabular-nums}
 #sold-more[hidden]{display:none}
 #sold-more{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:inherit;font-size:13px;font-weight:700;color:var(--fg);cursor:pointer}
 /* 시작 시점 */
@@ -429,6 +429,7 @@ var FEAT_DESC = {
   c_ma60:'60이평 대비 종가',hi12_break:'12개월 신고가 돌파',vol_max36:'36개월 최대 거래량 대비',
   prev_fail:'최근 돌파 실패 횟수',ma_up6:'6개월 중 이평 상승 개월',close_pos:'고저 중 종가 위치',gap_prev:'전달 이평 대비'
 };
+var REASON_S = { ma10:'이평 아래', tpTrail:'익절 트레일', 'ma10-금리인상':'이평 아래+금리↑', 'ma10-유예만료':'이평 아래+유예' };
 var REASON = { ma10:'10이평 아래', tpTrail:'익절(2배 도달 후 하락)', 'ma10-금리인상':'10이평 아래+금리인상', 'ma10-유예만료':'10이평 아래+유예만료' };
 
 function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -1808,7 +1809,7 @@ function renderSoldList(){
   document.getElementById('sold-label').textContent='매도한 거래 전체 · '+fmt(START_YM||Object.keys(LED.months).sort()[0])+'부터';
   document.getElementById('sold-sum').innerHTML='판매 완료 <b>'+rows.length+'건</b> · 수익 난 거래 <b>'+win+'건 ('+(rows.length?Math.round(win/rows.length*100):0)+'%)</b> · 점수는 구매 당시 지표를 최신 모델로 계산한 값(점수 칩을 누르면 이유, 줄을 누르면 판매 당시까지의 월봉 그래프)';
   var btn=function(k,t){ return '<button class="sd-btn'+(SOLD_SORT===k?' sel':'')+'" data-k="'+k+'">'+t+'</button>'; };
-  document.getElementById('sold-ctl').innerHTML=btn('buy','구매 순(오래된 것부터)')+btn('score','점수 높은 순')+btn('ret','수익률 높은 순')+btn('loss','수익률 낮은 순');
+  document.getElementById('sold-ctl').innerHTML=btn('buy','오래된 순')+btn('score','점수 높은 순')+btn('ret','수익 높은 순')+btn('loss','수익 낮은 순');
   document.querySelectorAll('#sold-ctl .sd-btn').forEach(function(b){ b.onclick=function(){ SOLD_SORT=b.dataset.k; SOLD_LIMIT=100; renderSoldList(); }; });
   var shown=rows.slice(0,SOLD_LIMIT);
   document.getElementById('sold-list').style.display=rows.length?'':'none';                     // 판매한 거래가 없으면 빈 상자를 숨김
@@ -1816,7 +1817,7 @@ function renderSoldList(){
   document.getElementById('sold-list').innerHTML=shown.map(function(r){
     var hm=holdMonths(r.buyYm,r.sellYm), cls=r.ret>=0?'p':'n';
     return '<div class="sd-row" data-y="'+esc(r.y)+'" data-b="'+r.buyYm+'" data-s="'+r.sellYm+'"><div class="sd-n">'+esc(r.name)+(r.us?' <span class="lr-b">미국</span>':'')+'</div><div class="sd-r '+cls+'">'+pc(r.ret)+'</div>'
-      +'<div class="sd-s"><b>구매 '+fmt(r.buyYm)+'</b> → 판매 '+fmt(r.sellYm)+' · '+hm+'개월 · 점수 <span class="lr-sc" data-sy="'+esc(r.y)+'" data-sb="'+r.buyYm+'" data-sn="'+esc(r.name)+'" data-sp="">'+(r.score==null?'-':r.score)+'</span> · '+esc(REASON[r.reason]||r.reason||'')+'</div><div class="sd-c"><canvas></canvas></div></div>';
+      +'<div class="sd-s"><b>'+fmt(r.buyYm)+'</b>→'+fmt(r.sellYm)+' · '+hm+'개월 · 점수 <span class="lr-sc" data-sy="'+esc(r.y)+'" data-sb="'+r.buyYm+'" data-sn="'+esc(r.name)+'" data-sp="">'+(r.score==null?'-':r.score)+'</span> · '+esc(REASON_S[r.reason]||REASON[r.reason]||r.reason||'')+'</div><div class="sd-c"><canvas></canvas></div></div>';
   }).join('');
   document.querySelectorAll('#sold-list .sd-row').forEach(function(row){          // 줄을 누르면 판매 당시까지의 월봉 그래프
     row.onclick=function(ev){
