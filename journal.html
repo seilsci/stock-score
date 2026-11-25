@@ -1029,7 +1029,7 @@ function renderLedger(){
   });
   (M.skipped||[]).forEach(function(x){
     add('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      '1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김','0원',bal);
+      '1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김'+skipMeta(x.y,Y,x.us,x.name),'0원',bal,{y:x.y,end:Object.keys(LED.months).sort().pop(),buy:Y,sell:null});
   });
   };
   if(FD){ sellRows(); depRow(); taxRow(); }                            // 첫날 구매 방식: 월말 판매 → 입금 → 세금 (다음 달 1일 구매는 아래)
@@ -1453,6 +1453,12 @@ function featsForRow(y, r){                  // 시트 행의 점수 설명용 �
   if(r['돌파월']) ch=ch.filter(function(x){ return +x[0]<=+r['돌파월']; });
   return ch.length?featsFromChart(ch,r):null;
 }
+function skipMeta(y, Y, us, name){                  // 못 삼 종목의 점수(돌파한 달 시점 월봉으로 계산)와 점수 칩 HTML: 구매 전달(또는 같은 달) 후보 목록에서 돌파월을 찾음
+  var pm=prevYmOf(String(Y)), L=(LED.months[pm]&&LED.months[pm].cands)||[], c=L.filter(function(z){ return z.y===y; })[0];
+  if(!c){ L=(LED.months[String(Y)]&&LED.months[String(Y)].cands)||[]; c=L.filter(function(z){ return z.y===y; })[0]; }
+  var brk=c&&c.brk, sc=brk?scoreFromBars(y,brk,us):null;
+  return sc!=null?'<br>점수 <span class="lr-sc" data-sy="'+esc(y)+'" data-sb="'+Y+'" data-sn="'+esc(name||y)+'" data-sp="" data-brk="'+brk+'" data-us="'+(us?1:0)+'">'+sc+'</span> <span class="meta">(돌파 '+fmt(brk)+' · 눌러서 이유 보기)</span>':'<br>점수 <span class="lr-sc no">-</span> <span class="meta">'+myNoScoreText(y.replace(/\.(KS|KQ)$/,''))+'</span>';
+}
 function localScore(y, r){                   // 시트 행의 점수를 이 화면이 가진 최신 모델로 다시 계산(누르면 나오는 나무와 같은 숫자). 못 구하면 null
   var f=featsForRow(y,r); if(!f) return null;
   var e=explainFeats(Object.keys(f).map(function(k){ return [k,f[k]]; })); return e?e.score:null;
@@ -1531,7 +1537,7 @@ function renderPlanView(){
       calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-buyidx="'+P.buys.indexOf(x)+'">'+(function(){ var l=localScore(x.y,x.row); return l!=null?l:x.score; })()+'</span> <span class="meta">(눌러서 이유 보기)</span>',signWon(-x.amt),bal,{y:x.y,end:ym,buy:ym,sell:null,raw:chartRaw(x.row)});
   });
   P.skipped.forEach(function(x){
-    row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김','0원',bal);
+    row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김'+skipMeta(x.y,ym,x.us,x.name),'0원',bal,{y:x.y,end:ym,buy:ym,sell:null});
   });
   };
   if(FDP){ sellRows(); depRow(); } else { depRow(); sellRows(); buyRows(); }      // 첫날 구매 방식: 이달 첫날 구매(이미 체결) → 월말 판매 예정 → 입금
@@ -1579,6 +1585,10 @@ function renderPlanView(){
         var D=decPlanOf(P), b3=D&&D.p2.buys[+c.dataset.decidx]; if(!b3) return;
         var r3=D.rowOf[b3.y], f3=featsForRow(b3.y,r3);
         showScoreTree(b3.y,+D.dnx,b3.name,null,{feats:f3?Object.keys(f3).map(function(k){ return [k,f3[k]]; }):[],apiScore:b3.score}); return;
+      }
+      if(c.dataset.brk&&!findFeats({y:c.dataset.sy,buyYm:+c.dataset.sb})){                 // 못 삼(이번 달 첫날 구매 후보): 돌파한 달 시점 월봉으로 나무
+        var fb=featsFromBars(c.dataset.sy,c.dataset.brk,c.dataset.us==='1');
+        showScoreTree(c.dataset.sy,+c.dataset.sb,c.dataset.sn,null,{feats:fb?Object.keys(fb).map(function(k){ return [k,fb[k]]; }):[],apiScore:null}); return;
       }
       if(c.dataset.candsc!=null||c.dataset.decskip!=null){            // 다음 달 첫날 구매 후보·못 삼 후보: 돌파한 달 시점 지표로 나무
         var Dd=decPlanOf(P), yy=c.dataset.candsc!=null?c.dataset.candsc:c.dataset.decskip, cc=Dd&&Dd.nc.filter(function(z){ return z.y===yy; })[0]; if(!cc) return;
