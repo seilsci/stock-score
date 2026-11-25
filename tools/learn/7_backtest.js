@@ -1416,6 +1416,18 @@ if (process.env.STAGE14 !== '0') {
     V.push({ sec: '기준', name: '현재: 산 달 말에도 판매 판단', cand, rule: rule10 });
     V.push({ sec: '산 달 말 판매 건너뛰기', name: '산 달 말에는 판매 안 함(다음 달 말부터 판단)', cand, rule: rule10, o: { skipBuyMonth: true } });
   }
+  if (process.env.AD8_UNION === '1' && RT14) {                          // 후보 묶기: 확인 매수 후보 + 이번 달 돌파만 한 종목(즉시 매수 후보)을 함께 놓고 점수순 / 우선순위별로 비교 (판매 규칙·금리 판단은 현재 규칙)
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' });
+    const conf = ym => mC.get(ym) || [], imm = ym => scored[kA].get(ym) || [];
+    const dedupe = a => { const seen = new Set(), o = []; a.forEach(e => { if (seen.has(e.r.y)) return; seen.add(e.r.y); o.push(e); }); return o; };
+    const byScore = a => a.slice().sort((x, y) => y.s - x.s);
+    const SC = '후보 묶기';
+    V.push({ sec: '기준', name: 'A 확인 매수만 (현재)', cand: conf, rule: rule10 });
+    V.push({ sec: SC, name: 'B 이번 달 돌파만 한 종목만 (즉시 매수)', cand: imm, rule: rule10 });
+    V.push({ sec: SC, name: 'C 둘 다 놓고 점수순', cand: ym => dedupe(byScore(conf(ym).concat(imm(ym)))), rule: rule10 });
+    V.push({ sec: SC, name: 'D 확인 매수 먼저, 모자라면 돌파만 한 종목으로 채움', cand: ym => dedupe(byScore(conf(ym)).concat(byScore(imm(ym)))), rule: rule10 });
+    V.push({ sec: SC, name: 'E 돌파만 한 종목 먼저, 모자라면 확인 매수로 채움', cand: ym => dedupe(byScore(imm(ym)).concat(byScore(conf(ym)))), rule: rule10 });
+  }
   const base = V[0];
   V.forEach((v, i) => { progress('후속 시험', i / V.length); v.full = run14(v); v.halves = []; });
   for (let b = 1; b <= B; b++) { progress('후속 시험(절반)', (b - 1) / B); V.forEach(v => v.halves.push(run14(v, e => hash(e.r.y + '|' + b) < 0.5).cagr)); }
