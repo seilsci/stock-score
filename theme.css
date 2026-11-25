@@ -1,0 +1,16 @@
+/* D. 신문·금융지 — 아이보리 종이, 명조 제목, 가는 괄선, 빨강 포인트, 직각 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap');
+:root{--bg:#f6f2e9;--card:#fbf8f1;--fg:#16140f;--mut:#6f685a;--line:#cfc6b2;--seg:#ece5d3;--chip:#efe9d9;--buy:#b3261e;--sell:#1f4e8c;--ma:#b9770e;--acc:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#1a1814;--card:#221f1a;--fg:#efe8d8;--mut:#a89f8b;--line:#3b362c;--seg:#2a261f;--chip:#2d2921;--buy:#ff7a6e;--sell:#7db1ee;--ma:#e5a84a;--acc:#ff7a6e}}
+body{font-family:'Noto Sans KR',sans-serif !important;background:var(--bg) !important}
+h1,.sec-title,.rc-t,.st-t,.my-t,.ch-n,.rc-g{font-family:'Noto Serif KR',serif !important;font-weight:700;letter-spacing:-.2px}
+h1{font-size:24px;border-bottom:3px double var(--fg);padding-bottom:8px}
+.nav,.amt-card,.my-card,#start-card,#cum-card,#yr-card,#ret-card,#mt-card,#sum-card,#hold-panel,#sold-list,#chart-box,.chart,.list,.jf-c,.jf-tl,.inf-card,.inf-note,.jlink,.jf{border:none !important;border-top:2px solid var(--fg) !important;border-bottom:1px solid var(--line) !important;border-radius:0 !important;box-shadow:none !important;background:transparent !important}
+.tab,.ntab,.yr-btn,.mo-btn,.my-seg button,.mt-tabs button,.sd-btn,.seg button{border:none !important;border-bottom:2px solid transparent !important;border-radius:0 !important;background:transparent !important;font-family:'Noto Serif KR',serif;font-weight:700}
+.seg{background:transparent !important;border-bottom:1px solid var(--line) !important;border-radius:0 !important}
+.tab.on,.ntab.on,.yr-btn.sel,.mo-btn.sel,.sd-btn.sel,.mt-tabs button.on,.seg button.on{background:transparent !important;color:var(--acc) !important;border-bottom:3px solid var(--acc) !important}
+input,select,textarea{border:none !important;border-bottom:1.5px solid var(--fg) !important;border-radius:0 !important;background:transparent !important}
+.my-add{background:var(--fg) !important;color:var(--bg) !important;border:none !important;border-radius:0 !important}
+/* 노란 형광펜 느낌 제거: 태그는 배경 없이 가는 테두리만 */
+.tag,.tag.yu,.rtag,.rtag.tp{background:transparent !important;border:1px solid currentColor !important;border-radius:0 !important}
+.tag.yu,.rtag.tp{color:var(--ma) !important}
