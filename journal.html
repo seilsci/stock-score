@@ -196,6 +196,29 @@ canvas{display:block;width:100%;height:230px}
 .tr-bar i.neg{background:var(--sell);right:50%}
 .tr-v{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
 .sc-note{font-size:11px;color:var(--mut);margin-top:14px;line-height:1.6}
+
+.jf{margin:26px 0 30px}
+.jf-h{font-size:15px;margin:0 2px 10px;display:flex;align-items:center;gap:8px}
+.jf-dot{width:10px;height:10px;border-radius:50%;background:var(--acc);display:inline-block}
+.jf-tl{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px 12px 16px;position:relative}
+.jf-day{display:flex;align-items:center;gap:8px;font-size:13px;margin:2px 0 8px}
+.jf-day i{font-style:normal;font-size:16px}.jf-day b{background:var(--chip);border-radius:999px;padding:3px 10px;font-size:12.5px}
+.jf-day.nx{margin-top:14px}.jf-day.nx b{background:var(--buy);color:#fff}
+.jf-step{display:flex;gap:10px;align-items:flex-start;padding:7px 0 7px 2px;position:relative}
+.jf-step:not(:last-child):not(.nx)::before{content:"";position:absolute;left:11px;top:30px;bottom:-8px;border-left:2px dashed var(--line)}
+.jf-step em{flex:none;width:22px;height:22px;border-radius:50%;background:var(--acc);color:#fff;font-style:normal;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;z-index:1}
+.jf-step.nx em{background:var(--buy)}
+.jf-step strong{display:block;font-size:13.5px}
+.jf-step span{display:block;font-size:12px;color:var(--mut);line-height:1.55;margin-top:2px}
+.jf-step span b{color:var(--fg)}
+.jf-mini{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+.jf-mini u{text-decoration:none;background:var(--chip);border-radius:10px;padding:5px 9px;font-size:11.5px;color:var(--fg)}
+.jf-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:10px}
+.jf-c{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px 11px;position:relative}
+.jf-c strong{font-size:13px}.jf-c p{margin:5px 0 0;font-size:11.5px;color:var(--mut);line-height:1.55}
+.jf-ic{font-size:20px;margin-bottom:3px}
+.jf-foot{text-align:center;font-size:11.5px;color:var(--mut);margin:14px 0 0}
+@media(max-width:380px){.jf-grid{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
@@ -239,6 +262,27 @@ canvas{display:block;width:100%;height:230px}
   <div class="sd-sum" id="sold-sum"></div>
   <div id="sold-list"></div>
   <button id="sold-more" hidden>더 보기</button>
+
+  <section class="jf">
+    <h2 class="jf-h"><span class="jf-dot"></span>일지는 이렇게 계산해요</h2>
+    <div class="jf-tl">
+      <div class="jf-day"><i>🗓</i><b>월말 (말일 종가)</b></div>
+      <div class="jf-step"><em>1</em><div><strong>판매 판단</strong><span>보유 종목이 <b>익절 트레일</b>(10이평의 2배 도달 후 하락)이거나 <b>10이평 아래</b>로 내려왔으면 판다. 금리가 오르는 중이면 즉시, 아니면 2개월째에 판다</span></div></div>
+      <div class="jf-step"><em>2</em><div><strong>입금</strong><span>매달 <b>100만원</b>이 들어온다</span></div></div>
+      <div class="jf-step"><em>3</em><div><strong>세금</strong><span>12월에 그해 미국 주식 이익에서 <b>250만원 공제 후 22%</b>를 낸다</span></div></div>
+      <div class="jf-step"><em>4</em><div><strong>후보 확정</strong><span>돌파 후 +10% · 5&gt;10&gt;20 정배열을 <b>이번 달 처음</b> 채운 종목이 후보가 된다</span></div></div>
+      <div class="jf-day nx"><i>🛒</i><b>다음 달 1일 (첫날 종가)</b></div>
+      <div class="jf-step nx"><em>5</em><div><strong>점수 상위 4종목 구매</strong><span>현금을 4종목에 <b>똑같이 나눠 배정</b>하고 <b>정수 주</b>만 산다(소수점 없음)</span>
+        <div class="jf-mini"><u>1주 값이 배정액보다 비싸면 → 다음 순위</u><u>후보가 4개보다 적으면 → 있는 종목끼리 나눔</u><u>남는 돈 → 현금으로 이월</u></div></div></div>
+    </div>
+    <div class="jf-grid">
+      <div class="jf-c"><div class="jf-ic">💸</div><strong>비용·세금</strong><p>수수료(한국 0.015%, 미국 0.35%), 한국 매도 거래세(연도별), 미국 양도세는 모두 반영. 미국 종목은 월말 환율로 원화 환산</p></div>
+      <div class="jf-c"><div class="jf-ic">📊</div><strong>지수와 비교</strong><p>같은 입금으로 코스피·S&amp;P500·나스닥100(원화 환산)을 매달 말에 샀다면의 평가금 (배당·수수료·세금 제외)</p></div>
+      <div class="jf-c"><div class="jf-ic">🔁</div><strong>시작 시점 바꾸기</strong><p>고른 달부터 빈손으로 시작해 같은 규칙으로 다시 계산. 시작한 달은 입금만 하고 구매는 다음 달 첫날</p></div>
+      <div class="jf-c"><div class="jf-ic">🔮</div><strong>예정 달(잠정)</strong><p>지금 가격을 월말 종가로 가정해 미리 계산한 값. 월말까지 가격·후보에 따라 바뀔 수 있음</p></div>
+    </div>
+    <p class="jf-foot">백테스트 기록이며 앞으로의 수익을 보장하지 않습니다.</p>
+  </section>
 </main>
 
 <!-- 점수 설명 모달 -->
@@ -826,7 +870,7 @@ function renderSummary(){
     +'<div class="sum-i"><span class="k">이달 매도</span><b>'+(m.sells.length?m.sells.length+'건 '+won(sellSum):'없음')+'</b></div>'
     +(isFD()?(function(){ var NX=fdNextOf(ym); if(NX&&NX.loading){ fdNeedLoad(ym); return '<div class="sum-i"><span class="k">다음 달 첫날 구매</span><b>계산 중…</b></div>'; } var bs=NX?NX.buys:[], su=bs.reduce(function(t,x){ return t+x.amt; },0); return '<div class="sum-i"><span class="k">다음 달 첫날 구매</span><b>'+(bs.length?bs.length+'건 '+won(su):'없음')+'</b></div>'; })()
       :'<div class="sum-i"><span class="k">이달 매수</span><b>'+(m.buys.length?m.buys.length+'건 '+won(buySum):'없음')+'</b></div>')
-    +'</div><div class="sum-note">지수 적립은 같은 입금(매달 말)으로 코스피·S&P500·나스닥100(원화 환산)을 샀다면의 평가금입니다(배당·수수료·세금 제외). 지금 전략의 총자산 '+won(total)+'과 비교하세요.<br>'+(isFD()?'<b>첫날 구매 방식</b>: 이달 말에 확정된 후보를 <b>다음 달 첫날 종가</b>에 삽니다. 그래서 시작한 달에는 입금만 하고(현금으로 둠) 구매는 다음 달 첫날에 이뤄집니다.<br>':'')+'매달 입금액·매도금·남은 현금을 4종목에 똑같이 나눠 배정하고, <b>실제로 주문 가능한 정수 주만</b> 삽니다(소수점 없음). 1주 값이 배정액보다 비싸 못 사면 <b>다음 점수 순위 종목</b>을 삽니다. 추천이 4개가 안 되면 있는 종목끼리 현금을 나눠 삽니다. 정수 주로 사고 남는 돈은 현금으로 다음 달로 넘어갑니다. 미국 종목은 월말 환율('+Math.round(m.fx).toLocaleString()+'원/$)로 환산했고, 팔 때 드는 세금·수수료는 팔 때 반영됩니다.</div>';
+    +'</div><div class="sum-note">지수 적립은 같은 입금(매달 말)으로 코스피·S&P500·나스닥100(원화 환산)을 샀다면의 평가금입니다(배당·수수료·세금 제외). 지금 전략의 총자산 '+won(total)+'과 비교하세요. <span class="meta">계산 방식은 맨 아래 그림 참고</span></div>';
 }
 
 function renderLedger(){
@@ -1320,8 +1364,7 @@ function renderPlanView(){
     +'<div class="sum-i"><span class="k">판매 예정</span><b>'+(P.sells.length?P.sells.length+'건 '+won(sellSum):'없음')+'</b></div>'
     +'<div class="sum-i"><span class="k">'+(P.fd?'이달 첫날 구매(체결)':'구매 예정')+'</span><b>'+(P.buys.length?P.buys.length+'건 '+won(buySum):'없음')+'</b></div>'
     +'<div class="sum-i"><span class="k">유예 중(다음 달에도 아래면 매도)</span><b>'+P.watch.length+'종목</b></div>'
-    +'</div><div class="sum-note">기준: '+esc(P.api.updated['한국']||'')+' 시점 가격·점수. <b>이번 달이 끝날 때의 종가에 따라 바뀔 수 있는 예상</b>입니다. 국채 10년 금리: '+rateTxt+'.<br>'
-    +(P.fd?'구매는 <b>지난달 말에 조건을 채운 후보</b>(10이평 돌파 후 돌파 다음 달 시가 대비 +10% 이상 + 5>10>20 정배열) 중 점수 상위 4종목을 이번 달 첫날 종가에 샀습니다. 아래 "다음 달 첫날 구매 후보"는 이번 달 말에 확정되면 사는 종목입니다. 미국은 '+Math.round(LED.months[Object.keys(LED.months).sort().pop()].fx).toLocaleString()+'원/$(지난달말 환율)로 환산했습니다.</div>':'구매는 사이트 점수(최신 모델) 상위 4종목입니다(매수 신호 '+P.api.candidates+'개 중). 과거 일지는 그해 모델 순위라 조금 다를 수 있어요. 미국은 '+Math.round(LED.months[Object.keys(LED.months).sort().pop()].fx).toLocaleString()+'원/$(지난달말 환율)로 환산했습니다.</div>');
+    +'</div><div class="sum-note">기준: '+esc(P.api.updated['한국']||'')+' 시점 가격·점수. <b>이번 달이 끝날 때의 종가에 따라 바뀔 수 있는 예상</b>입니다. 국채 10년 금리: '+rateTxt+'. 미국은 '+Math.round(LED.months[Object.keys(LED.months).sort().pop()].fx).toLocaleString()+'원/$(지난달말 환율)로 환산했습니다. <span class="meta">구매·판매 규칙은 맨 아래 그림 참고</span></div>';
   var bal=P.cash0, html='';
   var gr=[];                                                                    // 줄을 누르면 월봉 그래프(현재 가격까지)
   var row=function(cls,k,name,sub,amt,after,args){
@@ -1493,8 +1536,8 @@ function renderStartCard(){
     +'<div class="yr-row">'+years.map(function(y){ return '<button class="yr-btn'+(y===selY?' sel':'')+'" data-sy="'+y+'">'+y+'</button>'; }).join('')+'</div>'
     +'<div class="mo-row">'+MONTHS.map(function(m){ var ym=selY+m, ok=yms.indexOf(ym)>=0;
         return '<button class="mo-btn'+(ym===START_YM?' sel':'')+'" data-sm="'+ym+'"'+(ok?'':' hidden')+'>'+m+'월</button>'; }).join('')+'</div>'
-    +'<div class="st-note">'+(START_YM===FIRST_YM?'기본(2011-12)부터 매달 100만원씩 같은 규칙으로 투자한 기록입니다. ':'선택한 달부터 빈손으로 시작해 매달 100만원씩 같은 규칙(매달 점수 상위 4종목, 같은 판매 기준)으로 투자했다면의 계산입니다. ')
-    +'시작 시점을 바꾸면 아래 모든 그래프·거래 내역이 그 기준으로 다시 계산돼요.</div>';
+    +'<div class="st-note">'+(START_YM===FIRST_YM?'기본(2011-12)부터 매달 100만원씩 같은 규칙으로 투자한 기록입니다. ':'선택한 달부터 빈손으로 시작해 같은 규칙으로 투자했다면의 계산입니다. ')
+    +'시작 시점을 바꾸면 아래 모든 그래프·거래 내역이 다시 계산돼요.</div>';
   card.innerHTML=h;
   card.querySelectorAll('[data-sy]').forEach(function(b){
     b.onclick=function(){
