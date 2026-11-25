@@ -219,14 +219,27 @@ canvas{display:block;width:100%;height:230px}
 .jf-ic{font-size:20px;margin-bottom:3px}
 .jf-foot{text-align:center;font-size:11.5px;color:var(--mut);margin:14px 0 0}
 @media(max-width:380px){.jf-grid{grid-template-columns:minmax(0,1fr)}}
+
+.amt-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px 8px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.amt-card label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;gap:4px}
+.amt-card label span{display:flex;align-items:center;gap:6px;color:var(--fg);font-size:13px;white-space:nowrap}
+.amt-card input{flex:1 1 auto;width:100%;min-width:0;font:inherit;font-size:16px;font-weight:700;color:var(--fg);background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:7px 9px;text-align:right;font-variant-numeric:tabular-nums}
+.amt-card input:focus{outline:2px solid var(--acc);border-color:transparent}
+.amt-kor{font-style:normal;font-size:12.5px;font-weight:700;color:var(--acc);text-align:right;min-height:1.2em}
+.amt-note{grid-column:1/-1;margin:0;font-size:11px;color:var(--mut);line-height:1.5}
 </style>
 </head>
 <body>
 <main>
   <h1>매매일지</h1>
-  <div class="sub"><span id="strat-label">10이평 돌파 후 +10%·정배열 매수 · tp2x트레일+금리유예2달</span> · 월 100만원 · 비용·세금 반영 · <a href="index.html">← 사이트</a></div>
+  <div class="sub"><span id="strat-label">10이평 돌파 후 +10%·정배열 매수 · tp2x트레일+금리유예2달</span> · <span id="dep-label">월 100만원</span> · 비용·세금 반영 · <a href="index.html">← 사이트</a></div>
 
   <div id="start-card"></div>
+  <div id="amt-card" class="amt-card">
+    <label>초기 시작 자금 <span><input id="in-init" type="number" inputmode="numeric" min="0" max="1000000" step="1" value="0"> 만원</span><em class="amt-kor" id="kor-init">0원</em></label>
+    <label>매월 불입금 <span><input id="in-dep" type="number" inputmode="numeric" min="0" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-dep">100만원</em></label>
+    <p class="amt-note" id="amt-note">금액을 바꾸고 Enter(또는 다른 곳을 누르면) 선택한 시작 시점부터 같은 규칙으로 다시 계산해요.</p>
+  </div>
 
   <div id="cum-card"></div>
 
@@ -268,7 +281,7 @@ canvas{display:block;width:100%;height:230px}
     <div class="jf-tl">
       <div class="jf-day"><i>🗓</i><b>월말 (말일 종가)</b></div>
       <div class="jf-step"><em>1</em><div><strong>판매 판단</strong><span>보유 종목이 <b>익절 트레일</b>(10이평의 2배 도달 후 하락)이거나 <b>10이평 아래</b>로 내려왔으면 판다. 금리가 오르는 중이면 즉시, 아니면 2개월째에 판다</span></div></div>
-      <div class="jf-step"><em>2</em><div><strong>입금</strong><span>매달 <b>100만원</b>이 들어온다</span></div></div>
+      <div class="jf-step"><em>2</em><div><strong>입금</strong><span>매달 <b id="jf-dep">100만원</b>이 들어온다</span></div></div>
       <div class="jf-step"><em>3</em><div><strong>세금</strong><span>12월에 그해 미국 주식 이익에서 <b>250만원 공제 후 22%</b>를 낸다</span></div></div>
       <div class="jf-step"><em>4</em><div><strong>후보 확정</strong><span>돌파 후 +10% · 5&gt;10&gt;20 정배열을 <b>이번 달 처음</b> 채운 종목이 후보가 된다</span></div></div>
       <div class="jf-day nx"><i>🛒</i><b>다음 달 1일 (첫날 종가)</b></div>
@@ -857,7 +870,7 @@ function renderSummary(){
   if(!m){ el.style.display='none'; return; }
   el.style.display='block';
   var yms=Object.keys(LED.months).sort(), idx=yms.indexOf(String(ym));
-  var cumDep=LED.meta.dep*(idx+1), total=m.cash+m.holdVal, pl=total-cumDep, pr=total/cumDep-1;
+  var cumDep=LED.meta.dep*(idx+1)+(LED.meta.init||0), total=m.cash+m.holdVal, pl=total-cumDep, pr=total/cumDep-1;
   var sellSum=m.sells.reduce(function(t,x){return t+x.amt;},0), buySum=m.buys.reduce(function(t,x){return t+x.amt;},0);
   var cls=pl>=0?'p':'n';
   el.innerHTML='<div class="sum-t">'+fmt(ym)+' 월말 현황</div><div class="sum-g">'
@@ -964,9 +977,9 @@ function benchKRW(k, ym){ var c=BENCH&&BENCH[k]&&BENCH[k][ym]; if(!c) return nul
 function benchRet(k, ym){ var a=benchKRW(k,ym), b=benchKRW(k,prevYmOf(ym)); return (a!=null&&b!=null)?a/b-1:null; }
 function benchDca(k, ym){                                                    // 첫 입금 달부터 ym까지 매달 같은 금액씩 지수를 샀을 때 {value, dep}
   if(!BENCH||!LED) return null;
-  var ks=Object.keys(LED.months).sort(), dep=LED.meta.dep, units=0, n=0;
-  for(var i=0;i<ks.length&&ks[i]<=String(ym);i++){ var p=benchKRW(k,ks[i]); if(p==null) return null; units+=dep/p; n++; }
-  var pn=benchKRW(k,String(ym)); return pn==null?null:{value:units*pn, dep:dep*n};
+  var ks=Object.keys(LED.months).sort(), dep=LED.meta.dep, init0=LED.meta.init||0, units=0, n=0;
+  for(var i=0;i<ks.length&&ks[i]<=String(ym);i++){ var p=benchKRW(k,ks[i]); if(p==null) return null; units+=(dep+(i===0?init0:0))/p; n++; }         // 첫 달에는 초기 자금도 같이 삼
+  var pn=benchKRW(k,String(ym)); return pn==null?null:{value:units*pn, dep:dep*n+init0};
 }
 function drawLabels(g, L){                                                  // 막대 위 숫자는 지수 점 위에 다시 그림(흰 테두리로 읽기 쉽게)
   g.textAlign='center'; g.textBaseline='middle'; g.lineJoin='round'; g.lineWidth=3; var halo=cssv('--card')||'#fff';
@@ -1448,6 +1461,11 @@ function renderPlanView(){
 /* ── 시작 시점 바꾸기: 그 달부터 같은 규칙으로 월 100만원씩 투자했다면 (브라우저에서 다시 계산) ──
    매달 무엇을 사는지(점수 상위 4)와 언제 파는지는 현금과 무관하게 정해지므로, 현금·수량·세금만 다시 계산한다. */
 var LED0=null, SNAP0=null, START_YM=null, START_Y=null, FIRST_YM=null, EXIT_C=null;
+var AMT={dep:null,init:0};                  // 사용자가 입력한 월 불입금·초기 자금(원). dep=null이면 장부 기본값(100만원)
+try{ var _d=localStorage.getItem('jdep'), _i=localStorage.getItem('jinit'); if(_d!==null&&_d!=='') AMT.dep=+_d; if(_i!==null&&_i!=='') AMT.init=+_i; }catch(e){}
+function curDep(){ return AMT.dep!=null&&AMT.dep>=0?AMT.dep:(LED0?LED0.meta.dep:1000000); }
+function curInit(){ return AMT.init>0?AMT.init:0; }
+function isDefaultAmt(){ return curInit()===0 && LED0 && curDep()===LED0.meta.dep; }
 function loadCosts(cb){ if(COSTS){ cb(); return; } fetch('tools/learn/costs.json').then(function(r){ return r.json(); }).then(function(c){ COSTS=c; cb(); }); }
 function exitMap(){
   if(EXIT_C) return EXIT_C; EXIT_C={};
@@ -1455,9 +1473,9 @@ function exitMap(){
   return EXIT_C;
 }
 function simulateFrom(S){
-  var C=COSTS, usFee=C.us.commission+C.us.fx_spread, krFee=C.kr.commission, dep=LED0.meta.dep, EX=exitMap(), exHeld=!!LED0.meta.excludeHeld;
+  var C=COSTS, usFee=C.us.commission+C.us.fx_spread, krFee=C.kr.commission, dep=curDep(), EX=exitMap(), exHeld=!!LED0.meta.excludeHeld;
   var yms=Object.keys(LED0.months).sort().filter(function(ym){ return ym>=S; });
-  var holds=[], cash=0, months={}, snaps={}, usGain={}, lastPx={}, fd=isFD(), pend=null;
+  var holds=[], cash=curInit(), months={}, snaps={}, usGain={}, lastPx={}, fd=isFD(), pend=null;
   var closeAt=function(y,ym,fallback){ var b=barsOf(y); var i=b&&b.pos[ym]; return i!=null?b.cs[i]:fallback; };
   yms.forEach(function(ym){
     var M0=LED0.months[ym], fx=M0.fx, Y=+ym.slice(0,4), mo=+ym.slice(4), sells=[], keep=[], buys=[], skipped=[];
@@ -1511,12 +1529,12 @@ function simulateFrom(S){
       cands:M0.cands||[]};                                                      // 그달 말 확정 후보(원래 장부 값): 마지막 달이면 이번 달 첫날 구매·예정 주문 계산에 씀
     snaps[ym]=holds.map(function(h){ return {y:h.y,name:h.name,buyYm:h.buyYm,buyPx:h.buyPx,curPx:h.last,sh:h.sh,basis:h.basis,ret:h.last/h.buyPx-1,score:h.score}; });
   });
-  return {meta:LED0.meta,months:months,snaps:snaps};
+  return {meta:Object.assign({},LED0.meta,{dep:dep,init:curInit()}),months:months,snaps:snaps};
 }
 function applyStart(S){
   START_YM=S; START_Y=S.slice(0,4); PLAN=null; PLAN_BUSY=false; PLAN_ERR=null;
   var done=function(){
-    if(S===FIRST_YM){ LED=LED0; DATA.snapshots=SNAP0; }
+    if(S===FIRST_YM && isDefaultAmt()){ LED=LED0; DATA.snapshots=SNAP0; }
     else { var r=simulateFrom(S); LED={meta:r.meta,months:r.months}; DATA.snapshots=r.snaps; }
     calcRets();
     var yms=Object.keys(LED.months).sort();
@@ -1524,8 +1542,36 @@ function applyStart(S){
     if(SEL_YM && String(SEL_YM)!==PLAN_YM && yms.indexOf(String(SEL_YM))<0) SEL_YM=yms[0];
     renderAll();
   };
-  if(S===FIRST_YM){ done(); return; }
+  if(S===FIRST_YM && isDefaultAmt()){ done(); return; }
   loadBars(function(){ loadCosts(done); });
+}
+
+function korMan(n){                         // 만원 단위 정수 → '1억원', '1억 2,345만원', '300만원', '0원' (입력할 때 실시간 표시)
+  n=Math.max(0,Math.round(+n||0)); var e=Math.floor(n/10000), m=n%10000;
+  if(!n) return '0원';
+  return (e?e.toLocaleString()+'억':'')+(e&&m?' ':'')+(m?m.toLocaleString()+'만원':'원');
+}
+function showKor(){ var a=document.getElementById('in-init'), b=document.getElementById('in-dep'), ka=document.getElementById('kor-init'), kb=document.getElementById('kor-dep'); if(a&&ka) ka.textContent=korMan(a.value); if(b&&kb) kb.textContent=korMan(b.value); }
+function manText(v){ v=Math.round(v/10000); return v.toLocaleString()+'만원'; }
+function syncAmtInputs(){
+  var a=document.getElementById('in-init'), b=document.getElementById('in-dep'); if(!a||!b||!LED0) return;
+  if(document.activeElement!==a) a.value=Math.round(curInit()/10000);
+  if(document.activeElement!==b) b.value=Math.round(curDep()/10000);
+  showKor();
+  var dl=document.getElementById('dep-label'); if(dl) dl.textContent=(curInit()>0?'초기 '+manText(curInit())+' · ':'')+'월 '+manText(curDep());
+  var jd=document.getElementById('jf-dep'); if(jd) jd.textContent=manText(curDep());
+}
+function wireAmtInputs(){
+  var a=document.getElementById('in-init'), b=document.getElementById('in-dep'); if(!a||!b||a._w) return; a._w=1;
+  var apply=function(){
+    var ni=Math.max(0,Math.min(1000000,Math.round(+a.value||0))), nd=Math.max(0,Math.min(1000000,Math.round(+b.value||0)));
+    a.value=ni; b.value=nd;
+    var oi=Math.round(curInit()/10000), od=Math.round(curDep()/10000); if(ni===oi && nd===od) return;
+    AMT.init=ni*10000; AMT.dep=nd*10000;
+    try{ localStorage.setItem('jinit',String(AMT.init)); localStorage.setItem('jdep',String(AMT.dep)); }catch(e){}
+    if(START_YM) applyStart(START_YM);
+  };
+  [a,b].forEach(function(el){ el.addEventListener('input',showKor); el.addEventListener('change',apply); el.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); el.blur(); } }); });
 }
 function renderStartCard(){
   var card=document.getElementById('start-card'); if(!LED0){ card.style.display='none'; return; }
@@ -1536,7 +1582,7 @@ function renderStartCard(){
     +'<div class="yr-row">'+years.map(function(y){ return '<button class="yr-btn'+(y===selY?' sel':'')+'" data-sy="'+y+'">'+y+'</button>'; }).join('')+'</div>'
     +'<div class="mo-row">'+MONTHS.map(function(m){ var ym=selY+m, ok=yms.indexOf(ym)>=0;
         return '<button class="mo-btn'+(ym===START_YM?' sel':'')+'" data-sm="'+ym+'"'+(ok?'':' hidden')+'>'+m+'월</button>'; }).join('')+'</div>'
-    +'<div class="st-note">'+(START_YM===FIRST_YM?'기본(2011-12)부터 매달 100만원씩 같은 규칙으로 투자한 기록입니다. ':'선택한 달부터 빈손으로 시작해 같은 규칙으로 투자했다면의 계산입니다. ')
+    +'<div class="st-note">'+(START_YM===FIRST_YM&&isDefaultAmt()?'기본(2011-12)부터 매달 100만원씩 같은 규칙으로 투자한 기록입니다. ':'선택한 달부터 '+(curInit()>0?'초기 자금 '+manText(curInit())+'으로 시작해 ':'빈손으로 시작해 ')+'매달 '+manText(curDep())+'씩 같은 규칙으로 투자했다면의 계산입니다. ')
     +'시작 시점을 바꾸면 아래 모든 그래프·거래 내역이 다시 계산돼요.</div>';
   card.innerHTML=h;
   card.querySelectorAll('[data-sy]').forEach(function(b){
@@ -1598,7 +1644,7 @@ function renderSoldList(){
 
 function renderAll(){
   try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) sl.textContent=DATA.meta.firstDay?'10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매) · tp2x트레일+국채10년 금리 유예2달':DATA.meta.strategy; }catch(e){}
-  renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
+  wireAmtInputs(); syncAmtInputs(); renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
     if(PLAN){ var hD=decPlanOf(PLAN), hh=planHoldings(PLAN); if(hD) hD.p2.buys.forEach(function(x){ hh.push({y:x.y,name:x.name,buyYm:+hD.dnx,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:typeof x.score==='number'?x.score/100:null,row:hD.rowOf[x.y],apiScore:x.score,raw:chartRaw(hD.rowOf[x.y])}); }); renderHoldings({holds:hh,fx:PLAN.fx,nx:hD?hD.dnx:null}); }
@@ -1618,7 +1664,7 @@ fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).th
   DATA=d; SNAP0=d.snapshots;
   var yms=Object.keys(d.snapshots).sort();
   SEL_YM=yms[yms.length-1]||null;
-  renderAll();
+  if(!isDefaultAmt() && START_YM) applyStart(START_YM); else renderAll();                      // 저장해 둔 금액이 기본값이 아니면 그 금액으로 다시 계산
 }).catch(function(){
   document.querySelector('main').innerHTML='<p style="color:var(--mut);padding:40px;text-align:center">데이터를 불러오지 못했어요.</p>';
 });
