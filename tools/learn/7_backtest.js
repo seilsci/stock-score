@@ -231,7 +231,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         if (fill && slots <= 0) break;
         const { r } = list[li];
         if (holds.some(h => h.y === r.y)) continue;           // 이미 가진 종목은 또 사지 않음(매수 후보에서 뺌)
-        if (opt.oneCo) { const ck = coKey(r.y); if (pickedCo.has(ck) || holds.some(h => coKey(h.y) === ck)) { coSkipN++; continue; } }      // 같은 회사(우선주·Class A/B 등)는 하나만
+        if (opt.oneCo !== false) { const ck = coKey(r.y); if (pickedCo.has(ck) || holds.some(h => coKey(h.y) === ck)) { coSkipN++; continue; } }      // 같은 회사(우선주·Class A/B 등)는 하나만
         let per = fill ? cash / Math.min(slots, opt.minDiv ? Math.max(list.length - li, opt.minDiv) : list.length - li) : per0;      // minDiv: 남은 후보가 적어도 최소 minDiv개 몫으로 나눔(나머지는 현금으로 둠)      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
         if (fill && opt.wRank) { const nn = Math.min(slots, list.length - li); if (nn > 1) per = opt.wRank > 0 ? cash * 2 / (nn + 1) : cash * 2 / (nn * (nn + 1)); }   // wRank: 순위 비례 비중(+1: 앞순위에 더, −1: 뒷순위에 더(대조)). 남은 nn자리에 nn, nn−1, … 1 (또는 반대) 몫
         const o = px(r.y), p = priceAt(o, r); if (p === undefined || !(p > 0)) { if (opt.firstDay) fdMiss++; continue; }
@@ -258,7 +258,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         } else { sh = a * (1 - fee) / pKrw; }
         }
         const bScore = list[li].s ?? ((scored[kA].get(ymOf(sigK)) || []).find(e => e.r.y === r.y)?.s ?? 0);        // 후보 자신의 점수(확인 매수는 돌파 시점 점수)
-        if (opt.oneCo) pickedCo.add(coKey(r.y));
+        if (opt.oneCo !== false) pickedCo.add(coKey(r.y));
         holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
           buyYm: ymOf(k), buyK: k, buyPx: p, buyScore: bScore,
           buyFeats: r.x });
@@ -1494,8 +1494,8 @@ if (process.env.STAGE14 !== '0') {
   }
   if (process.env.AD8_CO === '1' && RT14) {                             // 같은 회사(보통주·우선주, Class A/B 등)는 하나만 사는 시험 — 후보·판매 규칙은 현재 그대로
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
-    V.push({ sec: '기준', name: 'A 지금: 같은 회사 여러 종목 허용', cand: conf, rule: rule10 });
-    V.push({ sec: '같은 회사', name: 'C1 같은 회사는 하나만(보유 중이어도 같은 회사는 안 삼)', cand: conf, rule: rule10, o: { oneCo: true } });
+    V.push({ sec: '기준', name: 'A 예전: 같은 회사 여러 종목 허용', cand: conf, rule: rule10, o: { oneCo: false } });
+    V.push({ sec: '같은 회사', name: 'C1 지금(기본): 같은 회사는 하나만(보유 중이어도 같은 회사는 안 삼)', cand: conf, rule: rule10 });
     AD8.co = true;
   }
   if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만

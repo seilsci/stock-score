@@ -1301,18 +1301,24 @@ function isEtfHold(h){ var t=findFeats({y:h.y,buyYm:h.buyYm}); var f=t&&t.feats.
 
 // 시뮬레이션(7_backtest.js)과 같은 규칙: 매도(익절 트레일 → 10이평 아래 유예 2달, 금리 인상 중이면 즉시) → 입금 → 정수 주 매수(종목당 현금÷4)
 // o: {nowYm, lastYm, holds[], cash, dep, fx, rateUp, picks[{y,name,us,px,score}], N}
+function coKeyN(name, y){                     // 같은 회사 판별(백테스트 coKey와 같은 규칙): 이름에서 괄호·ADR·Class·우선주 꼬리를 떼어 같으면 한 회사 → 한 회사는 하나만 삼
+  var n=name||''; if(!n) return y;
+  n=n.replace(/\s*\(.*?\)\s*/g,'').replace(/\s*(ADR|ADS)\s*$/,'').replace(/\s*(Class|클래스)\s*[A-C]\s*$/,'').replace(/\s+[A-C]$/,'');
+  if(/[가-힣]/.test(n)) n=n.replace(/(우선주|2우B|3우B|우B|우C|우)$/,'');
+  n=n.trim(); return n||y;
+}
 function planCore(o){
   var C=COSTS, usFee=C.us.commission+C.us.fx_spread, krFee=C.kr.commission, year=Math.floor(+o.nowYm/100);
   var sells=[], watch=[], cash=o.cash, fdBuys=[], fdSkipped=[], holdsAll=o.holds;
   if(o.fd){                                                                                // 첫날 구매: 이번 달 첫날에 지난달 말 확정 후보를 지난달 말 현금으로 이미 샀다(가격은 첫날 종가)
-    var heldF={}; o.holds.forEach(function(h){ heldF[h.y]=1; });
+    var heldF={}; o.holds.forEach(function(h){ heldF[coKeyN(h.name,h.y)]=1; });
     var rsvF=(+o.nowYm%100===12)?Math.min(Math.max(0,o.cash),C.us.cg_tax_rate*Math.max(0,(o.usGainYtd||0)-C.us.cg_exemption_krw)):0;   // 12월 첫날 구매: 나올 양도세를 먼저 떼어 둠
     var cF=o.cash-rsvF, slotsF=o.N||4, listF=o.cands||[];
     for(var lf=0; lf<listF.length && slotsF>0; lf++){
-      var rf=listF[lf]; if(heldF[rf.y]) continue;
+      var rf=listF[lf]; if(heldF[coKeyN(rf.name,rf.y)]) continue;
       var perF=cF/Math.min(slotsF,listF.length-lf), feeF=rf.us?usFee:krFee, pkF=rf.px*(rf.us?o.fx:1), lotsF=Math.floor(Math.min(perF,cF)*(1-feeF)/pkF);
       if(lotsF<1){ fdSkipped.push({y:rf.y,name:rf.name,us:rf.us,px:rf.px,one:pkF,per:Math.min(perF,cF)}); continue; }
-      var aF=lotsF*pkF/(1-feeF); cF-=aF; slotsF--; heldF[rf.y]=1;
+      var aF=lotsF*pkF/(1-feeF); cF-=aF; slotsF--; heldF[coKeyN(rf.name,rf.y)]=1;
       fdBuys.push({y:rf.y,name:rf.name,us:rf.us,sh:lotsF,px:rf.px,fxUsed:rf.us?o.fx:null,gross:aF*(1-feeF),fee:aF*feeF,feeRate:feeF,amt:aF,score:rf.score,brk:rf.brk});
     }
     cash=cF+rsvF;
@@ -1350,9 +1356,9 @@ function planCore(o){
   var cash1=cash+o.dep, N=o.N||4, buys=[], skipped=[], c=cash1, slots=N, list=o.picks||[];
   if(o.fd){ buys=fdBuys; skipped=fdSkipped; }
   else {
-  var held={}; (o.holds||[]).forEach(function(h){ held[h.y]=1; }); sells.forEach(function(x){ delete held[x.y]; });
+  var held={}; (o.holds||[]).forEach(function(h){ held[coKeyN(h.name,h.y)]=1; }); sells.forEach(function(x){ delete held[coKeyN(x.name,x.y)]; });
   for(var li=0; li<list.length && slots>0; li++){                                          // 점수 순위대로: 1주도 못 사면 건너뛰고 다음 순위를 산다
-    var r=list[li]; if(held[r.y]) continue;                                               // 이미 가진 종목은 매수 후보에서 뺌
+    var r=list[li]; if(held[coKeyN(r.name,r.y)]) continue;                                               // 이미 가진 종목은 매수 후보에서 뺌
     var per=c/Math.min(slots,list.length-li);                                             // 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽) → 추천이 모자라면 있는 만큼 나눔
     var fee=r.us?usFee:krFee, pKrw=r.px*(r.us?o.fx:1), lots=Math.floor(Math.min(per,c)*(1-fee)/pKrw);
     if(lots<1){ skipped.push({y:r.y,name:r.name,us:r.us,px:r.px,one:pKrw,per:Math.min(per,c)}); continue; }
@@ -1633,7 +1639,7 @@ function simulateFrom(S){
       var slots=4;
       for(var li=0; li<cands.length && slots>0; li++){
         var r=cands[li], per=cash/Math.min(slots,cands.length-li), ex, isBuy;
-        if(exHeld && holds.some(function(h){ return h.y===r.y; })) continue;      // 이미 가진 종목은 또 사지 않음(새 장부만: 옛 장부는 원래 일지와 같게)
+        if(exHeld && holds.some(function(h){ return coKeyN(h.name,h.y)===coKeyN(r.name,r.y); })) continue;      // 이미 가진 종목은 또 사지 않음(새 장부만: 옛 장부는 원래 일지와 같게)
         if(hasCands){
           var bb=barsOf(r.y); isBuy=!!(bb&&bb.pos[ym]!=null);                    // 월봉이 있어야 보유 평가·판매 시점을 계산할 수 있음
           ex=EX[r.y+'|'+ym]; if(ex===undefined){ ex=isBuy?exitFor(r.y,+ym):undefined; if(ex===undefined) isBuy=false; }   // 원래 일지가 산 종목은 실제 판매 기록, 아니면 같은 규칙으로 계산
