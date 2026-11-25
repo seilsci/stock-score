@@ -53,6 +53,7 @@ h1{font-size:18px;margin:0 0 2px;font-weight:700}
 .lr-sc.no{cursor:default;color:var(--mut)}.lr-sc.no:hover{background:var(--chip);color:var(--mut)}.my-nt{font-size:11px;color:var(--mut)}
 .my-tb td.my-x{width:26px;padding:0 0 0 4px}.my-tb .x{border:none;background:transparent;color:var(--mut);font-size:18px;cursor:pointer;padding:0 4px}
 .my-tb tr.clk{cursor:pointer}.my-tb tr.my-gr td{padding:0;border-bottom:none;text-align:left}.my-tb .lr-c{padding:6px 0 8px}
+.rc-rt{display:flex;align-items:baseline;gap:10px;white-space:nowrap}.rc-pct{font-size:11.5px;font-weight:700;color:var(--acc)}
 .rc-r.clk{cursor:pointer}.rc-nm{font-weight:600}.my-rec .lr-c{padding:6px 0 10px}
 .rc-g{font-size:12px;font-weight:700;margin:10px 0 4px}.rc-g.s{color:var(--sell)}.rc-g.b{color:var(--buy)}.rc-g.w{color:var(--ma)}.rc-g.k{color:var(--mut)}
 .rc-r{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px}.rc-r small{display:block;color:var(--mut);font-size:11.5px}.rc-r b{font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -1999,7 +2000,7 @@ function myRecRender(open){
   var line=function(o){                       // 한 줄: 이름(누르면 월봉 그래프) · 점수 칩(누르면 나무) · 설명 · 오른쪽 금액
     var gi=G.length; G.push(o.g||null);
     var si=-1; if(o.sc){ si=S.length; S.push(o.sc); }
-    return '<div class="rc-r'+(o.g?' clk':'')+'"'+(o.g?' data-g="'+gi+'"':'')+'><div><span class="rc-nm">'+esc(o.name)+'</span>'+(o.us?' <small style="display:inline">미국</small>':'')+(o.score!=null?' <span class="lr-sc" data-rs="'+si+'">'+o.score+'</span>':(o.hold?' <span class="lr-sc no">-</span> <small style="display:inline">월봉이 형성되지 않음</small>':''))+(o.sub?'<small>'+o.sub+'</small>':'')+'</div>'+(o.right?'<b>'+o.right+'</b>':'')+'</div>'+(o.g?'<div class="lr-c"><canvas></canvas></div>':'');
+    return '<div class="rc-r'+(o.g?' clk':'')+'"'+(o.g?' data-g="'+gi+'"':'')+'><div><span class="rc-nm">'+esc(o.name)+'</span>'+(o.us?' <small style="display:inline">미국</small>':'')+(o.score!=null?' <span class="lr-sc" data-rs="'+si+'">'+o.score+'</span>':(o.hold?' <span class="lr-sc no">-</span> <small style="display:inline">월봉이 형성되지 않음</small>':''))+(o.sub?'<small>'+o.sub+'</small>':'')+'</div>'+(o.right?'<div class="rc-rt">'+(o.pct?'<span class="rc-pct">'+o.pct+'</span>':'')+'<b>'+o.right+'</b></div>':'')+'</div>'+(o.g?'<div class="lr-c"><canvas></canvas></div>':'');
   };
   var holdSc=function(x){ var us=isUSy(x.y), prevM=myPrevYm(+x.buyYm), sc=scoreFromBars(x.y,prevM,us), f=sc!=null?featsFromBars(x.y,prevM,us):null;
     return {score:sc,sc:f?{y:x.y,buyYm:+x.buyYm,name:x.name,feats:f,label:' 구매 당시 점수(구매 전달 말 지표), ',note:'이 점수는 내가 <b>산 시점(구매 전달 말)의 지표</b>를 최신 모델로 계산한 값입니다. 시장 지수 관련 3개 항목은 0으로 처리됩니다.'}:null}; };
@@ -2013,8 +2014,9 @@ function myRecRender(open){
   if(R.keep.length) h+='<div class="rc-g k">계속 보유 ('+R.keep.length+'종목)</div>'+R.keep.map(function(x){ var hs=holdSc(x); return line({hold:true,name:x.name||x.y,us:isUSy(x.y),score:hs.score,sc:hs.sc,g:hg(x,false),sub:'이번 판단에서는 팔지 않아요'}); }).join('');
   if(R.nobars.length) h+='<div class="rc-g k">판단 못 함 (월봉 자료 없음)</div><div class="rc-r"><div>'+R.nobars.map(function(p){ return esc(p.name||p.code)+' <span class="lr-sc no">-</span> <small style="display:inline">'+myNoScoreText(p.code)+'</small>'; }).join('<br>')+'<small>종목 이름을 검색해서 고르면 코드가 자동으로 채워져요</small></div></div>';
   h+='<div class="rc-g b">'+fmt(R.dnx).slice(5)+'월 1일 구매 추천 (잠정 · 후보 '+R.nc.length+'개)</div>';
-  h+='<div class="rc-r"><div>구매에 쓸 수 있는 돈<small>내 현금 + 판매 추천 수령액</small></div><b>'+rn(R.P.cash1)+'</b></div>';
-  h+=R.P.cash1<=0?'':R.P2.buys.length?R.P2.buys.map(function(x){ var cs=candSc(x); return line({name:x.name,us:x.us,score:cs.score,sc:cs.sc,g:cg(x),sub:x.sh+'주 × '+(x.us?'$'+(+x.px).toLocaleString():rn(x.px))+(x.us?' (환율 '+Math.round(x.fxUsed||0).toLocaleString()+')':'')+' · 수수료 '+rn(x.fee),right:rn(x.amt)}); }).join(''):'<div class="rc-r"><div>'+(R.nc.length?'지금 돈으로 살 수 있는 후보가 없어요':'이번 달 확정 후보가 아직 없어요(월말에 정해져요)')+'</div></div>';
+  var buyTot=R.P2.buys.reduce(function(t,x){ return t+x.amt; },0), pctOf=function(a){ return R.P.cash1>0?(a/R.P.cash1*100).toFixed(1)+'%':''; };
+  h+='<div class="rc-r"><div>구매에 쓸 수 있는 돈<small>내 현금 + 판매 추천 수령액</small></div><div class="rc-rt">'+(R.P.cash1>0&&R.P2.buys.length?'<span class="rc-pct">구매 '+pctOf(buyTot)+'</span>':'')+'<b>'+rn(R.P.cash1)+'</b></div></div>';
+  h+=R.P.cash1<=0?'':R.P2.buys.length?R.P2.buys.map(function(x){ var cs=candSc(x); return line({name:x.name,us:x.us,score:cs.score,sc:cs.sc,g:cg(x),sub:x.sh+'주 × '+(x.us?'$'+(+x.px).toLocaleString():rn(x.px))+(x.us?' (환율 '+Math.round(x.fxUsed||0).toLocaleString()+')':'')+' · 수수료 '+rn(x.fee),pct:pctOf(x.amt),right:rn(x.amt)}); }).join(''):'<div class="rc-r"><div>'+(R.nc.length?'지금 돈으로 살 수 있는 후보가 없어요':'이번 달 확정 후보가 아직 없어요(월말에 정해져요)')+'</div></div>';
   if(R.P.cash1<=0) h+='<div class="rc-r"><div>구매에 쓸 돈이 없어서 구매 추천은 하지 않아요<small>내 현금이 0 이하예요(판매 추천 수령액을 더해도 부족해요)</small></div></div>';
   if(R.P.cash1>0&&R.P2.skipped.length) h+='<div class="rc-g k">1주도 못 사서 건너뜀</div>'+R.P2.skipped.map(function(x){ var cs=candSc(x); return line({name:x.name,us:x.us,score:cs.score,sc:cs.sc,g:cg(x),sub:'1주 '+rn(x.one)+' > 배정액 '+rn(x.per)}); }).join('');
   h+='<p class="amt-note" style="margin:8px 0 0">잠정 추천이에요. 이달 말 종가가 확정되면 바뀔 수 있고, 후보는 점수 순으로 정해요. 종목 이름을 누르면 월봉 그래프, 점수를 누르면 점수 근거가 나와요. 매매 실행은 직접 하세요(이 화면은 추천만 해요).</p>';
