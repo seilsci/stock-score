@@ -167,6 +167,14 @@ const pickLiqA = (pct, N) => ym => {
 const pickKrA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 0).slice(0, N);
 const pickUsA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 1).slice(0, N);
 
+// 같은 회사 판별(보통주·우선주, Class A/B/C, 환헤지 ETF 등): 이름에서 괄호·Class·우선주 꼬리를 떼어 같으면 한 회사로 봄 (opt.oneCo 시험용)
+const CO_NAME = new Map(); try { JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json'))).forEach(x => CO_NAME.set(x.y, x.name)); } catch (e) {}
+function coKey(y) {
+  let n = CO_NAME.get(y); if (!n) return y;
+  n = n.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*(Class|클래스)\s*[A-C]\s*$/, '').replace(/\s+[A-C]$/, '');
+  if (/[가-힣]/.test(n)) n = n.replace(/(우선주|2우B|3우B|우B|우C|우)$/, '');
+  return n.trim() || y;
+}
 // ── 시뮬레이션
 function krTax(C, Y) { const t = C.kr.sell_tax, nm = x => x < 10000 ? x * 100 + 1 : x, yy = Y < 10000 ? Y * 100 + 12 : Y; let v = 0; Object.keys(t).map(Number).sort((a, b) => nm(a) - nm(b)).forEach(y => { if (nm(y) <= yy) v = t[y]; }); return v; }     // 키: 연도(YYYY, 그 해 1월부터) 또는 연월(YYYYMM, 그 달 말 매도부터). Y: 연도 또는 연월
 function simulate(pickFn, N, C, opt = {}, dep = DEP) {
@@ -217,11 +225,13 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (list.length) {
       const per0 = cash / (N || picks.length);
       let slots = N || picks.length;
+      const pickedCo = new Set();                           // 이번 구매에서 이미 고른 회사(opt.oneCo)
       if (opt.maxHold) slots = Math.max(0, Math.min(slots, opt.maxHold - holds.length));      // 총 보유 종목 상한: 상한을 넘기지 않는 만큼만 새로 삼(현금은 남겨 둠)
       for (let li = 0; li < list.length; li++) {
         if (fill && slots <= 0) break;
         const { r } = list[li];
         if (holds.some(h => h.y === r.y)) continue;           // 이미 가진 종목은 또 사지 않음(매수 후보에서 뺌)
+        if (opt.oneCo) { const ck = coKey(r.y); if (pickedCo.has(ck) || holds.some(h => coKey(h.y) === ck)) continue; }      // 같은 회사(우선주·Class A/B 등)는 하나만
         let per = fill ? cash / Math.min(slots, opt.minDiv ? Math.max(list.length - li, opt.minDiv) : list.length - li) : per0;      // minDiv: 남은 후보가 적어도 최소 minDiv개 몫으로 나눔(나머지는 현금으로 둠)      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
         if (fill && opt.wRank) { const nn = Math.min(slots, list.length - li); if (nn > 1) per = opt.wRank > 0 ? cash * 2 / (nn + 1) : cash * 2 / (nn * (nn + 1)); }   // wRank: 순위 비례 비중(+1: 앞순위에 더, −1: 뒷순위에 더(대조)). 남은 nn자리에 nn, nn−1, … 1 (또는 반대) 몫
         const o = px(r.y), p = priceAt(o, r); if (p === undefined || !(p > 0)) { if (opt.firstDay) fdMiss++; continue; }
@@ -248,6 +258,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         } else { sh = a * (1 - fee) / pKrw; }
         }
         const bScore = list[li].s ?? ((scored[kA].get(ymOf(sigK)) || []).find(e => e.r.y === r.y)?.s ?? 0);        // 후보 자신의 점수(확인 매수는 돌파 시점 점수)
+        if (opt.oneCo) pickedCo.add(coKey(r.y));
         holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
           buyYm: ymOf(k), buyK: k, buyPx: p, buyScore: bScore,
           buyFeats: r.x });
@@ -1480,6 +1491,11 @@ if (process.env.STAGE14 !== '0') {
       V.push({ sec: '익절 기준', name, cand: ym => m.get(ym) || [], rule });
     });
     AD8.tune = true;
+  }
+  if (process.env.AD8_CO === '1' && RT14) {                             // 같은 회사(보통주·우선주, Class A/B 등)는 하나만 사는 시험 — 후보·판매 규칙은 현재 그대로
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
+    V.push({ sec: '기준', name: 'A 지금: 같은 회사 여러 종목 허용', cand: conf, rule: rule10 });
+    V.push({ sec: '같은 회사', name: 'C1 같은 회사는 하나만(보유 중이어도 같은 회사는 안 삼)', cand: conf, rule: rule10, o: { oneCo: true } });
   }
   if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' });
