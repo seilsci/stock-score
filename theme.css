@@ -15,3 +15,7 @@ input,select,textarea{border:none !important;border-bottom:1.5px solid var(--fg)
 .tag,.tag.yu,.rtag,.rtag.tp{background:transparent !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important}
 .tag.yu,.rtag.tp{color:#1f4e8c !important}
 @media (prefers-color-scheme:dark){.tag.yu,.rtag.tp{color:#7db1ee !important}}
+/* 연·월 버튼 칸 맞춤: 같은 폭 6칸 */
+.yr-row,.mo-row{display:grid !important;grid-template-columns:repeat(6,1fr);gap:4px 0 !important}
+.yr-btn,.mo-btn{text-align:center;padding-left:0 !important;padding-right:0 !important;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mo-btn.plan{grid-column:span 2}
