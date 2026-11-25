@@ -358,7 +358,7 @@ function renderNav(){
   moEl.innerHTML = MONTHS.map(function(m){
     var ym = selY+m;
     if(ym===planYm) return '<button class="mo-btn plan'+(ym===String(SEL_YM)?' sel':'')+'" data-ym="'+ym+'">'+m+'월 예정</button>';
-    var inData = yms.includes(ym);
+    var inData = yms.includes(ym) && !(LED && LED.months[ym] && LED.months[ym].syn);
     var trades = DATA.trades.filter(function(t){ return String(t.buyYm)===ym||String(t.sellYm)===ym; });
     var hasBuy = trades.some(function(t){ return String(t.buyYm)===ym; });
     var hasSell = trades.some(function(t){ return String(t.sellYm)===ym; });
@@ -1197,6 +1197,7 @@ window.addEventListener('resize',function(){ if(LED && SEL_YM) renderYearChart()
 var API='https://script.google.com/macros/s/AKfycbwneUZ409vUCsLONb7sBwv7zeVeo0CGtxXfMsou-bAm6OOW4q4l1RGzQ89ZKVHQ2jyS/exec';   // 시트(Apps Script) 웹 앱: 이번 달 점수·가격 (index.html과 같은 주소)
 var COSTS=null, PLAN=null, PLAN_YM=null, PLAN_BUSY=false, PLAN_ERR=null;
 function isUSy(y){ return !/\.(KS|KQ)$/.test(y); }
+function planDep(){ return (START_YM&&PLAN_YM&&START_YM===PLAN_YM)?curInit():LED.meta.dep; }         // 시작 시점이 이번 달(예정 달)이면 이번 달 입금 = 첫달 투자금
 function nextYmOf(ym){ ym=+ym; return String(ym%100===12 ? ym+89 : ym+1); }
 function barsOf(y){
   var u=barsFor(y); if(!u) return null;
@@ -1328,7 +1329,7 @@ function loadPlan(){
       .sort(function(a,b){ return (+b['점수'])-(+a['점수']) || (+b['시총'])-(+a['시총']); })
       .map(function(x){ return {y:x['시장']==='US'?x['코드']:x['코드']+(x['시장']==='KOSPI'?'.KS':'.KQ'),name:x['이름'],us:x['시장']==='US',px:+x['최근종가'],score:+x['점수'],cap:x['시총'],row:x}; });
     var fd=isFD(), cands=fd?(L.cands||[]).map(function(c){ var sc=c.brk?scoreOf(c.y,c.brk):null; return {y:c.y,name:c.name,us:c.us,px:c.px,score:sc!=null?sc:'-',brk:c.brk}; }):null;
-    var core=planCore({nowYm:nextYmOf(lastYm),lastYm:lastYm,holds:DATA.snapshots[lastYm]||[],cash:L.cash,dep:LED.meta.dep,fx:L.fx,rateUp:api.rateUp===true,picks:picks,N:4,usGainYtd:usGainYtdOf(nextYmOf(lastYm)),fd:fd,cands:cands});
+    var core=planCore({nowYm:nextYmOf(lastYm),lastYm:lastYm,holds:DATA.snapshots[lastYm]||[],cash:L.cash,dep:planDep(),fx:L.fx,rateUp:api.rateUp===true,picks:picks,N:4,usGainYtd:usGainYtdOf(nextYmOf(lastYm)),fd:fd,cands:cands});
     core.fd=fd; core.next=api.rows.filter(function(x){ return x['신호']==='확인'; }).sort(function(a,b){ return (+b['점수'])-(+a['점수']); });
     core.api={updated:api.updated,rateUp:api.rateUp,candidates:api.rows.filter(function(x){ return x['신호']==='매수'; }).length};
     core.fx=L.fx; core.base=DATA.snapshots[lastYm]||[];
@@ -1387,7 +1388,7 @@ function renderPlanView(){
   sc.innerHTML='<div class="sum-t">'+fmt(ym)+' · 지금 사면 이렇게 삽니다 <span class="plan-tag">예정</span></div><div class="sum-g">'
     +'<div class="sum-i sum-big"><span class="k">예상 월말 현금</span><b>'+won(P.cashEnd)+'</b></div>'
     +'<div class="sum-i"><span class="k">전달 이월 현금</span><b>'+won(P.cash0)+'</b></div>'
-    +'<div class="sum-i"><span class="k">이달 입금</span><b>'+won(LED.meta.dep)+'</b></div>'
+    +'<div class="sum-i"><span class="k">이달 입금</span><b>'+won(planDep())+'</b></div>'
     +'<div class="sum-i"><span class="k">판매 예정</span><b>'+(P.sells.length?P.sells.length+'건 '+won(sellSum):'없음')+'</b></div>'
     +'<div class="sum-i"><span class="k">'+(P.fd?'이달 첫날 구매(체결)':'구매 예정')+'</span><b>'+(P.buys.length?P.buys.length+'건 '+won(buySum):'없음')+'</b></div>'
     +'<div class="sum-i"><span class="k">유예 중(다음 달에도 아래면 매도)</span><b>'+P.watch.length+'종목</b></div>'
@@ -1403,7 +1404,7 @@ function renderPlanView(){
   if(P.fd) bal-=buySum;                                                      // 첫날 구매 방식: 이달 첫날 구매는 지난달 화면(10월)에 있고, 이 화면은 말일 + 다음 달 1일
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">'+(P.fd?'월초 현금 <span class="meta">(지난달 말 현금 − 이달 첫날 구매)</span>':'전달 이월 현금')+'</div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
   var FDP=!!P.fd;
-  var depRow=function(){ bal+=LED.meta.dep; row('dep','입금','월 적립금','',signWon(LED.meta.dep),bal); };
+  var depRow=function(){ var dd=planDep(); bal+=dd; row('dep','입금',(START_YM===PLAN_YM?'첫달 투자금':'월 적립금'),'',signWon(dd),bal); };
   var sellRows=function(){
   P.sells.forEach(function(x){
     bal+=x.amt;
@@ -1554,6 +1555,12 @@ function simulateFrom(S){
 function applyStart(S){
   START_YM=S; START_Y=S.slice(0,4); PLAN=null; PLAN_BUSY=false; PLAN_ERR=null;
   var done=function(){
+    if(S===PLAN_YM){                                                             // 이번 달(예정 달)부터 시작: 아직 장부에 없는 달 → 빈손(전달 현금 0·보유 없음)으로 예정 주문 화면만 계산
+      var lastYm=Object.keys(LED0.months).sort().pop(), L0=LED0.months[lastYm];
+      var mm={}; mm[lastYm]={dep:0,tax:0,cash:0,holdVal:0,fx:L0.fx,buys:[],sells:[],skipped:[],cands:[],syn:true};
+      LED={meta:Object.assign({},LED0.meta,{dep:curDep(),init:curInit()}),months:mm}; var sn={}; sn[lastYm]=[]; DATA.snapshots=sn;
+      calcRets(); SEL_YM=PLAN_YM; renderAll(); return;
+    }
     if(S===FIRST_YM && isDefaultAmt()){ LED=LED0; DATA.snapshots=SNAP0; }
     else { var r=simulateFrom(S); LED={meta:r.meta,months:r.months}; DATA.snapshots=r.snaps; }
     calcRets();
@@ -1596,7 +1603,7 @@ function wireAmtInputs(){
 function renderStartCard(){
   var card=document.getElementById('start-card'); if(!LED0){ card.style.display='none'; return; }
   card.style.display='block';
-  var yms=Object.keys(LED0.months).sort(), years=[], seen={}; yms.forEach(function(ym){ var y=ym.slice(0,4); if(!seen[y]){ seen[y]=1; years.push(y); } });
+  var yms=Object.keys(LED0.months).sort(), years=[], seen={}; if(PLAN_YM) yms.push(PLAN_YM); yms.forEach(function(ym){ var y=ym.slice(0,4); if(!seen[y]){ seen[y]=1; years.push(y); } });     // 이번 달(예정 달)도 시작 시점으로 고를 수 있게 포함
   var selY=START_Y||years[0];
   var h='<div class="st-h"><div class="st-t">시작 시점</div><div class="st-v">'+fmt(START_YM)+'부터</div></div>'
     +'<div class="yr-row">'+years.map(function(y){ return '<button class="yr-btn'+(y===selY?' sel':'')+'" data-sy="'+y+'">'+y+'</button>'; }).join('')+'</div>'
