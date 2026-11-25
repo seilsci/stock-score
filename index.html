@@ -130,7 +130,7 @@ a{color:inherit}
 </head>
 <body>
 <main>
-  <div class="tabs navtabs"><a class="tab on" href="index.html">📈 종목</a><a class="tab" id="tj" href="journal.html">📒 매매일지</a></div>
+  <div class="tabs navtabs"><a class="tab on" href="index.html">📈 종목</a><a class="tab" id="tj" href="journal.html#log">📒 매매일지</a><a class="tab" id="tr" href="journal.html#ret">📊 수익률</a></div>
   <header>
     <h1>월봉 10이평 돌파 후 +10% · 정배열 매수</h1>
     <div class="sub" id="upd">불러오는 중…</div>
@@ -192,7 +192,7 @@ a{color:inherit}
 <script>
 var API = 'https://script.google.com/macros/s/AKfycbwneUZ409vUCsLONb7sBwv7zeVeo0CGtxXfMsou-bAm6OOW4q4l1RGzQ89ZKVHQ2jyS/exec';
 var DATA = null, M = 'KR', S = '매수', SEL = null, LIST = [];
-try { if (/[?&]x=1(&|$)/.test(location.search)) localStorage.setItem('jx', '1'); else if (/[?&]x=0(&|$)/.test(location.search)) localStorage.removeItem('jx'); if (localStorage.getItem('jx') === '1') document.getElementById('tj').href = 'journal.html?x=1'; } catch (e) {}
+try { if (/[?&]x=1(&|$)/.test(location.search)) localStorage.setItem('jx', '1'); else if (/[?&]x=0(&|$)/.test(location.search)) localStorage.removeItem('jx'); if (localStorage.getItem('jx') === '1') { document.getElementById('tj').href = 'journal.html?x=1#log'; document.getElementById('tr').href = 'journal.html?x=1#ret'; } } catch (e) {}
 try { M = localStorage.getItem('m') || 'KR'; S = localStorage.getItem('s') || '매수'; } catch (e) {}
 
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
