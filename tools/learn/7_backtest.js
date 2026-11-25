@@ -1460,6 +1460,14 @@ if (process.env.STAGE14 !== '0') {
     V.push({ sec: '현금 이자 반영(세금 제외)', name: '놀고 있는 현금에 미국 3개월 단기국채 금리(그 달 값)', cand: conf, rule: rule10, o: { cashRateFn: k => { const v = rtk(k).dtb3; return v != null ? v / 100 : 0; } } });
     V.push({ sec: '현금 이자 반영(세금 제외)', name: '최소 4종목 몫 + 연 3% 이자', cand: conf, rule: rule10, o: { minDiv: 4, cashRateFn: () => 0.03 } });
   }
+  if (process.env.AD8_TP === '1' && RT14) {                             // 익절 기준 시험: 2배(지금)·2.5·3·4배·없음 — 후보·유예·금리는 현재 규칙 그대로, 삼성전자·SK하이닉스 거래도 같이 찍음
+    V.length = 0;
+    [[2, 'A 지금: 익절 2배 트레일'], [2.5, 'T1 익절 2.5배 트레일'], [3, 'T2 익절 3배 트레일'], [4, 'T3 익절 4배 트레일'], [0, 'T4 익절 없음(10이평 이탈·금리만)']].forEach(([tp, name]) => {
+      const rule = { tp, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, m = pool({ thr: 0.1, rule, rateName: '국채10년 6개월' });
+      V.push({ sec: '익절 기준', name, cand: ym => m.get(ym) || [], rule });
+    });
+    AD8.tune = true;
+  }
   if (process.env.AD8_TUNE === '1' && RT14) {                           // 궁금증 시험: 삼성전자·SK하이닉스(2025)를 잡도록 정배열 완화·순위 기준·보유 수를 바꿔 보고 성과와 두 종목 매수 여부를 봄
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) };
     const P = al => pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월', align: al });
