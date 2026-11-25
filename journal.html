@@ -1481,6 +1481,7 @@ function renderPlanView(){
 
 /* ── 시작 시점 바꾸기: 그 달부터 같은 규칙으로 월 100만원씩 투자했다면 (브라우저에서 다시 계산) ──
    매달 무엇을 사는지(점수 상위 4)와 언제 파는지는 현금과 무관하게 정해지므로, 현금·수량·세금만 다시 계산한다. */
+var XMODE=/[?&]x=1(&|$)/.test(location.search);         // ?x=1: 내 일지 — 시작 시점을 기억하고, 처음 들어가면 2026-11부터 시작으로 열림
 var LED0=null, SNAP0=null, START_YM=null, START_Y=null, FIRST_YM=null, EXIT_C=null;
 var AMT={dep:null,init:null};               // 사용자가 입력한 월 불입금·초기 자금(원). null이면 장부 기본값(100만원). 초기 자금 = 첫 달에 쓸 돈(그 달 월 불입금은 따로 안 더함)
 try{ var _d=localStorage.getItem('jdep'), _i=localStorage.getItem('jinit'); if(_d!==null&&_d!=='') AMT.dep=+_d; if(_i!==null&&_i!==''&&+_i>0) AMT.init=+_i; }catch(e){}
@@ -1553,6 +1554,7 @@ function simulateFrom(S){
   return {meta:Object.assign({},LED0.meta,{dep:dep,init:curInit()}),months:months,snaps:snaps};
 }
 function applyStart(S){
+  if(XMODE){ try{ localStorage.setItem('jstart',S); }catch(e){} }
   START_YM=S; START_Y=S.slice(0,4); PLAN=null; PLAN_BUSY=false; PLAN_ERR=null;
   var done=function(){
     if(S===PLAN_YM){                                                             // 이번 달(예정 달)부터 시작: 아직 장부에 없는 달 → 빈손(전달 현금 0·보유 없음)으로 예정 주문 화면만 계산
@@ -1694,7 +1696,9 @@ fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).th
   DATA=d; SNAP0=d.snapshots;
   var yms=Object.keys(d.snapshots).sort();
   SEL_YM=yms[yms.length-1]||null;
-  if(!isDefaultAmt() && START_YM) applyStart(START_YM); else renderAll();                      // 저장해 둔 금액이 기본값이 아니면 그 금액으로 다시 계산
+  var S0=null; if(XMODE){ try{ S0=localStorage.getItem('jstart'); }catch(e){} if(!S0) S0='202611'; if(!(S0===PLAN_YM || (LED0&&LED0.months[S0]))) S0=null; }
+  if(S0) applyStart(S0);
+  else if(!isDefaultAmt() && START_YM) applyStart(START_YM); else renderAll();                      // 저장해 둔 금액이 기본값이 아니면 그 금액으로 다시 계산
 }).catch(function(){
   document.querySelector('main').innerHTML='<p style="color:var(--mut);padding:40px;text-align:center">데이터를 불러오지 못했어요.</p>';
 });
