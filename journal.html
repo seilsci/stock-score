@@ -386,7 +386,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
   list.innerHTML = holds.map(function(h,i){
     var ret=h.ret, cls=ret>=0?'p':'n';
     var isSel = SEL_HOLD && SEL_HOLD.y===h.y;
-    var scN = scoreOf(h.y,h.buyYm), sc = scN!=null ? scN : ((h.score==null||isNaN(h.score))?null:Math.round(h.score*100));
+    var scN = scoreOf(h.y,h.buyYm); if(scN==null && h.row){ var lsH=localScore(h.y,h.row); if(lsH!=null) scN=lsH; } var sc = scN!=null ? scN : ((h.score==null||isNaN(h.score))?null:Math.round(h.score*100));
     var hUS = !/\.(KS|KQ)$/.test(h.y), fxv = over ? over.fx : (LED && LED.months[ym] ? LED.months[ym].fx : 1);
     var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx * (hUS ? fxv : 1)) : null;
     var buyAmt = h.basis ? Math.round(h.basis) : null;
@@ -417,7 +417,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
       var i=+btn.dataset['scI'];
       var hh=holds[i];
       if(hh.row){                                                             // 이번에 새로 사는 종목: 지금 지표로 바로 나무
-        var f=hh.row['차트']&&hh.row['차트'].length?featsFromChart(hh.row['차트'],hh.row):null;
+        var f=featsForRow(hh.y,hh.row);
         showScoreTree(hh.y,+SEL_YM,hh.name||hh.y,null,{feats:f?Object.keys(f).map(function(k){ return [k,f[k]]; }):[],apiScore:hh.apiScore});
       } else showScoreTree(hh.y, hh.buyYm, hh.name||hh.y, hh.score);
     };
@@ -1355,6 +1355,16 @@ function featsFromBars(y, brk, us){          // 저장된 월봉으로 돌파한
   rows=rows.slice(-47); if(rows.length<25) return null;
   return featsFromChart(rows,{'시장':us?'US':'KR','종류':'stock'});
 }
+function featsForRow(y, r){                  // 시트 행의 점수 설명용 지표: 돌파월이 있으면 시트(confirmInfo_)와 같은 47개월 창(저장된 월봉)으로, 없거나 월봉이 모자라면 시트에서 받은 차트로
+  if(r&&r['돌파월']){ var fb=featsFromBars(y,+r['돌파월'],r['시장']==='US'); if(fb) return fb; }
+  var ch=r&&r['차트']; if(!ch||!ch.length) return null;
+  if(r['돌파월']) ch=ch.filter(function(x){ return +x[0]<=+r['돌파월']; });
+  return ch.length?featsFromChart(ch,r):null;
+}
+function localScore(y, r){                   // 시트 행의 점수를 이 화면이 가진 최신 모델로 다시 계산(누르면 나오는 나무와 같은 숫자). 못 구하면 null
+  var f=featsForRow(y,r); if(!f) return null;
+  var e=explainFeats(Object.keys(f).map(function(k){ return [k,f[k]]; })); return e?e.score:null;
+}
 function scoreFromBars(y, brk, us){          // 돌파한 달 시점 점수(0~100) 또는 null
   var f=featsFromBars(y,brk,us); if(!f) return null;
   var e=explainFeats(Object.keys(f).map(function(k){ return [k,f[k]]; })); return e?e.score:null;
@@ -1426,7 +1436,7 @@ function renderPlanView(){
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
     var cost='+ 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span> = <b>'+won(x.amt)+'</b>';
     row('buy',FDP?'구매(월초)':'구매 예정',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-buyidx="'+P.buys.indexOf(x)+'">'+x.score+'</span> <span class="meta">(눌러서 이유 보기)</span>',signWon(-x.amt),bal,{y:x.y,end:ym,buy:ym,sell:null,raw:chartRaw(x.row)});
+      calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-buyidx="'+P.buys.indexOf(x)+'">'+(function(){ var l=localScore(x.y,x.row); return l!=null?l:x.score; })()+'</span> <span class="meta">(눌러서 이유 보기)</span>',signWon(-x.amt),bal,{y:x.y,end:ym,buy:ym,sell:null,raw:chartRaw(x.row)});
   });
   P.skipped.forEach(function(x){
     row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김','0원',bal);
@@ -1442,7 +1452,7 @@ function renderPlanView(){
       bal-=x.amt;
       var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
       var cost='+ 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span> = <b>'+won(x.amt)+'</b>';
-      row('buy','구매 예정(1일)',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-decidx="'+di+'">'+x.score+'</span> <span class="meta">(눌러서 이유 보기 · 가격은 지금 가격, 실제는 첫날 종가)</span>',signWon(-x.amt),bal,{y:x.y,end:dnx,buy:dnx,sell:null,raw:chartRaw(rowOf[x.y])});
+      row('buy','구매 예정(1일)',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-decidx="'+di+'">'+(function(){ var l=localScore(x.y,rowOf[x.y]); return l!=null?l:x.score; })()+'</span> <span class="meta">(눌러서 이유 보기 · 가격은 지금 가격, 실제는 첫날 종가)</span>',signWon(-x.amt),bal,{y:x.y,end:dnx,buy:dnx,sell:null,raw:chartRaw(rowOf[x.y])});
     });
     p2.skipped.forEach(function(x){
       row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김','0원',bal);
@@ -1464,8 +1474,7 @@ function renderPlanView(){
       ev.stopPropagation();
       if(c.dataset.decidx!=null){                                   // 다음 달 1일 구매 예정(잠정): 돌파한 달 시점 지표로 나무
         var D=decPlanOf(P), b3=D&&D.p2.buys[+c.dataset.decidx]; if(!b3) return;
-        var r3=D.rowOf[b3.y], ch3=r3&&r3['차트']&&r3['돌파월']?r3['차트'].filter(function(x){ return +x[0]<=+r3['돌파월']; }):(r3&&r3['차트']);
-        var f3=ch3&&ch3.length?featsFromChart(ch3,r3):null;
+        var r3=D.rowOf[b3.y], f3=featsForRow(b3.y,r3);
         showScoreTree(b3.y,+D.dnx,b3.name,null,{feats:f3?Object.keys(f3).map(function(k){ return [k,f3[k]]; }):[],apiScore:b3.score}); return;
       }
       if(c.dataset.buyidx!=null){                                   // 구매 예정 종목: 지금 지표로 바로 나무
