@@ -519,6 +519,7 @@ function holdRows_(param) {
 
 // ?all=1 이면 모든 종목, 아니면 매수·매도·유예 신호만
 function doGet(e) {
+  if (e && e.parameter && e.parameter.q) return ContentService.createTextOutput(JSON.stringify(searchRows_(e.parameter.q))).setMimeType(ContentService.MimeType.JSON);
   if (e && e.parameter && e.parameter.px) return ContentService.createTextOutput(JSON.stringify(pxRows_(e.parameter.px))).setMimeType(ContentService.MimeType.JSON);
   if (e && e.parameter && e.parameter.hold) return ContentService.createTextOutput(JSON.stringify(holdRows_(e.parameter.hold))).setMimeType(ContentService.MimeType.JSON);
   var all = e && e.parameter && e.parameter.all;
@@ -601,6 +602,27 @@ function writeRows_(name, rows) {
   }
   t = new Date(); cacheClear_(); tm.push('캐시 ' + sec(t));   // 새 데이터가 들어왔으니 저장해 둔 응답을 지움
   return '(' + tm.join(', ') + ')';
+}
+
+/* 종목 검색(매매일지 '내 체결 내역' 자동완성 보충): 이름·코드 일부 → [{code, name, mk:'KOSPI'|'KOSDAQ'|'US'}]. 네이버 자동완성을 씀(목록에 없는 종목용, 안 되면 빈 목록) */
+function searchRows_(q) {
+  q = String(q || '').trim(); if (!q) return [];
+  try {
+    var r = UrlFetchApp.fetch('https://ac.stock.naver.com/ac?q=' + encodeURIComponent(q) + '&target=stock', { muteHttpExceptions: true, headers: CFG.UA });
+    var j = JSON.parse(r.getContentText()), items = j.items || [], flat = [], out = [], seen = {};
+    items.forEach(function (x) { if (Array.isArray(x) && Array.isArray(x[0])) x.forEach(function (y) { flat.push(y); }); else flat.push(x); });
+    flat.forEach(function (x) {
+      var code, name, type, nation;
+      if (Array.isArray(x)) { name = x[0]; code = x[1]; type = x[2]; nation = x[4]; }
+      else if (x) { code = x.code; name = x.name; type = x.typeCode; nation = x.nationCode; }
+      code = String(code || '').toUpperCase(); name = String(name || '');
+      if (!code || !name || !/^[0-9A-Z.\-]{1,12}$/.test(code) || seen[code]) return;
+      seen[code] = 1;
+      var kr = /^\d{6}$/.test(code) || nation === 'KOR';
+      out.push({ code: code, name: name, mk: kr ? (/KOSDAQ|코스닥/i.test(type || '') ? 'KOSDAQ' : 'KOSPI') : 'US' });
+    });
+    return out.slice(0, 10);
+  } catch (err) { return []; }
 }
 
 /* 매매일지 '내 체결 내역' 평가용: 코드(쉼표로 여러 개)별 직전 마감 종가. 국내 6자리 코드는 .KS → .KQ 순으로 찾음.
