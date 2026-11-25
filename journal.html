@@ -102,6 +102,7 @@ canvas{display:block;width:100%;height:230px}
 #hold-list{display:flex;flex-direction:column;gap:1px}
 .h-row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:7px 4px;border-radius:8px;cursor:pointer;font-size:13px}
 .h-row:hover{background:var(--chip)}
+.h-cv{display:none;padding:2px 4px 10px}.h-cv.open{display:block}
 .h-row.sel{background:var(--chip)}
 .h-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h-nm{min-width:0}.h-bd{font-size:10px;color:var(--mut);margin-top:1px}
@@ -501,7 +502,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
     var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx * (hUS ? fxv : 1)) : null;
     var buyAmt = h.basis ? Math.round(h.basis) : null;
     var shStr = h.sh ? (h.sh < 1 ? h.sh.toFixed(3)+'주' : Math.floor(h.sh)+'주') : '';
-    return '<div class="h-row'+(isSel?' sel':'')+'" data-i="'+i+'">'
+    return '<div class="h-wrap"><div class="h-row'+(isSel?' sel':'')+'" data-i="'+i+'">'
       +'<div class="h-nm"><div class="h-name">'+esc(h.name||h.y)+'</div>'+(h.buyYm?'<div class="h-bd">'+fmt(h.buyYm)+' 구매</div>':'')+'</div>'
       +'<div class="h-px">'
         +(buyAmt?'매수 '+buyAmt.toLocaleString()+'원':'매수 '+fmt(h.buyYm))+'<br>'
@@ -509,16 +510,16 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
       +'</div>'
       +'<div class="h-ret '+cls+'">'+pc(ret)+'</div>'
       +'<div class="h-sc" data-sc-i="'+i+'" title="점수 기준 보기">'+(sc==null?'-':sc+'점')+'</div>'
-      +'</div>';
+      +'</div><div class="h-cv"><canvas></canvas></div></div>';
   }).join('');
   list.querySelectorAll('.h-row').forEach(function(row){
     row.onclick=function(e){
       if(e.target.classList.contains('h-sc')) return;
-      var i=+row.dataset.i;
-      SEL_HOLD = holds[i];
-      list.querySelectorAll('.h-row').forEach(function(r){ r.classList.remove('sel'); });
-      row.classList.add('sel');
-      drawHoldChart(holds[i]);
+      var i=+row.dataset.i, box=row.nextElementSibling, h=holds[i];
+      SEL_HOLD = h;
+      var open=!box.classList.contains('open');
+      box.classList.toggle('open',open); row.classList.toggle('sel',open);
+      if(open){ var cv=box.querySelector('canvas'); drawChart(cv, h.y, SEL_YM, h.buyYm, null, h.raw||undefined); cv._redraw=function(){ drawChart(cv, h.y, SEL_YM, h.buyYm, null, h.raw||undefined); }; }
     };
   });
   list.querySelectorAll('.h-sc').forEach(function(btn){
@@ -700,7 +701,9 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
   g.stroke();
   // 이 종목의 매수·매도 표시 (구매 ▲는 캔들 아래, 판매 ▼는 캔들 위). 같은 달에 여러 번이면 겹치지 않게 쌓아서 그림
   var evB={}, evS={};
-  DATA.trades.forEach(function(t){ if(t.y!==y) return; evB[t.buyYm]=(evB[t.buyYm]||0)+1; if(t.sellYm) evS[t.sellYm]=(evS[t.sellYm]||0)+1; });
+  if(LED && LED.months){                                                        // 지금 보고 있는 계산(시작 시점·금액을 바꿨으면 그 계산)의 구매·판매
+    Object.keys(LED.months).forEach(function(m){ var M=LED.months[m]; (M.buys||[]).forEach(function(b){ if(b.y===y) evB[m]=(evB[m]||0)+1; }); (M.sells||[]).forEach(function(b){ if(b.y===y) evS[m]=(evS[m]||0)+1; }); });
+  } else DATA.trades.forEach(function(t){ if(t.y!==y) return; evB[t.buyYm]=(evB[t.buyYm]||0)+1; if(t.sellYm) evS[t.sellYm]=(evS[t.sellYm]||0)+1; });
   if(buyYm && !evB[buyYm]) evB[buyYm]=1;                                         // 보유 중인 마지막 구매·예정 주문은 거래 기록에 아직 없음
   if(sellYm && !evS[sellYm]) evS[sellYm]=1;
   var mark=function(ym, up, cnt){
@@ -741,6 +744,7 @@ function drawHoldChart(h){
 window.addEventListener('resize',function(){
   var cv=document.getElementById('cv');
   if(document.getElementById('chart-box').style.display==='block' && cv._redraw) cv._redraw();
+  document.querySelectorAll('#hold-list .h-cv.open canvas').forEach(function(c){ if(c._redraw) c._redraw(); });
 });
 
 /* ── 점수 모달 ── */
