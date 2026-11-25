@@ -269,7 +269,11 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   for (let k = START; k <= END; k++) {
     cur = led ? { k, dep, sells: [], buys: [], skipped: [], order: [], tax: 0 } : null;
     if (opt.cashRateFn && k > START) cash += cash * Math.max(0, opt.cashRateFn(k) || 0) / 12;          // 현금 이자(월 단위, 세금 제외): 놀고 있는 현금에 연 이율/12를 더함
-    if (opt.firstDay && k > START) doBuys(k - 1, k, (o, r) => fdPx(r.y, k));   // 지난달 신호 → 이번 달 첫날 종가에 체결(입금·세금 처리 뒤 남은 현금)
+    if (opt.firstDay && k > START) {                                              // 지난달 신호 → 이번 달 첫날 종가에 체결(입금·세금 처리 전 현금)
+      // 12월 첫날 구매: 그해 11월까지 실현한 미국 주식 이익에 나올 양도세를 미리 떼어 두고 남은 돈으로 산다(12월 말에 세금이 모자라 보유 종목을 억지로 팔지 않게). opt.taxReserve=false면 예전 방식
+      const rsv = (opt.taxReserve !== false && (k - 1) % 12 === 11) ? Math.min(Math.max(0, cash), usTax(yOfK(k))) : 0;
+      cash -= rsv; doBuys(k - 1, k, (o, r) => fdPx(r.y, k)); cash += rsv;
+    }
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
