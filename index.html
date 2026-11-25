@@ -110,7 +110,8 @@ a{color:inherit}
   </div></div>
   <div class="list" id="L"><div class="msg">불러오는 중…</div></div>
   <footer>
-    매수: 전달 종가가 월 10이평 아래였다가 최근 종가가 10이평 위. 점수는 과거 매수 신호의 지표 패턴으로 만든 "예상 수익의 순위"(0~100)입니다. 올라갈 확률이 아닙니다. 과거에 같은 달 신호 전체의 순위와 수익의 관계는 약했지만(순위상관 약 0), <b>한국 종목은 점수가 가장 높은 것만 골랐을 때 무작위로 고른 것보다 훨씬 나았고</b>(같은 판매 규칙 시뮬레이션에서 연 +40% 대 +19%), <b>미국 종목은 뚜렷한 차이를 확인하지 못했습니다</b>(+18% 대 +16%). 대상이 "지금 상장된 시총 상위"라 과거 결과가 유리하게 나왔을 수 있고 앞으로를 보장하지 않으니 참고용으로 보세요(점수를 누르면 계산 이유를 볼 수 있어요).<br>
+    매수 대상(확인 매수): 10이평을 위로 돌파한 달(전달 종가 ≤ 전달 10이평, 그달 종가 > 10이평)의 다음 달 시가에 샀다고 가정한 가상 수익이 +10% 이상이고 5>10>20 정배열이 이번 달에 처음 된 종목입니다. 이번 달 말에 확정되면 다음 달 첫날 종가에 삽니다(월말 전까지는 바뀔 수 있음). 점수는 돌파한 달 시점의 "예상 수익의 순위"(0~100)이며 올라갈 확률이 아닙니다. 점수 순으로 4종목을 같은 금액으로 사는 것이 일지의 전략입니다. 과거 시험에서 점수 상위를 고른 결과가 무작위와 뚜렷하게 구분되지 않는 경우가 많았고(시장·기간에 따라 다름), 상장폐지 종목이 빠진 자료라 과거 성적이 유리하게 나왔을 수 있으며 앞으로를 보장하지 않으니 참고용으로 보세요(점수를 누르면 계산 이유를 볼 수 있어요).<br>
+
     매도: 10이평 아래로 내려온 뒤 2개월째에도 계속 아래면 매도(미국 국채 10년 금리가 6개월 전보다 오르는 중이면 내려온 즉시 매도). 내려온 첫 달은 '유예'로 표시.<br>
     한국 코스피 상위 300·코스닥 상위 200, 미국 상위 500 (시가총액 순). 투자 판단의 책임은 본인에게 있습니다.<br>
   </footer>
@@ -137,13 +138,13 @@ function render() {
   var kr = M === 'KR';
   var rows = DATA.rows.filter(function (r) { return kr ? r['시장'] !== 'US' : r['시장'] === 'US'; });
   var nb = 0, ns = 0, ny = 0;
-  rows.forEach(function (r) { if (r['신호'] === '매수') nb++; else if (r['신호'] === '매도') ns++; else if (r['신호'] === '유예') ny++; });
+  rows.forEach(function (r) { if (r['신호'] === '확인') nb++; else if (r['신호'] === '매도') ns++; else if (r['신호'] === '유예') ny++; });
   sb.textContent = '매수 대상 ' + nb; ss.textContent = '매도 대상 ' + ns + (ny ? ' · 유예 ' + ny : '');
   var day = '';
   rows.forEach(function (r) { if (String(r['기준일']) > day) day = String(r['기준일']); });
   document.getElementById('upd').textContent =
     (day ? '기준: ' + day + ' 종가' + (kr ? '' : ' (미국)') + ' · ' : '') + '매일 자동 갱신';
-  var sel = rows.filter(function (r) { return r['신호'] === S || (S === '매도' && r['신호'] === '유예'); })
+  var sel = rows.filter(function (r) { return (S === '매수' && r['신호'] === '확인') || (S === '매도' && (r['신호'] === '매도' || r['신호'] === '유예')); })
                 .sort(function (a, b) {
                   if (S === '매수') {
                     var sa = a['점수'] != null && a['점수'] !== '' ? +a['점수'] : -1;
@@ -158,7 +159,8 @@ function render() {
     var g = (r['최근종가'] / r['10이평'] - 1) * 100;
     var mk = r['시장'] === 'KOSPI' ? '코스피 · ' : r['시장'] === 'KOSDAQ' ? '코스닥 · ' : '';
     var tag = (r['종류'] && r['종류'] !== 'stock' ? '<span class="tag">' + esc(String(r['종류']).toUpperCase()) + '</span>' : '') +
-              (r['신호'] === '유예' ? '<span class="tag yu">유예 1개월째</span>' : '');
+              (r['신호'] === '유예' ? '<span class="tag yu">유예 1개월째</span>' : '') +
+              (r['신호'] === '확인' && r['돌파월'] ? '<span class="tag">' + String(r['돌파월']).slice(0, 4) + '-' + String(r['돌파월']).slice(4) + ' 돌파</span>' : '');
     var sc = r['점수'] != null && r['점수'] !== '' ? +r['점수'] : null;
     var scHtml = S === '매수' && sc != null ? '<span class="score ' + (sc >= 70 ? 'hi' : sc >= 40 ? 'md' : '') + '">' + sc + '</span>' : '';
     return '<div class="row' + (SEL && SEL['코드'] === r['코드'] && SEL['시장'] === r['시장'] ? ' sel' : '') + '" data-i="' + i + '"><div class="rk">' + (i + 1) + '</div><div>' +
@@ -172,7 +174,7 @@ function render() {
     SEL = sel[0] || null;
     h = h.replace('class="row" data-i="0"', 'class="row sel" data-i="0"');
   }
-  document.getElementById('L').innerHTML = h || '<div class="msg">오늘은 ' + S + ' 대상이 없어요.</div>';
+  document.getElementById('L').innerHTML = h || '<div class="msg">' + (S === '매수' ? '지금은 확인 매수 후보가 없어요.' : '오늘은 ' + S + ' 대상이 없어요.') + '</div>';
   drawChart();
 }
 
@@ -204,7 +206,7 @@ function drawChart() {
   var ckey = r['시장'] + '|' + r['코드']; if (cv._key !== ckey) { cv._key = ckey; cv._hi = null; }
   cn.innerHTML = esc(r['이름']) + ' <span class="cd">' + esc(r['코드']) + '</span>';
   var gp = (r['최근종가'] / r['10이평'] - 1) * 100;
-  cp.innerHTML = px(r, kr) + ' <span class="meta gap ' + (r['신호'] === '매수' ? 'b' : 's') + '">10이평 ' +
+  cp.innerHTML = px(r, kr) + ' <span class="meta gap ' + (r['신호'] === '매수' || r['신호'] === '확인' ? 'b' : 's') + '">10이평 ' +
                  (gp > 0 ? '+' : '') + gp.toFixed(1) + '%</span>';
   var d = r['차트'];
   if (!d || !d.length) { g.fillStyle = css('--mut'); g.font = '13px sans-serif'; g.textAlign = 'center';
@@ -446,7 +448,8 @@ function shapleyPoints(contribs, b) {
 // 지표별 가감과 최종 점수
 function explain(r) {
   if ((!W && !G) || !r['차트'] || !r['차트'].length) return null;
-  var f = featsOf(r['차트'], r); if (!f) return null;
+  var ch = r['돌파월'] ? r['차트'].filter(function (x) { return +x[0] <= +r['돌파월']; }) : r['차트'];   // 확인 매수 후보의 점수는 돌파한 달 시점 값
+  var f = featsOf(ch, r); if (!f) return null;
   if (G) return gbmExplain(f, false);
   var raw = W.b, items = [];
   W.feats.forEach(function (w) {
