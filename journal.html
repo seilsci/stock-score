@@ -327,8 +327,8 @@ canvas{display:block;width:100%;height:230px}
 
   <div id="start-card"></div>
   <div id="amt-card" class="amt-card">
-    <label>첫달 투자금 <span><input id="in-init" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-init">100만원</em></label>
-    <label>매월 불입금 <span><input id="in-dep" type="number" inputmode="numeric" min="0" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-dep">100만원</em></label>
+    <label>첫달 투자금 <span><input id="in-init" type="number" inputmode="numeric" min="1" max="99999999999" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-init">100만원</em></label>
+    <label>매월 불입금 <span><input id="in-dep" type="number" inputmode="numeric" min="0" max="99999999999" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-dep">100만원</em></label>
     <p class="amt-note" id="amt-note">첫달 투자금은 첫 달에 쓸 돈 전체예요(그 달 월 불입금은 따로 더하지 않아요). 금액을 바꾸고 Enter(또는 다른 곳을 누르면) 선택한 시작 시점부터 같은 규칙으로 다시 계산해요.</p>
   </div>
 
@@ -356,7 +356,7 @@ canvas{display:block;width:100%;height:230px}
     <div id="my-list"></div>
     <div id="my-rec" class="my-rec">
       <div class="my-h" style="margin-top:12px"><span class="my-t">내 보유 기준 추천 <span class="plan-tag">잠정</span></span><span class="my-c" id="my-rec-m"></span></div>
-      <div class="my-cashl">내 현금 (만원) <span class="my-cashs"><button type="button" class="my-sgn" id="my-cash-s" aria-label="현금 부호 바꾸기(+/−)">+</button><input id="my-cash" type="number" step="1" placeholder="0"><em class="amt-kor" id="my-cash-k"></em></span></div>
+      <div class="my-cashl">내 현금 (만원) <span class="my-cashs"><button type="button" class="my-sgn" id="my-cash-s" aria-label="현금 부호 바꾸기(+/−)">+</button><input id="my-cash" type="number" step="1" max="99999999999" min="-99999999999" placeholder="0"><em class="amt-kor" id="my-cash-k"></em></span></div>
       <div id="my-rec-b"></div>
     </div>
     <details class="my-bk"><summary>백업 · 다른 기기로 옮기기</summary>
@@ -1750,10 +1750,12 @@ function syncAmtInputs(){
   var dl=document.getElementById('dep-label'); if(dl) dl.textContent='첫달 '+manText(curInit())+' · 월 '+manText(curDep());
   var jd=document.getElementById('jf-dep'); if(jd) jd.textContent=manText(curDep());
 }
+var AMT_MAX=99999999999;                                  // 1000조원 미만(만원 단위 11자리까지)
+function capAmt(el){ el.addEventListener('input',function(){ var v=el.value; if(v===''||v==null) return; var n=+v; if(isNaN(n)) return; if(Math.abs(n)>AMT_MAX){ el.value=(n<0?'-':'')+AMT_MAX; } else if(/^-?\d{12,}/.test(String(v).replace(/^(-?)0+(?=\d)/,'$1'))){ el.value=(n<0?'-':'')+AMT_MAX; } }); }
 function wireAmtInputs(){
   var a=document.getElementById('in-init'), b=document.getElementById('in-dep'); if(!a||!b||a._w) return; a._w=1;
   var apply=function(){
-    var ni=Math.max(1,Math.min(1000000,Math.round(+a.value||0))), nd=Math.max(0,Math.min(1000000,Math.round(+b.value||0)));
+    var ni=Math.max(1,Math.min(99999999999,Math.round(+a.value||0))), nd=Math.max(0,Math.min(99999999999,Math.round(+b.value||0)));
     a.value=ni; b.value=nd;
     var oi=Math.round(curInit()/10000), od=Math.round(curDep()/10000); if(ni===oi && nd===od) return;
     AMT.init=ni*10000; AMT.dep=nd*10000;
@@ -1761,7 +1763,7 @@ function wireAmtInputs(){
     if(XMODE&&!SYNC.applying){ stampSettings(); syncSoon(); }
     if(START_YM) applyStart(START_YM);
   };
-  [a,b].forEach(function(el){ el.addEventListener('input',showKor); el.addEventListener('change',apply); el.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); el.blur(); } }); });
+  [a,b].forEach(function(el){ capAmt(el); el.addEventListener('input',showKor); el.addEventListener('change',apply); el.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); el.blur(); } }); });
 }
 function renderStartCard(){
   var card=document.getElementById('start-card'); if(!LED0){ card.style.display='none'; return; }
@@ -2172,6 +2174,7 @@ function wireMy(){
   $('my-sync-k').onclick=syncSetKey;
   $('my-cash-s').onclick=function(ev){ ev.stopPropagation(); var rc=this.getBoundingClientRect(); if(ev.detail>0&&(ev.clientX<rc.left||ev.clientX>rc.right||ev.clientY<rc.top||ev.clientY>rc.bottom)) return;     // 버튼 위를 누른 경우에만 부호를 바꿈(다른 곳을 눌러 대신 눌린 클릭은 무시)
     CASHSIGN=-CASHSIGN; cashSignSave(); var raw=Math.abs(Math.round(+$('my-cash').value||0)); MYCASH=CASHSIGN*raw*10000; try{ localStorage.setItem('jmycash',String(MYCASH)); }catch(e){} stampSettings(); syncSoon(); renderMy(); };
+  capAmt($('my-cash'));
   $('my-cash').addEventListener('input',function(){ var m=Math.abs(Math.round(+$('my-cash').value||0)), sg=(+$('my-cash').value<0)?-1:CASHSIGN, v=sg*m*10000; $('my-cash-k').textContent=v!==0?korSigned(v/10000):''; });
   $('my-cash').addEventListener('change',function(){ var raw=+$('my-cash').value||0; if(raw<0){ CASHSIGN=-1; cashSignSave(); } MYCASH=CASHSIGN*Math.abs(Math.round(raw))*10000; try{ localStorage.setItem('jmycash',String(MYCASH)); }catch(e){} stampSettings(); syncSoon(); renderMy(); });
   loadCosts(function(){ myAutoFee(); });
