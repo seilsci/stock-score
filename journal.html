@@ -236,9 +236,9 @@ canvas{display:block;width:100%;height:230px}
 
   <div id="start-card"></div>
   <div id="amt-card" class="amt-card">
-    <label>초기 시작 자금 <span><input id="in-init" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-init">100만원</em></label>
+    <label>첫달 투자금 <span><input id="in-init" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-init">100만원</em></label>
     <label>매월 불입금 <span><input id="in-dep" type="number" inputmode="numeric" min="0" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-dep">100만원</em></label>
-    <p class="amt-note" id="amt-note">초기 시작 자금은 첫 달에 쓸 돈 전체예요(그 달 월 불입금은 따로 더하지 않아요). 금액을 바꾸고 Enter(또는 다른 곳을 누르면) 선택한 시작 시점부터 같은 규칙으로 다시 계산해요.</p>
+    <p class="amt-note" id="amt-note">첫달 투자금은 첫 달에 쓸 돈 전체예요(그 달 월 불입금은 따로 더하지 않아요). 금액을 바꾸고 Enter(또는 다른 곳을 누르면) 선택한 시작 시점부터 같은 규칙으로 다시 계산해요.</p>
   </div>
 
   <div id="cum-card"></div>
@@ -1525,7 +1525,7 @@ function simulateFrom(S){
       } else keep.push(h);
     });
     holds=keep;
-    var tax=0, depM=(ym===yms[0]?curInit():dep);                                     // 첫 달에는 초기 시작 자금만 넣고(그 달 월 불입금은 따로 안 더함), 이후 매달 월 불입금
+    var tax=0, depM=(ym===yms[0]?curInit():dep);                                     // 첫 달에는 첫달 투자금만 넣고(그 달 월 불입금은 따로 안 더함), 이후 매달 월 불입금
     cash+=depM;                                                                     // 입금을 먼저 받고
     if(mo===12){                                                                   // 12월 세금을 먼저 낸 뒤 남은 돈으로 산다
       tax=C.us.cg_tax_rate*Math.max(0,(usGain[Y]||0)-C.us.cg_exemption_krw); usGain[Y]=0;
@@ -1578,7 +1578,7 @@ function syncAmtInputs(){
   if(document.activeElement!==a) a.value=Math.round(curInit()/10000);
   if(document.activeElement!==b) b.value=Math.round(curDep()/10000);
   showKor();
-  var dl=document.getElementById('dep-label'); if(dl) dl.textContent='초기 '+manText(curInit())+' · 월 '+manText(curDep());
+  var dl=document.getElementById('dep-label'); if(dl) dl.textContent='첫달 '+manText(curInit())+' · 월 '+manText(curDep());
   var jd=document.getElementById('jf-dep'); if(jd) jd.textContent=manText(curDep());
 }
 function wireAmtInputs(){
