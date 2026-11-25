@@ -19,3 +19,6 @@ input,select,textarea{border:none !important;border-bottom:1.5px solid var(--fg)
 .yr-row,.mo-row{display:grid !important;grid-template-columns:repeat(6,1fr);gap:4px 0 !important}
 .yr-btn,.mo-btn{text-align:center;padding-left:0 !important;padding-right:0 !important;white-space:nowrap;font-variant-numeric:tabular-nums}
 .mo-btn.plan{grid-column:span 2}
+/* 글씨 정리: 단어 단위 줄바꿈, 설명 글은 작고 느슨하게 */
+body{word-break:keep-all;overflow-wrap:break-word}
+.amt-note,.st-note,.mt-note,.jf p,.jf-foot,.inf-note p,.inf-foot,.hint,.jf-step span{font-size:11.5px !important;line-height:1.7 !important;color:var(--mut)}
