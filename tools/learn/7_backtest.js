@@ -958,6 +958,11 @@ if (process.env.STAGE3 !== '0') {
       ['B 재무 지표 (미국만 있음, SEC 공시 시점 기준) — 비교 기준은 위 "gbm · fd 정답"', 'gbm · fd + 배당(지급·성향)', () => walkG({ lab: 'fd', cols: NOIDX.concat(FUNDC(['payout', 'pays_div'])) })],
       ['B 재무 지표 (미국만 있음, SEC 공시 시점 기준) — 비교 기준은 위 "gbm · fd 정답"', 'gbm · fd + 영업이익 흑자 여부만', () => walkG({ lab: 'fd', cols: NOIDX.concat(FUNDC(['oi_pos'])) })]
     ] : []),
+    ['A2 씨앗 반복 (같은 조건에서 씨앗만 다름)', 'gbm · fd 정답, 씨앗 5개 평균 (기준)', () => walkG({ lab: 'fd', seeds: 5 })],
+    ...(FUND.on ? [
+      ['A2 씨앗 반복 (같은 조건에서 씨앗만 다름)', 'gbm · fd + 영업이익(흑자·마진·증가율)·순이익 흑자, 씨앗 5개 평균', () => walkG({ lab: 'fd', seeds: 5, cols: NOIDX.concat(FUNDC(['oi_pos', 'oi_margin', 'oi_growth', 'ni_pos'])) })],
+      ['A2 씨앗 반복 (같은 조건에서 씨앗만 다름)', 'gbm · fd + 영업이익 마진·증가율만, 씨앗 5개 평균', () => walkG({ lab: 'fd', seeds: 5, cols: NOIDX.concat(FUNDC(['oi_margin', 'oi_growth'])) })]
+    ] : []),
     ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 20% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.2) })],
     ['8 시장 상황으로 쉬기 (fd)', 'fd · 시장상황 모델 하위 35% 달은 쉼', () => ({ map: walk(base({ lab: 'fd' })), skip: timingSkip('fd', 0.35) })]
   ];
@@ -976,11 +981,12 @@ if (process.env.STAGE3 !== '0') {
       });
     } else console.log('\next_scores.csv가 events.csv와 안 맞아 건너뜀');
   }
+  if (process.env.S3_ONLY) { const re = new RegExp(process.env.S3_ONLY); for (let i = SPECS.length - 1; i >= 0; i--) if (!re.test(SPECS[i][1])) SPECS.splice(i, 1); }     // S3_ONLY="씨앗 5개" 처럼 이름에 맞는 변형만 돌림(검산 생략)
   SPECS.forEach(([g, name, mk], i) => {
     progress('3단계 실험', i / SPECS.length);
     const res = mk(), map = res instanceof Map ? res : res.map, skip = res instanceof Map ? null : res.skip;
     S3.rows.push({ g, name, ...evalMap(map, skip) });
-    if (i === 0) {                                                  // 검산: 기준 변형이 기존 A 점수(scored[kA])와 같아야 함(같은 정답·같은 학습 → 모순 확인)
+    if (i === 0 && !process.env.S3_ONLY) {                          // 검산: 기준 변형이 기존 A 점수(scored[kA])와 같아야 함(같은 정답·같은 학습 → 모순 확인)
       let mx = 0, n = 0, miss = 0; scoredRidgeA.forEach((a, ym) => { const b = map.get(ym) || []; const m2 = new Map(b.map(e => [e.r, e.s])); a.forEach(e => { const v = m2.get(e.r); if (v === undefined) miss++; else if (!(Number.isNaN(v) && Number.isNaN(e.s))) mx = Math.max(mx, Math.abs(v - e.s)); n++; }); });
       S3.check = { max: mx, n, miss };
     }
