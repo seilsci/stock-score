@@ -49,6 +49,7 @@ h1{font-size:18px;margin:0 0 2px;font-weight:700}
 @keyframes tkup{from{background:color-mix(in srgb,var(--buy) 40%,transparent)}to{background:transparent}}@keyframes tkdn{from{background:color-mix(in srgb,var(--sell) 40%,transparent)}to{background:transparent}}.my-lv.p{color:var(--buy)}.my-lv.n{color:var(--sell)}
 .my-rec{border-top:1px solid var(--line);margin-top:6px;padding-top:2px}
 .my-cashl{display:block;font-size:11.5px;color:var(--mut);margin:0 0 8px}.my-cashs{display:flex;align-items:center;gap:10px;margin-top:3px}.my-cashs input{width:150px;font:inherit;font-size:15px;font-weight:700;color:var(--fg);background:var(--chip);border:1px solid var(--line);border-radius:9px;padding:7px 9px;text-align:right}
+.lr-sc.no{cursor:default;color:var(--mut)}.lr-sc.no:hover{background:var(--chip);color:var(--mut)}.my-nt{font-size:11px;color:var(--mut)}
 .my-tb tr.clk{cursor:pointer}.my-tb tr.my-gr td{padding:0;border-bottom:none;text-align:left}.my-tb .lr-c{padding:6px 0 8px}
 .rc-r.clk{cursor:pointer}.rc-nm{font-weight:600}.my-rec .lr-c{padding:6px 0 10px}
 .rc-g{font-size:12px;font-weight:700;margin:10px 0 4px}.rc-g.s{color:var(--sell)}.rc-g.b{color:var(--buy)}.rc-g.w{color:var(--ma)}.rc-g.k{color:var(--mut)}
@@ -1950,6 +1951,11 @@ function myFetchPx(codes){                    // 보유 종목의 직전 마감 
   if(!missing.length&&!stale) return; MYPX_BUSY=true; codes.forEach(function(c){ MYPX_TRY[c]=now; });
   fetch(API+(API.indexOf('?')>=0?'&':'?')+'px='+encodeURIComponent(codes.join(','))).then(function(r){ return r.json(); }).then(function(o){ MYPX=Object.assign({},MYPX,o||{}); MYPX_T=Date.now(); MYPX_BUSY=false; renderMy(); }).catch(function(){ MYPX_BUSY=false; });
 }
+function myNoScoreText(code){                 // 점수를 못 구하는 종목 설명: 목록에는 있는데 월봉이 모자라면 '월봉이 형성되지 않음', 목록에 없으면 '목록 밖 종목'
+  var c=(code||'').toUpperCase(); if(!c) return '목록 밖 종목';
+  var inList=!!(SYM&&SYM.some(function(x){ return x[0]===c; }))||myBarKey(c)!=null;
+  return inList?'월봉이 형성되지 않음':'목록 밖 종목';
+}
 var MYREC={api:null,busy:false,t:0}, MYH_G=[], MYH_S=[], MYH_OPEN={};
 function myThisYm(){ var k=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'})); return k.getFullYear()*100+k.getMonth()+1; }
 function myPrevYm(y){ return y%100===1?y-89:y-1; }
@@ -1988,7 +1994,7 @@ function myRecRender(open){
   var line=function(o){                       // 한 줄: 이름(누르면 월봉 그래프) · 점수 칩(누르면 나무) · 설명 · 오른쪽 금액
     var gi=G.length; G.push(o.g||null);
     var si=-1; if(o.sc){ si=S.length; S.push(o.sc); }
-    return '<div class="rc-r'+(o.g?' clk':'')+'"'+(o.g?' data-g="'+gi+'"':'')+'><div><span class="rc-nm">'+esc(o.name)+'</span>'+(o.us?' <small style="display:inline">미국</small>':'')+(o.score!=null?' <span class="lr-sc" data-rs="'+si+'">'+o.score+'</span>':'')+(o.sub?'<small>'+o.sub+'</small>':'')+'</div>'+(o.right?'<b>'+o.right+'</b>':'')+'</div>'+(o.g?'<div class="lr-c"><canvas></canvas></div>':'');
+    return '<div class="rc-r'+(o.g?' clk':'')+'"'+(o.g?' data-g="'+gi+'"':'')+'><div><span class="rc-nm">'+esc(o.name)+'</span>'+(o.us?' <small style="display:inline">미국</small>':'')+(o.score!=null?' <span class="lr-sc" data-rs="'+si+'">'+o.score+'</span>':(o.hold?' <span class="lr-sc no">-</span> <small style="display:inline">월봉이 형성되지 않음</small>':''))+(o.sub?'<small>'+o.sub+'</small>':'')+'</div>'+(o.right?'<b>'+o.right+'</b>':'')+'</div>'+(o.g?'<div class="lr-c"><canvas></canvas></div>':'');
   };
   var holdSc=function(x){ var us=isUSy(x.y), prevM=myPrevYm(+x.buyYm), sc=scoreFromBars(x.y,prevM,us), f=sc!=null?featsFromBars(x.y,prevM,us):null;
     return {score:sc,sc:f?{y:x.y,buyYm:+x.buyYm,name:x.name,feats:f,label:' 구매 당시 점수(구매 전달 말 지표), ',note:'이 점수는 내가 <b>산 시점(구매 전달 말)의 지표</b>를 최신 모델로 계산한 값입니다. 시장 지수 관련 3개 항목은 0으로 처리됩니다.'}:null}; };
@@ -1997,10 +2003,10 @@ function myRecRender(open){
   var hg=function(x,sell){ return {y:x.y,end:R.ym,buy:+x.buyYm,sell:sell?R.ym:null}; };
   var cg=function(x){ var r=rowOf[x.y]&&rowOf[x.y].row; return r?{y:x.y,end:R.ym,buy:R.ym,sell:null,raw:chartRaw(r)||undefined}:null; };
   h+='<div class="rc-g s">판매 추천 (이달 말 종가 기준 · '+R.P.sells.length+'종목)</div>';
-  h+=R.P.sells.length?R.P.sells.map(function(x){ var hs=holdSc(x); return line({name:x.name||x.y,us:x.us,score:hs.score,sc:hs.sc,g:hg(x,true),sub:esc(REASON[x.reason]||x.reason)+' · 내 원가 대비 '+(x.ret>=0?'+':'')+(x.ret*100).toFixed(1)+'%',right:rn(x.amt)}); }).join(''):'<div class="rc-r"><div>이달 말에 팔 종목이 없어요</div></div>';
-  if(R.P.watch.length){ h+='<div class="rc-g w">유예 중 (다음 달에도 10이평 아래면 매도)</div>'+R.P.watch.map(function(x){ var hs=holdSc(x); return line({name:x.name||x.y,us:x.us,score:hs.score,sc:hs.sc,g:hg(x,false),sub:'지금 10이평 아래 · 이번 달 말 종가에 따라 달라져요'}); }).join(''); }
-  if(R.keep.length) h+='<div class="rc-g k">계속 보유 ('+R.keep.length+'종목)</div>'+R.keep.map(function(x){ var hs=holdSc(x); return line({name:x.name||x.y,us:isUSy(x.y),score:hs.score,sc:hs.sc,g:hg(x,false),sub:'이번 판단에서는 팔지 않아요'}); }).join('');
-  if(R.nobars.length) h+='<div class="rc-g k">판단 못 함 (월봉 자료 없음)</div><div class="rc-r"><div>'+R.nobars.map(function(p){ return esc(p.name||p.code); }).join(', ')+'<small>종목 코드를 확인해 주세요(목록에서 검색해 고르면 자동으로 채워져요)</small></div></div>';
+  h+=R.P.sells.length?R.P.sells.map(function(x){ var hs=holdSc(x); return line({hold:true,name:x.name||x.y,us:x.us,score:hs.score,sc:hs.sc,g:hg(x,true),sub:esc(REASON[x.reason]||x.reason)+' · 내 원가 대비 '+(x.ret>=0?'+':'')+(x.ret*100).toFixed(1)+'%',right:rn(x.amt)}); }).join(''):'<div class="rc-r"><div>이달 말에 팔 종목이 없어요</div></div>';
+  if(R.P.watch.length){ h+='<div class="rc-g w">유예 중 (다음 달에도 10이평 아래면 매도)</div>'+R.P.watch.map(function(x){ var hs=holdSc(x); return line({hold:true,name:x.name||x.y,us:x.us,score:hs.score,sc:hs.sc,g:hg(x,false),sub:'지금 10이평 아래 · 이번 달 말 종가에 따라 달라져요'}); }).join(''); }
+  if(R.keep.length) h+='<div class="rc-g k">계속 보유 ('+R.keep.length+'종목)</div>'+R.keep.map(function(x){ var hs=holdSc(x); return line({hold:true,name:x.name||x.y,us:isUSy(x.y),score:hs.score,sc:hs.sc,g:hg(x,false),sub:'이번 판단에서는 팔지 않아요'}); }).join('');
+  if(R.nobars.length) h+='<div class="rc-g k">판단 못 함 (월봉 자료 없음)</div><div class="rc-r"><div>'+R.nobars.map(function(p){ return esc(p.name||p.code)+' <span class="lr-sc no">-</span> <small style="display:inline">'+myNoScoreText(p.code)+'</small>'; }).join('<br>')+'<small>종목 이름을 검색해서 고르면 코드가 자동으로 채워져요</small></div></div>';
   h+='<div class="rc-g b">'+fmt(R.dnx).slice(5)+'월 1일 구매 추천 (잠정 · 후보 '+R.nc.length+'개)</div>';
   h+='<div class="rc-r"><div>구매에 쓸 수 있는 돈<small>내 현금 + 판매 추천 수령액</small></div><b>'+rn(R.P.cash1)+'</b></div>';
   h+=R.P2.buys.length?R.P2.buys.map(function(x){ var cs=candSc(x); return line({name:x.name,us:x.us,score:cs.score,sc:cs.sc,g:cg(x),sub:x.sh+'주 × '+(x.us?'$'+(+x.px).toLocaleString():rn(x.px))+(x.us?' (환율 '+Math.round(x.fxUsed||0).toLocaleString()+')':'')+' · 수수료 '+rn(x.fee),right:rn(x.amt)}); }).join(''):'<div class="rc-r"><div>'+(R.nc.length?'지금 돈으로 살 수 있는 후보가 없어요':'이번 달 확정 후보가 아직 없어요(월말에 정해져요)')+'</div></div>';
@@ -2027,7 +2033,7 @@ function renderMy(){
   card.style.display='block';
   var fx=myFxNow(), R=myCalc(), open=R.pos.filter(function(p){ return p.qty>0; }), cost=0, val=0, unk=0, rows='', pxDates={}, monthly=0, liveN=0, liveT=0, liveSrc={}; MYH_G=[]; MYH_S=[];
   var openCodes=open.map(function(p){ return (p.code||'').toUpperCase(); }).filter(function(c){ return c; });
-  myFetchPx(openCodes); myLiveStart(openCodes);
+  myFetchPx(openCodes); myLiveStart(openCodes); if(!SYM) loadSym(function(){ renderMy(); });
   open.forEach(function(p){
     var cc=(p.code||'').toUpperCase(), lv=MYLIVE[cc], q1=lv?null:MYPX[cc], bk=myBarKey(p.code), u=bk&&barsOf(bk), px=lv?lv.px:(q1?q1.px:(u?u.cs[u.cs.length-1]:null)), isUS=lv?lv.cur!=='KRW':(q1?q1.cur!=='KRW':(bk?!/\.(KS|KQ)$/.test(bk):(p.cur==='USD')));
     if(lv){ liveN++; liveT=Math.max(liveT,lv.t||0); liveSrc[lv.src]=1; } else if(q1) pxDates[q1.date]=1; else if(px!=null) monthly++;
@@ -2037,7 +2043,7 @@ function renderMy(){
     if(hbk&&barsOf(hbk)){ hgi=MYH_G.length; MYH_G.push({y:hbk,end:myThisYm(),buy:(p.open?+p.open.slice(0,4)*100+ +p.open.slice(5,7):myThisYm()),sell:null});
       var pm=myPrevYm(MYH_G[hgi].buy), sc0=scoreFromBars(hbk,pm,!/\.(KS|KQ)$/.test(hbk)), f0=sc0!=null?featsFromBars(hbk,pm,!/\.(KS|KQ)$/.test(hbk)):null;
       if(sc0!=null&&f0){ hsi=MYH_S.length; MYH_S.push({y:hbk,buyYm:MYH_G[hgi].buy,name:p.name||p.code,feats:f0}); hsc=sc0; } }
-    rows+='<tr'+(hgi>=0?' class="clk" data-hg="'+hgi+'"':'')+'><td>'+esc(p.name||p.code)+(hsc!=null?' <span class="lr-sc" data-hs="'+hsi+'">'+hsc+'</span>':'')+(lv?'<br><small class="my-lv '+(lv.chg>=0?'p':'n')+'">'+'<span class="my-n" data-k="p:'+cc+'" data-to="'+lv.px+'" data-f="'+(isUS?'usd':'kp')+'">'+myFmtTick(isUS?'usd':'kp',lv.px)+'</span>'+(lv.pct!=null?' '+(lv.chg>=0?'▲':'▼')+Math.abs(lv.pct).toFixed(2)+'%':'')+'</small>':'')+'</td><td>'+(+p.qty.toFixed(4)).toLocaleString()+'</td><td>'+Math.round(avg).toLocaleString()+'</td><td>'+(v!=null?(lv?'<span class="my-n" data-k="v:'+cc+'" data-to="'+Math.round(v)+'" data-f="val">'+Math.round(v).toLocaleString()+'</span>':Math.round(v).toLocaleString()):'-')+'</td><td class="'+(pl==null?'':pl>=0?'p':'n')+'">'+(pl==null?'-':(pl>=0?'+':'−')+Math.abs(Math.round(pl)).toLocaleString()+' ('+(pl>=0?'+':'')+(pl/p.cost*100).toFixed(1)+'%)')+'</td></tr>'+(hgi>=0?'<tr class="my-gr"><td colspan="5"><div class="lr-c"><canvas></canvas></div></td></tr>':'');
+    rows+='<tr'+(hgi>=0?' class="clk" data-hg="'+hgi+'"':'')+'><td>'+esc(p.name||p.code)+(hsc!=null?' <span class="lr-sc" data-hs="'+hsi+'">'+hsc+'</span>':' <span class="lr-sc no">-</span> <small class="my-nt">'+myNoScoreText(p.code)+'</small>')+(lv?'<br><small class="my-lv '+(lv.chg>=0?'p':'n')+'">'+'<span class="my-n" data-k="p:'+cc+'" data-to="'+lv.px+'" data-f="'+(isUS?'usd':'kp')+'">'+myFmtTick(isUS?'usd':'kp',lv.px)+'</span>'+(lv.pct!=null?' '+(lv.chg>=0?'▲':'▼')+Math.abs(lv.pct).toFixed(2)+'%':'')+'</small>':'')+'</td><td>'+(+p.qty.toFixed(4)).toLocaleString()+'</td><td>'+Math.round(avg).toLocaleString()+'</td><td>'+(v!=null?(lv?'<span class="my-n" data-k="v:'+cc+'" data-to="'+Math.round(v)+'" data-f="val">'+Math.round(v).toLocaleString()+'</span>':Math.round(v).toLocaleString()):'-')+'</td><td class="'+(pl==null?'':pl>=0?'p':'n')+'">'+(pl==null?'-':(pl>=0?'+':'−')+Math.abs(Math.round(pl)).toLocaleString()+' ('+(pl>=0?'+':'')+(pl/p.cost*100).toFixed(1)+'%)')+'</td></tr>'+(hgi>=0?'<tr class="my-gr"><td colspan="5"><div class="lr-c"><canvas></canvas></div></td></tr>':'');
   });
   var unrl=val-cost, tot=unrl+R.realized, cls=function(x){ return x>=0?'p':'n'; };
   document.getElementById('my-cnt').textContent=MY.length+'건';
