@@ -1481,6 +1481,13 @@ if (process.env.STAGE14 !== '0') {
     });
     AD8.tune = true;
   }
+  if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' });
+    const mk = f => ym => (mC.get(ym) || []).filter(f);
+    V.push({ sec: '기준', name: 'A 지금: ETF 포함', cand: mk(() => true), rule: rule10 });
+    V.push({ sec: 'ETF', name: 'E1 ETF 제외(개별 종목만)', cand: mk(e => e.r.x[ETF] !== 1), rule: rule10 });
+    V.push({ sec: 'ETF', name: 'E2 대조: ETF만', cand: mk(e => e.r.x[ETF] === 1), rule: rule10 });
+  }
   if (process.env.AD8_TLH2 === '1' && RT14) {                           // 손실이 20% 이상 난 종목만 1월부터(매달) 정리하는 시험: 세금 목적(이익이 공제 넘을 때만) vs 손절(이익 상관없이), 미국만 vs 한국+미국
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
     const add = (sec, name, tlh) => V.push({ sec, name, cand: conf, rule: rule10, o: tlh ? { tlh } : {} });
