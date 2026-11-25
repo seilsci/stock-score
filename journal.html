@@ -191,6 +191,8 @@ canvas{display:block;width:100%;height:230px}
 .lr.dep{border-left:4px solid var(--mut)}
 .mo-btn.plan{border-style:dashed;border-color:var(--acc);color:var(--acc)}
 .plan-tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:10px;background:var(--acc);color:#fff;font-size:11px;font-weight:700;vertical-align:middle}
+.lr.cand{border-left:4px solid var(--acc);background:color-mix(in srgb,var(--acc) 6%,transparent)}
+.lr.cand .lr-k{background:var(--acc);color:#fff}
 .lr.skip{border-left:4px dashed var(--mut);background:transparent}
 .lr.skip .lr-k{background:var(--chip);color:var(--mut)}
 .lr.skip .lr-n{color:var(--mut)}
@@ -1423,7 +1425,7 @@ function decPlanOf(P){                       // 다음 달 1일 구매(잠정): 
     var us=r['시장']==='US'; return {y:us?r['코드']:r['코드']+(r['시장']==='KOSPI'?'.KS':'.KQ'),name:r['이름'],us:us,px:+r['최근종가'],score:+r['점수'],brk:+r['돌파월']||null,row:r}; });
   var p2=planCore({nowYm:dnx,lastYm:ym,holds:planHoldings(P),cash:P.cashEnd,dep:LED.meta.dep,fx:P.fx,rateUp:false,picks:[],N:4,usGainYtd:0,fd:true,cands:nc});
   var rowOf={}; nc.forEach(function(c){ rowOf[c.y]=c.row; });
-  P._dec={dnx:dnx,p2:p2,rowOf:rowOf};
+  P._dec={dnx:dnx,p2:p2,rowOf:rowOf,nc:nc};
   return P._dec;
 }
 function featsFromBars(y, brk, us){          // 저장된 월봉으로 돌파한 달(brk)까지의 지표(점수 계산용). 최근 47개월만 써서 사이트(Apps Script)와 같은 조건
@@ -1532,12 +1534,23 @@ function renderPlanView(){
       row('buy','구매 예정(1일)',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-decidx="'+di+'">'+(function(){ var l=localScore(x.y,rowOf[x.y]); return l!=null?l:x.score; })()+'</span> <span class="meta">(눌러서 이유 보기 · 가격은 지금 가격, 실제는 첫날 종가)</span>',signWon(-x.amt),bal,{y:x.y,end:dnx,buy:dnx,sell:null,raw:chartRaw(rowOf[x.y])});
     });
     p2.skipped.forEach(function(x){
-      row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김','0원',bal);
+      var rs=rowOf[x.y], sl=rs?localScore(x.y,rs):null;
+      row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김'+(sl!=null?'<br>점수 <span class="lr-sc" data-decskip="'+x.y+'">'+sl+'</span> <span class="meta">(눌러서 이유 보기)</span>':''),'0원',bal,rs?{y:x.y,end:dnx,buy:dnx,sell:null,raw:chartRaw(rs)}:null);
     });
     if(!p2.buys.length&&!p2.skipped.length) html+='<div class="empty" style="padding:8px 4px">지금 확정된 후보가 없습니다.</div>';
     html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">첫날 구매 후 현금 <span class="meta">(잠정)</span></div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
   }
-  if(P.fd){ html+='<div class="sum-note" style="margin:8px 4px 0"><b>다음 달 첫날 구매 후보</b> (이번 달 말에 확정되면 삽니다): '+(P.next&&P.next.length?P.next.slice(0,8).map(function(r){ return esc(r["이름"])+' <span class="meta">'+(r["점수"]!==''&&r["점수"]!=null?r["점수"]+'점':'')+'</span>'; }).join(' · '):'시트(Apps Script)가 확인 매수 후보를 아직 내려주지 않아 표시할 수 없습니다. 최신 Apps Script로 업데이트하면 여기에 나옵니다.')+'</div>'; }
+  if(P.fd){
+    var DC=decPlanOf(P), NC=DC&&DC.nc?DC.nc:[];
+    if(NC.length){                                                           // 다음 달 첫날 구매 후보: 카드(이름 누르면 월봉 그래프, 점수 누르면 나무)
+      html+='<div class="lr end" style="margin-top:8px"><div class="lr-h"><div><div class="lr-n">다음 달 첫날 구매 후보 <span class="meta">(이번 달 말에 확정되면 삽니다 · '+NC.length+'개 · 점수 순)</span></div></div></div></div>';
+      NC.forEach(function(c){
+        gr.push({y:c.y,end:DC.dnx,buy:DC.dnx,sell:null,raw:chartRaw(c.row)}); var gi=gr.length-1, ls=localScore(c.y,c.row), sc=ls!=null?ls:c.score;
+        html+='<div class="lr cand clk"><div class="lr-h" data-g="'+gi+'"><span class="lr-k">후보</span><div style="min-width:0"><div class="lr-n">'+esc(c.name)+(c.us?' <span class="lr-b">미국</span>':'')+'</div></div><div class="lr-a">'+pxS(c.px,c.us)+'</div></div>'
+          +'<div class="lr-s lr-d" data-g="'+gi+'">점수 <span class="lr-sc" data-candsc="'+esc(c.y)+'">'+sc+'</span> <span class="meta">'+(c.brk?'돌파 '+fmt(c.brk)+' · ':'')+'눌러서 이유 보기</span></div><div class="lr-c"><canvas></canvas></div></div>';
+      });
+    } else html+='<div class="sum-note" style="margin:8px 4px 0"><b>다음 달 첫날 구매 후보</b> (이번 달 말에 확정되면 삽니다): 시트(Apps Script)가 확인 매수 후보를 아직 내려주지 않아 표시할 수 없습니다. 최신 Apps Script로 업데이트하면 여기에 나옵니다.</div>';
+  }
   if(P.watch.length) html+='<div class="sum-note" style="margin:6px 4px 0">유예 중: '+P.watch.map(function(w){ return esc(w.name); }).join(', ')+' — 이번 달 처음 10이평 아래로 내려왔고, 월말에도 아래면 다음 달에 판매됩니다.</div>';
   list.innerHTML=html;
   list.querySelectorAll('.lr-h[data-g], .lr-d[data-g]').forEach(function(h){
@@ -1553,6 +1566,10 @@ function renderPlanView(){
         var D=decPlanOf(P), b3=D&&D.p2.buys[+c.dataset.decidx]; if(!b3) return;
         var r3=D.rowOf[b3.y], f3=featsForRow(b3.y,r3);
         showScoreTree(b3.y,+D.dnx,b3.name,null,{feats:f3?Object.keys(f3).map(function(k){ return [k,f3[k]]; }):[],apiScore:b3.score}); return;
+      }
+      if(c.dataset.candsc!=null||c.dataset.decskip!=null){            // 다음 달 첫날 구매 후보·못 삼 후보: 돌파한 달 시점 지표로 나무
+        var Dd=decPlanOf(P), yy=c.dataset.candsc!=null?c.dataset.candsc:c.dataset.decskip, cc=Dd&&Dd.nc.filter(function(z){ return z.y===yy; })[0]; if(!cc) return;
+        var fc=featsForRow(cc.y,cc.row); showScoreTree(cc.y,+Dd.dnx,cc.name,null,{feats:fc?Object.keys(fc).map(function(k){ return [k,fc[k]]; }):[],apiScore:cc.score}); return;
       }
       if(c.dataset.buyidx!=null){                                   // 구매 예정 종목: 지금 지표로 바로 나무
         var b=P.buys[+c.dataset.buyidx], r=b.row, ch=r&&r['차트'];
