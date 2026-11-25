@@ -629,7 +629,14 @@ function searchRows_(q) {
 /* 매매일지 '내 체결 내역' 현재가: 코드(쉼표로 여러 개) → { 코드: {px, prev, chg, pct, cur, src, t} }
  * 국내 6자리 코드는 네이버 시세(거의 실시간, 비공식 주소), 없거나 미국은 야후(약 15분 지연). prev = 전일 종가, chg·pct = 전일 대비 */
 function liveRows_(list) {
-  var codes = String(list).split(',').map(function (x) { return x.trim().toUpperCase(); }).filter(String).slice(0, 25), out = {}, now = Date.now();
+  var codes = String(list).split(',').map(function (x) { return x.trim().toUpperCase(); }).filter(String).slice(0, 25);
+  var ck = 'lv:' + codes.join(','), cache = CacheService.getScriptCache(), hit = cache.get(ck);           // 여러 기기·잦은 호출이 겹쳐도 3초 안에는 같은 응답(호출 한도 보호)
+  if (hit) { try { return JSON.parse(hit); } catch (err) { } }
+  var out = liveFetch_(codes); try { cache.put(ck, JSON.stringify(out), 3); } catch (err) { }
+  return out;
+}
+function liveFetch_(codes) {
+  var out = {}, now = Date.now();
   var kr = codes.filter(function (c) { return /^\d{6}$/.test(c); });
   if (kr.length) {
     try {
