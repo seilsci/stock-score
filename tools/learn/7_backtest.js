@@ -339,7 +339,8 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     }
     holds = keep;
     if (opt.tlh && opt.tlh.months.includes((k - 1) % 12 + 1)) {                // 손실 난 미국 종목 미리 팔기(세금 줄이기): 그해 미국 이익이 공제를 넘으면 세금이 0이 될 때까지 손실 큰 순으로 판매(always면 이익과 상관없이 손실 종목 전부)
-      const Yt = yOfK(k), L = holds.filter(h => h.us && val(h, k) * (1 - usFee) - h.basis < 0).sort((a, b) => (val(a, k) * (1 - usFee) - a.basis) - (val(b, k) * (1 - usFee) - b.basis));
+      const Yt = yOfK(k), lossOf = h => val(h, k) * (h.us ? 1 - usFee : 1 - C.kr.commission) - h.basis;      // 팔면 얼마 손해인지(수수료 반영, 음수 = 손실)
+      const L = holds.filter(h => (h.us || opt.tlh.all) && lossOf(h) < 0 && lossOf(h) <= -(opt.tlh.minLoss || 0) * h.basis).sort((a, b) => lossOf(a) - lossOf(b));
       for (const h of L) {
         if (!opt.tlh.always && (usGain[Yt] || 0) <= C.us.cg_exemption_krw) break;
         cash += sellCash(h, k, 'tlh'); holds = holds.filter(x => x !== h); tlhN++;
@@ -1478,6 +1479,21 @@ if (process.env.STAGE14 !== '0') {
       V.push({ sec: '익절 기준', name, cand: ym => m.get(ym) || [], rule });
     });
     AD8.tune = true;
+  }
+  if (process.env.AD8_TLH2 === '1' && RT14) {                           // 손실이 20% 이상 난 종목만 1월부터(매달) 정리하는 시험: 세금 목적(이익이 공제 넘을 때만) vs 손절(이익 상관없이), 미국만 vs 한국+미국
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
+    const add = (sec, name, tlh) => V.push({ sec, name, cand: conf, rule: rule10, o: tlh ? { tlh } : {} });
+    const ALL = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    add('기준', 'A 지금: 손실 종목 미리 팔지 않음', null);
+    add('세금 목적: 미국만, 그해 이익이 공제 넘을 때만 · 1~12월 매달 말', 'U1 손실 ≥10% 인 종목', { months: ALL, minLoss: 0.1 });
+    add('세금 목적: 미국만, 그해 이익이 공제 넘을 때만 · 1~12월 매달 말', 'U2 손실 ≥20% 인 종목', { months: ALL, minLoss: 0.2 });
+    add('세금 목적: 미국만, 그해 이익이 공제 넘을 때만 · 1~12월 매달 말', 'U3 손실 ≥30% 인 종목', { months: ALL, minLoss: 0.3 });
+    add('세금 목적: 미국만, 그해 이익이 공제 넘을 때만 · 1~12월 매달 말', 'U4 손실 ≥20% 인 종목, 11월 말만', { months: [11], minLoss: 0.2 });
+    add('손절: 이익과 상관없이 · 1~12월 매달 말', 'S1 미국만, 손실 ≥20%', { months: ALL, minLoss: 0.2, always: true });
+    add('손절: 이익과 상관없이 · 1~12월 매달 말', 'S2 미국만, 손실 ≥30%', { months: ALL, minLoss: 0.3, always: true });
+    add('손절: 이익과 상관없이 · 1~12월 매달 말', 'S3 한국+미국, 손실 ≥20%', { months: ALL, minLoss: 0.2, always: true, all: true });
+    add('손절: 이익과 상관없이 · 1~12월 매달 말', 'S4 한국+미국, 손실 ≥30%', { months: ALL, minLoss: 0.3, always: true, all: true });
+    AD8.tlh = true;
   }
   if (process.env.AD8_TLH === '1' && RT14) {                            // 세금 줄이려고 손실 난 미국 종목 미리 팔기 시험(11월·12월 말) — 판매 규칙·후보는 현재 규칙 그대로
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
