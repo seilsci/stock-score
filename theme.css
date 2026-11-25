@@ -13,4 +13,4 @@ input,select,textarea{border:none !important;border-bottom:1.5px solid var(--fg)
 .my-add{background:var(--fg) !important;color:var(--bg) !important;border:none !important;border-radius:0 !important}
 /* 태그는 박스 없이 그냥 글씨 */
 .tag,.tag.yu,.rtag,.rtag.tp{background:transparent !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important}
-.tag.yu,.rtag.tp{color:var(--ma) !important}
+.tag.yu,.rtag.tp{color:#1f4e8c !important}
