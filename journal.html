@@ -797,7 +797,7 @@ function fdNextOf(ym){                      // 첫날 구매 방식: ym 월말 �
   if(NEXTFD&&NEXTFD.base===LED&&NEXTFD.ym===nx) return NEXTFD;
   var cands=(m.cands||[]).map(function(c){ var sc=c.brk?scoreOf(c.y,c.brk):null; return {y:c.y,name:c.name,us:c.us,px:c.px,score:sc!=null?sc:'-',brk:c.brk}; });
   var core=planCore({nowYm:nx,lastYm:ym,holds:DATA.snapshots[ym]||[],cash:m.cash,dep:LED.meta.dep,fx:m.fx,rateUp:false,picks:[],N:4,usGainYtd:0,fd:true,cands:cands});
-  var buys=core.buys.map(function(b){ return Object.assign({},b,{score:typeof b.score==='number'?b.score/100:0}); });
+  var buys=core.buys.map(function(b){ return Object.assign({},b,{score:typeof b.score==='number'?b.score/100:null}); });
   NEXTFD={ym:nx,buys:buys,skipped:core.skipped,base:LED};
   return NEXTFD;
 }
@@ -873,9 +873,9 @@ function renderLedger(){
     var endYm=tr?tr.sellYm:Object.keys(LED.months).sort().pop();
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
     var cost='+ 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span> = <b>'+won(x.amt)+'</b>';
-    var scv=(function(){ var v=scoreOf(x.y,Y); return v!=null?v:Math.round(x.score*100); })();
+    var scv=(function(){ var v=scoreOf(x.y,Y); return v!=null?v:(x.score==null?'-':Math.round(x.score*100)); })();
     add('buy','구매'+(FD?'(1일)':''),esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+Y+'" data-sn="'+esc(x.name)+'" data-sp="'+x.score+'">'+scv+'</span>',
+      calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+Y+'" data-sn="'+esc(x.name)+'" data-sp="'+(x.score==null?'':x.score)+'">'+scv+'</span>',
       signWon(-x.amt),bal,{y:x.y,end:endYm,buy:Y,sell:tr?tr.sellYm:null});
   });
   (M.skipped||[]).forEach(function(x){
