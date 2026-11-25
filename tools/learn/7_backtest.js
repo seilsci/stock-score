@@ -217,6 +217,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (list.length) {
       const per0 = cash / (N || picks.length);
       let slots = N || picks.length;
+      if (opt.maxHold) slots = Math.max(0, Math.min(slots, opt.maxHold - holds.length));      // 총 보유 종목 상한: 상한을 넘기지 않는 만큼만 새로 삼(현금은 남겨 둠)
       for (let li = 0; li < list.length; li++) {
         if (fill && slots <= 0) break;
         const { r } = list[li];
@@ -1427,6 +1428,20 @@ if (process.env.STAGE14 !== '0') {
     V.push({ sec: SC, name: 'C 둘 다 놓고 점수순', cand: ym => dedupe(byScore(conf(ym).concat(imm(ym)))), rule: rule10 });
     V.push({ sec: SC, name: 'D 확인 매수 먼저, 모자라면 돌파만 한 종목으로 채움', cand: ym => dedupe(byScore(conf(ym)).concat(byScore(imm(ym)))), rule: rule10 });
     V.push({ sec: SC, name: 'E 돌파만 한 종목 먼저, 모자라면 확인 매수로 채움', cand: ym => dedupe(byScore(imm(ym)).concat(byScore(conf(ym)))), rule: rule10 });
+  }
+  if (process.env.AD8_RISK === '1' && RT14) {                           // 지수 필터(코스피·S&P500이 그달 N개월 이평 아래면 신규 매수 쉼) · 총 보유 종목 상한 시험. 판매 규칙·금리 판단은 현재 규칙
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
+    let BENCHJ = null; try { BENCHJ = JSON.parse(fs.readFileSync(path.join(DATA, 'bench.json'))); } catch (e) { console.log('※ data/bench.json 없음(8b_bench.js)'); }
+    const idxClose = (key, k) => BENCHJ && BENCHJ[key] ? BENCHJ[key][ymOf(k)] : undefined;
+    const idxUp = (key, ym, L) => { const k = mi(ym); let t = 0; for (let j = k; j > k - L; j--) { const c = idxClose(key, j); if (!(c > 0)) return true; t += c; } return idxClose(key, k) > t / L; };     // 자료가 없으면 쉬지 않음
+    const keyOf = y => (/\.(KS|KQ)$/.test(y) ? 'ks' : 'sp');
+    const filt = (mode, L) => ym => conf(ym).filter(e => mode === 'mkt' ? idxUp(keyOf(e.r.y), ym, L) : mode === 'ks' ? idxUp('ks', ym, L) : mode === 'sp' ? idxUp('sp', ym, L) : (idxUp('ks', ym, L) || idxUp('sp', ym, L)));
+    V.push({ sec: '기준', name: '현재: 필터·상한 없음', cand: conf, rule: rule10 });
+    if (BENCHJ) { [6, 10, 12].forEach(L => { V.push({ sec: '지수 필터(신규 매수만 쉼)', name: `종목 시장 지수(한국=코스피, 미국=S&P500)가 ${L}개월 이평 아래면 쉼`, cand: filt('mkt', L), rule: rule10 });
+      }); V.push({ sec: '지수 필터(신규 매수만 쉼)', name: 'S&P500이 10개월 이평 아래면 전부 쉼', cand: filt('sp', 10), rule: rule10 });
+      V.push({ sec: '지수 필터(신규 매수만 쉼)', name: '코스피가 10개월 이평 아래면 전부 쉼', cand: filt('ks', 10), rule: rule10 });
+      V.push({ sec: '지수 필터(신규 매수만 쉼)', name: '코스피·S&P500 둘 다 10개월 이평 아래일 때만 쉼', cand: filt('both', 10), rule: rule10 }); }
+    [6, 8, 10, 12, 16, 20].forEach(h => V.push({ sec: '총 보유 종목 상한', name: `보유 ${h}종목까지만`, cand: conf, rule: rule10, o: { maxHold: h } }));
   }
   const base = V[0];
   V.forEach((v, i) => { progress('후속 시험', i / V.length); v.full = run14(v); v.halves = []; });
