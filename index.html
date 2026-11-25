@@ -17,6 +17,7 @@ h1{font-size:20px;margin:0}
 .tabs{display:flex;gap:8px;padding:8px 16px}
 .tab{flex:1;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
 .tab.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.navtabs{padding:0 0 4px}.navtabs .tab{display:block;text-align:center;text-decoration:none}
 .seg{display:flex;margin:8px 16px;background:var(--seg);border-radius:10px;padding:3px}
 .seg button{flex:1;padding:8px;border:0;background:none;border-radius:8px;font:inherit;font-weight:600;color:var(--mut);cursor:pointer}
 .seg button.on{background:var(--card)}
@@ -129,7 +130,7 @@ a{color:inherit}
 </head>
 <body>
 <main>
-  <a class="jlink" href="journal.html">📒 매매일지 (백테스트 기록) →</a>
+  <div class="tabs navtabs"><a class="tab on" href="index.html">📈 종목</a><a class="tab" id="tj" href="journal.html">📒 매매일지</a></div>
   <header>
     <h1>월봉 10이평 돌파 후 +10% · 정배열 매수</h1>
     <div class="sub" id="upd">불러오는 중…</div>
@@ -191,6 +192,7 @@ a{color:inherit}
 <script>
 var API = 'https://script.google.com/macros/s/AKfycbwneUZ409vUCsLONb7sBwv7zeVeo0CGtxXfMsou-bAm6OOW4q4l1RGzQ89ZKVHQ2jyS/exec';
 var DATA = null, M = 'KR', S = '매수', SEL = null, LIST = [];
+try { if (/[?&]x=1(&|$)/.test(location.search)) localStorage.setItem('jx', '1'); else if (/[?&]x=0(&|$)/.test(location.search)) localStorage.removeItem('jx'); if (localStorage.getItem('jx') === '1') document.getElementById('tj').href = 'journal.html?x=1'; } catch (e) {}
 try { M = localStorage.getItem('m') || 'KR'; S = localStorage.getItem('s') || '매수'; } catch (e) {}
 
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -202,7 +204,7 @@ function cap(r) {
 function px(r, kr) { return kr ? Math.round(r['최근종가']).toLocaleString() + '원' : '$' + (+r['최근종가']).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 function render() {
-  document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.m === M); });
+  document.querySelectorAll('.tab[data-m]').forEach(function (t) { t.classList.toggle('on', t.dataset.m === M); });
   var sb = document.getElementById('sb'), ss = document.getElementById('ss'), st = document.getElementById('st');
   sb.className = S === '매수' ? 'on b' : ''; ss.className = S === '매도' ? 'on s' : ''; st.className = S === '익절' ? 'on t' : '';
   if (!DATA) return;
@@ -600,7 +602,7 @@ function showScore(r) {
 }
 document.getElementById('sc-modal').onclick = function (ev) { if (ev.target === this) this.classList.remove('open'); };
 
-document.querySelectorAll('.tab').forEach(function (t) {
+document.querySelectorAll('.tab[data-m]').forEach(function (t) {
   t.onclick = function () { M = t.dataset.m; try { localStorage.setItem('m', M); } catch (e) {} render(); };
 });
 document.querySelectorAll('.seg button').forEach(function (b) {

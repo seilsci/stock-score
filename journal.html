@@ -13,6 +13,7 @@ main{max-width:680px;margin:0 auto;padding:16px 16px 48px}
 h1{font-size:18px;margin:0 0 2px;font-weight:700}
 .sub{color:var(--mut);font-size:12px;margin-bottom:18px}
 .sub a{color:var(--acc);text-decoration:none}
+.navtabs{display:flex;gap:8px;margin:0 0 12px}.ntab{flex:1;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;font-weight:600;text-align:center;text-decoration:none}.ntab.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 
 
 /* 내 체결 내역 (?x=1) */
@@ -284,8 +285,9 @@ canvas{display:block;width:100%;height:230px}
 </head>
 <body>
 <main>
+  <div class="navtabs"><a class="ntab" href="index.html">📈 종목</a><a class="ntab on" href="journal.html">📒 매매일지</a></div>
   <h1>매매일지</h1>
-  <div class="sub"><span id="strat-label">10이평 돌파 후 +10%·정배열 매수 · tp2x트레일+금리유예2달</span> · <span id="dep-label">월 100만원</span> · 비용·세금 반영 · <a href="index.html">← 사이트</a></div>
+  <div class="sub"><span id="strat-label">10이평 돌파 후 +10%·정배열 매수 · tp2x트레일+금리유예2달</span> · <span id="dep-label">월 100만원</span> · 비용·세금 반영</div>
 
   <div id="start-card"></div>
   <div id="amt-card" class="amt-card">
@@ -1615,7 +1617,7 @@ function renderPlanView(){
 
 /* ── 시작 시점 바꾸기: 그 달부터 같은 규칙으로 월 100만원씩 투자했다면 (브라우저에서 다시 계산) ──
    매달 무엇을 사는지(점수 상위 4)와 언제 파는지는 현금과 무관하게 정해지므로, 현금·수량·세금만 다시 계산한다. */
-var XMODE=/[?&]x=1(&|$)/.test(location.search);         // ?x=1: 내 일지 — 시작 시점을 기억하고, 처음 들어가면 2026-11부터 시작으로 열림
+var XMODE=/[?&]x=1(&|$)/.test(location.search); try{ if(XMODE) localStorage.setItem('jx','1'); else if(/[?&]x=0(&|$)/.test(location.search)) localStorage.removeItem('jx'); else if(localStorage.getItem('jx')==='1') XMODE=true; }catch(e){}         // ?x=1: 내 일지 — 시작 시점을 기억하고, 처음 들어가면 2026-11부터 시작으로 열림
 var LED0=null, SNAP0=null, START_YM=null, START_Y=null, FIRST_YM=null, EXIT_C=null;
 var AMT={dep:null,init:null};               // 사용자가 입력한 월 불입금·초기 자금(원). null이면 장부 기본값(100만원). 초기 자금 = 첫 달에 쓸 돈(그 달 월 불입금은 따로 안 더함)
 try{ var _d=localStorage.getItem('jdep'), _i=localStorage.getItem('jinit'); if(_d!==null&&_d!=='') AMT.dep=+_d; if(_i!==null&&_i!==''&&+_i>0) AMT.init=+_i; }catch(e){}
