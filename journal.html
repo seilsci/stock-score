@@ -150,6 +150,7 @@ canvas{display:block;width:100%;height:230px}
 .sd-btn.sel{background:color-mix(in srgb,var(--acc) 14%,var(--card));color:var(--acc);border-color:var(--acc)}
 .sd-sum{font-size:12px;color:var(--mut);margin:0 0 8px}
 .sd-sum b{color:var(--fg)}
+.sd-sum{display:flex;flex-direction:column;gap:3px}.sd-l1{font-size:13px;color:var(--fg)}.sd-l2{font-size:11px;white-space:nowrap}
 #sold-list{display:flex;flex-direction:column;gap:1px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 12px}
 .sd-row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--line)}
 .sd-row:last-child{border-bottom:0}
@@ -1807,7 +1808,7 @@ function renderSoldList(){
   rows.sort(cmp[SOLD_SORT]);
   var win=rows.filter(function(r){ return r.ret>0; }).length;
   document.getElementById('sold-label').textContent='매도한 거래 전체 · '+fmt(START_YM||Object.keys(LED.months).sort()[0])+'부터';
-  document.getElementById('sold-sum').innerHTML='판매 완료 <b>'+rows.length+'건</b> · 수익 난 거래 <b>'+win+'건 ('+(rows.length?Math.round(win/rows.length*100):0)+'%)</b> · 점수는 구매 당시 지표를 최신 모델로 계산한 값(점수 칩을 누르면 이유, 줄을 누르면 판매 당시까지의 월봉 그래프)';
+  document.getElementById('sold-sum').innerHTML='<div class="sd-l1">판매 완료 <b>'+rows.length+'건</b> · 수익 난 거래 <b>'+win+'건 ('+(rows.length?Math.round(win/rows.length*100):0)+'%)</b></div><div class="sd-l2">점수는 구매 당시 지표를 최신 모델로 계산한 값</div><div class="sd-l2">(점수 칩을 누르면 이유, 줄을 누르면 판매 당시까지의 월봉 그래프)</div>';
   var btn=function(k,t){ return '<button class="sd-btn'+(SOLD_SORT===k?' sel':'')+'" data-k="'+k+'">'+t+'</button>'; };
   document.getElementById('sold-ctl').innerHTML=btn('buy','오래된 순')+btn('score','점수 높은 순')+btn('ret','수익 높은 순')+btn('loss','수익 낮은 순');
   document.querySelectorAll('#sold-ctl .sd-btn').forEach(function(b){ b.onclick=function(){ SOLD_SORT=b.dataset.k; SOLD_LIMIT=100; renderSoldList(); }; });
