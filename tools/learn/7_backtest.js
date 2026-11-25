@@ -1720,7 +1720,7 @@ const journalSim = simulate(ym => jCand(ym).slice(0, 4), 4, C1, { tpTrail: 2, gr
 const listData = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const nameMap = new Map(listData.map(s => [s.y, { name: s.name, market: s.mk, code: s.code }]));
 const journal = {
-  meta: { strategy: JOURNAL_STRAT === 'confirm' ? '확인 매수(가상 +10% 이상 + 5>10>20) · tp2x트레일+금리유예2달 · 다음 달 첫날 구매' : 'A4 tp2x트레일+금리유예2달', firstDay: JOURNAL_STRAT === 'confirm', dep: 1000000, made: new Date().toISOString() },
+  meta: { strategy: JOURNAL_STRAT === 'confirm' ? '10이평 돌파 후 +10% 이상 + 5>10>20 정배열 매수 · tp2x트레일+금리유예2달 · 다음 달 첫날 구매' : 'A4 tp2x트레일+금리유예2달', firstDay: JOURNAL_STRAT === 'confirm', dep: 1000000, made: new Date().toISOString() },
   features: F,
   trades: (journalSim.trades || []).map(t => ({
     y: t.y, name: nameMap.get(t.y)?.name || t.y, market: nameMap.get(t.y)?.market || '',

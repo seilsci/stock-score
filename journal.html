@@ -201,7 +201,7 @@ canvas{display:block;width:100%;height:230px}
 <body>
 <main>
   <h1>매매일지</h1>
-  <div class="sub"><span id="strat-label">확인 매수 · tp2x트레일+금리유예2달</span> · 월 100만원 · 비용·세금 반영 · <a href="index.html">← 사이트</a></div>
+  <div class="sub"><span id="strat-label">10이평 돌파 후 +10%·정배열 매수 · tp2x트레일+금리유예2달</span> · 월 100만원 · 비용·세금 반영 · <a href="index.html">← 사이트</a></div>
 
   <div id="start-card"></div>
 
@@ -1214,7 +1214,7 @@ function usGainYtdOf(nowYm){            // 그해 1월~지난달 미국 주식 �
   return g;
 }
 
-function isFD(){ return !!(LED0&&LED0.meta&&LED0.meta.firstDay); }                // 장부가 '다음 달 첫날 구매'(확인 매수) 방식이면 true. 옛 장부(월말 구매)는 false라 예전 그대로 동작
+function isFD(){ return !!(LED0&&LED0.meta&&LED0.meta.firstDay); }                // 장부가 '다음 달 첫날 구매'(돌파 후 +10%·정배열) 방식이면 true. 옛 장부(월말 구매)는 false라 예전 그대로 동작
 function exitFor(y,buyYm){                 // 그 달에 샀다면 언제·왜 파는지(수량과 무관). 익절 트레일 → 10이평 아래 유예(금리 상승 달이면 즉시)
   var b=barsOf(y); if(!b) return undefined;  // 월봉이 없으면 알 수 없음
   var iBuy=b.pos[buyYm]; if(iBuy==null) return undefined;
@@ -1321,7 +1321,7 @@ function renderPlanView(){
     +'<div class="sum-i"><span class="k">'+(P.fd?'이달 첫날 구매(체결)':'구매 예정')+'</span><b>'+(P.buys.length?P.buys.length+'건 '+won(buySum):'없음')+'</b></div>'
     +'<div class="sum-i"><span class="k">유예 중(다음 달에도 아래면 매도)</span><b>'+P.watch.length+'종목</b></div>'
     +'</div><div class="sum-note">기준: '+esc(P.api.updated['한국']||'')+' 시점 가격·점수. <b>이번 달이 끝날 때의 종가에 따라 바뀔 수 있는 예상</b>입니다. 국채 10년 금리: '+rateTxt+'.<br>'
-    +(P.fd?'구매는 <b>지난달 말에 확정된 확인 매수 후보</b>(10이평 돌파 후 가상 수익 +10% 이상 + 5>10>20 정배열) 중 점수 상위 4종목을 이번 달 첫날 종가에 샀습니다. 아래 "다음 달 첫날 구매 후보"는 이번 달 말에 확정되면 사는 종목입니다. 미국은 '+Math.round(LED.months[Object.keys(LED.months).sort().pop()].fx).toLocaleString()+'원/$(지난달말 환율)로 환산했습니다.</div>':'구매는 사이트 점수(최신 모델) 상위 4종목입니다(매수 신호 '+P.api.candidates+'개 중). 과거 일지는 그해 모델 순위라 조금 다를 수 있어요. 미국은 '+Math.round(LED.months[Object.keys(LED.months).sort().pop()].fx).toLocaleString()+'원/$(지난달말 환율)로 환산했습니다.</div>');
+    +(P.fd?'구매는 <b>지난달 말에 조건을 채운 후보</b>(10이평 돌파 후 돌파 다음 달 시가 대비 +10% 이상 + 5>10>20 정배열) 중 점수 상위 4종목을 이번 달 첫날 종가에 샀습니다. 아래 "다음 달 첫날 구매 후보"는 이번 달 말에 확정되면 사는 종목입니다. 미국은 '+Math.round(LED.months[Object.keys(LED.months).sort().pop()].fx).toLocaleString()+'원/$(지난달말 환율)로 환산했습니다.</div>':'구매는 사이트 점수(최신 모델) 상위 4종목입니다(매수 신호 '+P.api.candidates+'개 중). 과거 일지는 그해 모델 순위라 조금 다를 수 있어요. 미국은 '+Math.round(LED.months[Object.keys(LED.months).sort().pop()].fx).toLocaleString()+'원/$(지난달말 환율)로 환산했습니다.</div>');
   var bal=P.cash0, html='';
   var gr=[];                                                                    // 줄을 누르면 월봉 그래프(현재 가격까지)
   var row=function(cls,k,name,sub,amt,after,args){
@@ -1554,7 +1554,7 @@ function renderSoldList(){
 }
 
 function renderAll(){
-  try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) sl.textContent=DATA.meta.strategy; }catch(e){}
+  try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) sl.textContent=DATA.meta.firstDay?'10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매) · tp2x트레일+국채10년 금리 유예2달':DATA.meta.strategy; }catch(e){}
   renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
