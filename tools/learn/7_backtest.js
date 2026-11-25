@@ -1493,6 +1493,8 @@ if (process.env.STAGE14 !== '0') {
       const sm = simulate(ym => cand(ym).slice(0, N), N, C1, { ...o, cand, log: true });
       const parts = WATCH.map(([y, nm]) => { const T = (sm.trades || []).filter(t => t.y === y && +String(t.buyYm).slice(0, 4) >= 2024).map(t => `${t.buyYm}→${t.sellYm || '보유중'} ${t.ret == null ? '' : (t.ret >= 0 ? '+' : '') + (t.ret * 100).toFixed(0) + '%'}`); return `${nm}: ${T.length ? T.join(', ') : '매수 없음'}`; });
       log(`${v.name.slice(0, 42).padEnd(42)} | ${parts.join(' | ')}`);
+      const rk = WATCH.map(([y, nm]) => { const o2 = []; [202504, 202505, 202506, 202507, 202508, 202509].forEach(ym => { const L = cand(ym) || [], i = L.findIndex(e => e.r && e.r.y === y); if (i >= 0) o2.push(`${ym}:${i + 1}위/${L.length}`); }); return `${nm} 후보 순위(2025): ${o2.length ? o2.join(' ') : '후보에 안 듦'}`; });
+      log(`${''.padEnd(42)} · ${rk.join(' | ')}`);
     });
   }
   AD8.sec = { V, base };

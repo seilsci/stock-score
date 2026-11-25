@@ -6,7 +6,7 @@ cd "$(dirname "$0")" || exit 1
 export STAGE3=0 STAGE4=0 STAGE5=0 STAGE6=0 STAGE7=0 STAGE8=0 STAGE9=0 STAGE10=0 STAGE11=0 STAGE12=0 STAGE13=0 STAGE14=1 AD8_TUNE=1 AD8_HALVES=8 NODE_NO_WARNINGS=1
 echo "시험 시작: $(date '+%H:%M')  (몇 분 걸려요)"
 node 7_backtest.js > data/exp_run.log 2>&1 || { echo "실행 오류. data/exp_run.log 마지막 줄:"; tail -5 data/exp_run.log; exit 1; }
-awk '/^## 확인 매수 후속/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt > data/exp_result.txt
+awk '/^## (확인 매수 후속|삼성전자)/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt > data/exp_result.txt
 cat data/exp_result.txt
 # 클립보드 복사: Windows clip은 UTF-8 한글이 깨지므로 PowerShell Set-Clipboard(UTF-8로 읽기) 우선, 없으면 UTF-16으로 바꿔 clip에 넣음
 if command -v powershell.exe >/dev/null 2>&1; then
