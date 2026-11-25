@@ -34,8 +34,8 @@ const PXC = new Map();
 const rawFile = y => path.join(RAW, y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json');
 function px(y) {
   let o = PXC.get(y); if (o) return o;
-  o = { m: new Map(), op: new Map(), lastK: 0, lastC: 0 };
-  try { JSON.parse(fs.readFileSync(rawFile(y))).forEach(b => { if (b[4] > 0) { const k = mi(b[0]); o.m.set(k, b[4]); if (b[1] > 0) o.op.set(k, b[1]); if (k >= o.lastK) { o.lastK = k; o.lastC = b[4]; } } }); } catch (e) {}
+  o = { m: new Map(), op: new Map(), hi: new Map(), lo: new Map(), lastK: 0, lastC: 0 };
+  try { JSON.parse(fs.readFileSync(rawFile(y))).forEach(b => { if (b[4] > 0) { const k = mi(b[0]); o.m.set(k, b[4]); if (b[1] > 0) o.op.set(k, b[1]); if (b[2] > 0) o.hi.set(k, b[2]); if (b[3] > 0) o.lo.set(k, b[3]); if (k >= o.lastK) { o.lastK = k; o.lastC = b[4]; } } }); } catch (e) {}
   PXC.set(y, o); return o;
 }
 let FX = {}; try { FX = JSON.parse(fs.readFileSync(path.join(DATA, 'fx.json'))); } catch (e) {}
@@ -225,6 +225,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         let per = fill ? cash / Math.min(slots, opt.minDiv ? Math.max(list.length - li, opt.minDiv) : list.length - li) : per0;      // minDiv: 남은 후보가 적어도 최소 minDiv개 몫으로 나눔(나머지는 현금으로 둠)      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
         if (fill && opt.wRank) { const nn = Math.min(slots, list.length - li); if (nn > 1) per = opt.wRank > 0 ? cash * 2 / (nn + 1) : cash * 2 / (nn * (nn + 1)); }   // wRank: 순위 비례 비중(+1: 앞순위에 더, −1: 뒷순위에 더(대조)). 남은 nn자리에 nn, nn−1, … 1 (또는 반대) 몫
         const o = px(r.y), p = priceAt(o, r); if (p === undefined || !(p > 0)) { if (opt.firstDay) fdMiss++; continue; }
+        if (opt.firstDay) { const hi = o.hi.get(k), lo = o.lo.get(k); if (hi > 0 && lo > 0 && (p > hi * 1.03 || p < lo * 0.97)) { fdMiss++; continue; } }      // 첫날 종가가 그달 월봉 저가~고가를 벗어나면(액면·감자 조정이 안 맞는 일봉 자료) 그 종목은 건너뛰고 다음 순위를 삼
         const us = r.x[US] === 1, fee = us ? usFee : C.kr.commission;
         const pKrw = p * (us ? fx(k) : 1);                // 원화 환산 주가
         // 주식 단위 제한(opt.lotSize): 미국은 소수점 허용, 한국은 1주 단위
