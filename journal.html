@@ -1096,10 +1096,12 @@ function renderMonthTable(){                 // 연도(세로) × 월(가로) �
   var card=document.getElementById('mt-card');
   if(!LED){ card.style.display='none'; return; }
   card.style.display='block';
-  var keys=['st'].concat(BENCH?BK:[]); if(keys.indexOf(MT_KEY)<0) MT_KEY='st';
-  var NAMES={st:'현재 전략',nq:'나스닥100',sp:'S&P500',ks:'코스피'}, order=['st','nq','sp','ks'].filter(function(k){ return keys.indexOf(k)>=0; });
+  var hasMy=!!(XMODE&&MYRM&&Object.keys(MYRM).length), keys=['st'].concat(hasMy?['my']:[]).concat(BENCH?BK:[]); if(keys.indexOf(MT_KEY)<0) MT_KEY='st';
+  if(hasMy&&!MT_PICKED&&!Object.keys(RET).length) MT_KEY='my';              // 전략 기록이 없으면(이번 달 시작 등) 내 수익률을 먼저 보여 줌
+  var NAMES={st:'현재 전략',my:'내 수익률',nq:'나스닥100',sp:'S&P500',ks:'코스피'}, order=['st','my','nq','sp','ks'].filter(function(k){ return keys.indexOf(k)>=0; });
   var ks=Object.keys(LED.months).sort(), y0=+ks[0].slice(0,4), y1=+ks[ks.length-1].slice(0,4);
-  var val=function(ym){ return MT_KEY==='st'?(RET[ym]==null?null:RET[ym]):benchRet(MT_KEY,ym); };
+  if(hasMy){ var my0=+Object.keys(MYRM).sort()[0].slice(0,4); y0=Math.min(y0,my0); y1=Math.max(y1,+String(myThisYm()).slice(0,4)); }
+  var val=function(ym){ return MT_KEY==='st'?(RET[ym]==null?null:RET[ym]):MT_KEY==='my'?(MYRM[ym]==null?null:MYRM[ym]):benchRet(MT_KEY,ym); };
   var tint=function(v){ if(v==null) return ''; var a=Math.min(Math.abs(v)/0.15,1)*0.5; return 'background:'+(v>=0?'rgba(214,64,64,':'rgba(50,100,220,')+a.toFixed(2)+')'; };
   var h='<div class="rc-h"><div class="rc-t">월별 수익률 표 (%)</div></div><div class="mt-tabs">'
     +order.map(function(k){ return '<button class="'+(k===MT_KEY?'on':'')+'" data-k="'+k+'">'+NAMES[k]+'</button>'; }).join('')+'</div>'
@@ -1117,23 +1119,25 @@ function renderMonthTable(){                 // 연도(세로) × 월(가로) �
     var t=prod-1;
     h+='<tr><td>'+y+(cnt<12?'*':'')+'</td>'+row+'<td class="y" style="color:'+(t>=0?'var(--buy)':'var(--sell)')+'">'+(t*100).toFixed(1)+'</td></tr>';
   }
-  h+='</table></div><div class="mt-note">* 12개월이 안 되는 해. 연간 = 월 수익률 복리(입금 영향 제외).'+(MT_KEY==='st'?'':' 미국 지수는 환율을 반영한 원화 기준.')+' 옆으로 밀어서 보세요.</div>';
+  h+='</table></div><div class="mt-note">* 12개월이 안 되는 해. 연간 = 월 수익률 복리(입금 영향 제외).'+(MT_KEY==='st'?'':MT_KEY==='my'?' 내 수익률은 입력한 체결 날짜로 계산한 값(현금·입금 제외).':' 미국 지수는 환율을 반영한 원화 기준.')+' 옆으로 밀어서 보세요.</div>';
   card.innerHTML=h;
-  Array.prototype.forEach.call(card.querySelectorAll('.mt-tabs button'),function(b){ b.onclick=function(){ MT_KEY=b.getAttribute('data-k'); renderMonthTable(); }; });
+  Array.prototype.forEach.call(card.querySelectorAll('.mt-tabs button'),function(b){ b.onclick=function(){ MT_KEY=b.getAttribute('data-k'); MT_PICKED=true; renderMonthTable(); }; });
 }
 function renderRetChart(){
   var card=document.getElementById('ret-card');
   if(!LED || !SEL_YM){ card.style.display='none'; return; }
   card.style.display='block';
   var Y=String(SEL_YM).slice(0,4), vals=[], ann=1, n=0, win=0, best=null, worst=null, bv={ks:[],sp:[],nq:[]}, bann={ks:1,sp:1,nq:1}, bany={ks:false,sp:false,nq:false};
+  var hasSt=false, hasMyY=false; for(var q=1;q<=12;q++){ var yq=Y+(q<10?'0':'')+q; if(RET[yq]!=null) hasSt=true; if(XMODE&&MYRM[yq]!=null) hasMyY=true; }
+  var useMy=hasMyY&&!hasSt;                                                    // 전략 기록이 없는 해는 내 수익률을 보여 줌
   for(var m=1;m<=12;m++){
-    var ym=Y+(m<10?'0':'')+m, r=RET[ym];
+    var ym=Y+(m<10?'0':'')+m, r=useMy?MYRM[ym]:RET[ym];
     vals.push(r==null?null:r);
     BK.forEach(function(k){ var br=r==null?null:benchRet(k,ym); bv[k].push(br); if(br!=null){ bann[k]*=1+br; bany[k]=true; } });
     if(r!=null){ n++; ann*=1+r; if(r>0) win++; if(best==null||r>best.r) best={r:r,m:m}; if(worst==null||r<worst.r) worst={r:r,m:m}; }
   }
   var annR=ann-1, cls=annR>=0?'p':'n';
-  card.innerHTML='<div class="rc-h"><div class="rc-t">'+Y+'년 월별 수익률</div>'
+  card.innerHTML='<div class="rc-h"><div class="rc-t">'+Y+'년 월별 수익률'+(useMy?' <span style="font-weight:400;color:var(--mut);font-size:12px">(내 수익률)</span>':'')+'</div>'
     +(n?'<div class="rc-y '+cls+'">'+pc(annR)+'</div>':'')+'</div>'
     +'<canvas id="rc"></canvas>'+benchLegend(Y+'년 지수 수익률', {ks:bany.ks?bann.ks-1:null,sp:bany.sp?bann.sp-1:null,nq:bany.nq?bann.nq-1:null})
     +(n?'<div class="rc-s"><span>플러스 <b>'+win+'</b> / '+n+'개월</span><span>최고 <b class="p">'+best.m+'월 '+pc(best.r)+'</b></span><span>최저 <b class="'+(worst.r>=0?'p':'n')+'">'+worst.m+'월 '+pc(worst.r)+'</b></span></div>'
@@ -1172,7 +1176,7 @@ function renderRetChart(){
   drawLabels(g, LBL);
   cv.onclick=function(e){
     var i=Math.min(11,Math.max(0,Math.floor(e.offsetX/(cv.clientWidth/12)))), ym=Y+(i<9?'0':'')+(i+1);
-    if(RET[ym]==null) return;
+    if(useMy||RET[ym]==null) return;
     SEL_YM=ym; SEL_HOLD=null; renderAll();
   };
 }
@@ -2039,6 +2043,7 @@ function myRecRender(open){
       showScoreTree(a.y,a.buyYm,a.name,null,{feats:Object.keys(a.feats).map(function(k){ return [k,a.feats[k]]; }),apiScore:null,label:a.label,note:a.note}); };
   });
 }
+var MYRM={}, MT_PICKED=false;                // 내 체결로 계산한 월별 수익률 {YYYYMM: 수익률} (월별 수익률 그래프·표에서도 씀)
 function myMonthlyRet(){                       // 내 체결로 만든 월별 수익률: 월말 보유 평가금(월봉 종가·환율)과 그달 매수·매도로 계산 — 수익 = (월말 평가금 + 판 돈 − 월초 평가금 − 산 돈) ÷ (월초 평가금 + 산 돈)
   var T=MY.slice().sort(function(a,b){ return a.d<b.d?-1:a.d>b.d?1:a.id-b.id; }); if(!T.length) return null;
   var ymOfD=function(d){ return +d.slice(0,4)*100+ +d.slice(5,7); }, nowYm=myThisYm(), first=ymOfD(T[0].d), out=[], pos={}, last={}, ti=0, prevV=0;
@@ -2061,7 +2066,9 @@ function myMonthlyRet(){                       // 내 체결로 만든 월별 �
 }
 function myRetRender(){
   var host=document.getElementById('my-ret'); if(!host) return;
-  var M=myMonthlyRet(); if(!M||!M.length){ host.innerHTML=''; return; }
+  var M=myMonthlyRet(), oldR=JSON.stringify(MYRM); MYRM={}; if(M) M.forEach(function(m){ if(m.r!=null) MYRM[m.ym]=m.r; });
+  if(JSON.stringify(MYRM)!==oldR&&LED&&SEL_YM){ renderRetChart(); renderMonthTable(); }        // 내 수익률이 바뀌면(체결 입력·시세 갱신) 월별 그래프·표도 다시 그림
+  if(!M||!M.length){ host.innerHTML=''; return; }
   var pct=function(x){ return (x>=0?'+':'')+(x*100).toFixed(1); }, byY={}, cum=1;
   M.forEach(function(m){ var y=Math.floor(m.ym/100); (byY[y]=byY[y]||{})[m.ym%100]=m.r; if(m.r!=null) cum*=1+m.r; });
   var rows=Object.keys(byY).sort().map(function(y){ var ann=1, any=false, c='';
