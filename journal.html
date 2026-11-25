@@ -823,7 +823,7 @@ function showScoreTree(y,buyYm,name,oldPred,live){
   var bar=function(x,m){ var w=Math.min(50,Math.abs(x)/m*50); return '<div class="tr-bar"><i class="'+(x>=0?'pos':'neg')+'" style="width:'+w+'%"></i></div>'; };
   var total=e.score-Math.round(e.base);
   var h='<h2 style="margin:0 0 4px;font-size:16px">'+esc(name)+' · '+fmt(buyYm)+(live?' 구매 예정, ':' 매수, ')+e.score+'점은 왜?</h2>'
-    +'<div class="sc-sub" style="color:var(--fg);background:var(--chip);border-radius:8px;padding:8px 10px"><b>참고용입니다.</b> 이 일지의 거래는 모두 그달 점수 상위 4종목이라 점수 차이가 작아서, 이 목록만으로는 점수의 효과를 알 수 없습니다. 같은 판매 규칙·월 100만원에서 점수 상위 4는 한국 연 +40%(무작위 +19%), 미국 +18%(무작위 +16%)였습니다(소수의 큰 수익·생존 편향 가능, 과거 결과).</div><div class="sc-sub">평범한 신호의 점수(기준)에서 시작해, 항목마다 점수를 올리고 내려서 최종 점수가 됩니다. 아래 숫자가 <b>그 항목이 점수를 몇 점 올리거나 내렸는지</b>예요. 항목을 눌러 펼쳐 보세요.</div>'
+    +'<div class="sc-sub" style="color:var(--fg);background:var(--chip);border-radius:8px;padding:8px 10px"><b>참고용입니다.</b> 점수는 돌파한 달 시점의 "예상 수익의 순위"이며 올라갈 확률이 아닙니다. 과거 시험에서 점수 상위를 고른 결과가 무작위와 뚜렷하게 구분되지 않는 경우가 많았고(시장·기간에 따라 다름), 상장폐지 종목이 빠진 자료라 과거 성적이 유리하게 나왔을 수 있으며 앞으로를 보장하지 않습니다.</div><div class="sc-sub">평범한 신호의 점수(기준)에서 시작해, 항목마다 점수를 올리고 내려서 최종 점수가 됩니다. 아래 숫자가 <b>그 항목이 점수를 몇 점 올리거나 내렸는지</b>예요. 항목을 눌러 펼쳐 보세요.</div>'
     +'<div class="tr-root"><span class="big">'+e.score+'점</span><span>= 기준 '+Math.round(e.base)+'점 '+(total>=0?'+ ':'− ')+Math.abs(total)+'점<br><span class="meta">학습 때 신호 중 상위 '+Math.max(1,100-e.score)+'%</span></span></div>'
     +'<div class="tr-kids"><div class="tr-node"><div class="tr-base"><span><b>기준</b> <span class="meta">(평균적인 매수 신호, 예측 수익 '+sgn(e.b)+'%)</span></span><b>'+Math.round(e.base)+'점</b></div></div>';
   gs.forEach(function(g,gi){
@@ -934,9 +934,9 @@ function renderLedger(){
     var endYm=tr?tr.sellYm:Object.keys(LED.months).sort().pop();
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
     var cost='+ 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span> = <b>'+won(x.amt)+'</b>';
-    var scv=(function(){ var v=scoreOf(x.y,Y); return v!=null?v:(x.score==null?'-':Math.round(x.score*100)); })();
+    var scv=(function(){ var v=scoreOf(x.y,Y); if(v!=null) return v; if(x.brk){ var b2=scoreFromBars(x.y,x.brk,x.us); if(b2!=null) return b2; } return x.score==null?'-':Math.round(x.score*100); })();
     add('buy','구매'+(FD?'(1일)':''),esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
-      calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+Y+'" data-sn="'+esc(x.name)+'" data-sp="'+(x.score==null?'':x.score)+'">'+scv+'</span>',
+      calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+Y+'" data-sn="'+esc(x.name)+'" data-sp="'+(x.score==null?'':x.score)+'"'+(x.brk?' data-brk="'+x.brk+'" data-us="'+(x.us?1:0)+'"':'')+'>'+scv+'</span>',
       signWon(-x.amt),bal,{y:x.y,end:endYm,buy:Y,sell:tr?tr.sellYm:null});
   });
   (M.skipped||[]).forEach(function(x){
@@ -960,7 +960,11 @@ function renderLedger(){
   }
   list.innerHTML=html;
   list.querySelectorAll('.lr-sc').forEach(function(c){
-    c.onclick=function(ev){ ev.stopPropagation(); showScoreTree(c.dataset.sy,+c.dataset.sb,c.dataset.sn,c.dataset.sp===''?null:+c.dataset.sp); };
+    c.onclick=function(ev){ ev.stopPropagation();
+      if(c.dataset.brk && !findFeats({y:c.dataset.sy,buyYm:+c.dataset.sb})){                       // 아직 체결 기록이 없는 다음 달 첫날 구매: 돌파한 달 시점 월봉으로 계산
+        var f=featsFromBars(c.dataset.sy,c.dataset.brk,c.dataset.us==='1');
+        showScoreTree(c.dataset.sy,+c.dataset.sb,c.dataset.sn,null,{feats:f?Object.keys(f).map(function(k){ return [k,f[k]]; }):[],apiScore:null}); return; }
+      showScoreTree(c.dataset.sy,+c.dataset.sb,c.dataset.sn,c.dataset.sp===''?null:+c.dataset.sp); };
   });
   list.querySelectorAll('.lr-h[data-r], .lr-d[data-r]').forEach(function(h){
     h.onclick=function(){
@@ -1344,6 +1348,16 @@ function decPlanOf(P){                       // 다음 달 1일 구매(잠정): 
   P._dec={dnx:dnx,p2:p2,rowOf:rowOf};
   return P._dec;
 }
+function featsFromBars(y, brk, us){          // 저장된 월봉으로 돌파한 달(brk)까지의 지표(점수 계산용). 최근 47개월만 써서 사이트(Apps Script)와 같은 조건
+  var u=barsFor(y); if(!u||!brk) return null;
+  var rows=[]; for(var i=0;i<u.yms.length;i++){ if(u.yms[i]<=+brk) rows.push([u.yms[i],u.o[i],u.h[i],u.l[i],u.c[i],u.v[i]]); }
+  rows=rows.slice(-47); if(rows.length<25) return null;
+  return featsFromChart(rows,{'시장':us?'US':'KR','종류':'stock'});
+}
+function scoreFromBars(y, brk, us){          // 돌파한 달 시점 점수(0~100) 또는 null
+  var f=featsFromBars(y,brk,us); if(!f) return null;
+  var e=explainFeats(Object.keys(f).map(function(k){ return [k,f[k]]; })); return e?e.score:null;
+}
 function planHoldings(P){                    // 예상 보유 = 지난달 보유 − 판매 예정 + 구매 예정 (현재 가격 기준)
   var nowYm=PLAN_YM, sold={}; P.sells.forEach(function(x){ sold[x.y+'|'+x.buyYm]=1; });
   var out=[];
@@ -1423,11 +1437,11 @@ function renderPlanView(){
     var D=decPlanOf(P), dnx=D.dnx, p2=D.p2, rowOf=D.rowOf;
     bal=P.cashEnd;
     html+='<div class="lr end" style="margin-top:8px"><div class="lr-h"><div><div class="lr-n">'+fmt(dnx)+' 1일 · 첫날 구매 <span class="plan-tag">잠정</span> <span class="meta">(지금 확정된 후보 기준, 월말에 바뀔 수 있음)</span></div></div></div></div>';
-    p2.buys.forEach(function(x){
+    p2.buys.forEach(function(x,di){
       bal-=x.amt;
       var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
       var cost='+ 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span> = <b>'+won(x.amt)+'</b>';
-      row('buy','구매 예정(1일)',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),calc+'<br>'+cost+'<br>점수 '+x.score+' <span class="meta">(가격은 지금 가격, 실제는 첫날 종가)</span>',signWon(-x.amt),bal,{y:x.y,end:dnx,buy:dnx,sell:null,raw:chartRaw(rowOf[x.y])});
+      row('buy','구매 예정(1일)',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-decidx="'+di+'">'+x.score+'</span> <span class="meta">(눌러서 이유 보기 · 가격은 지금 가격, 실제는 첫날 종가)</span>',signWon(-x.amt),bal,{y:x.y,end:dnx,buy:dnx,sell:null,raw:chartRaw(rowOf[x.y])});
     });
     p2.skipped.forEach(function(x){
       row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김','0원',bal);
@@ -1447,6 +1461,12 @@ function renderPlanView(){
   list.querySelectorAll('.lr-sc').forEach(function(c){
     c.onclick=function(ev){
       ev.stopPropagation();
+      if(c.dataset.decidx!=null){                                   // 다음 달 1일 구매 예정(잠정): 돌파한 달 시점 지표로 나무
+        var D=decPlanOf(P), b3=D&&D.p2.buys[+c.dataset.decidx]; if(!b3) return;
+        var r3=D.rowOf[b3.y], ch3=r3&&r3['차트']&&r3['돌파월']?r3['차트'].filter(function(x){ return +x[0]<=+r3['돌파월']; }):(r3&&r3['차트']);
+        var f3=ch3&&ch3.length?featsFromChart(ch3,r3):null;
+        showScoreTree(b3.y,+D.dnx,b3.name,null,{feats:f3?Object.keys(f3).map(function(k){ return [k,f3[k]]; }):[],apiScore:b3.score}); return;
+      }
       if(c.dataset.buyidx!=null){                                   // 구매 예정 종목: 지금 지표로 바로 나무
         var b=P.buys[+c.dataset.buyidx], r=b.row, ch=r&&r['차트'];
         var f=ch&&ch.length?featsFromChart(ch,r):null;
