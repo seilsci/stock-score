@@ -1402,7 +1402,8 @@ function simulateFrom(S){
     months[ym]={dep:dep,tax:Math.round(tax),cash:Math.round(cash),holdVal:Math.round(hv),fx:fx,
       buys:buys.map(function(x){ return Object.assign({},x,{amt:Math.round(x.amt),gross:Math.round(x.gross),fee:Math.round(x.fee)}); }),
       sells:sells.map(function(x){ return Object.assign({},x,{amt:Math.round(x.amt),basis:Math.round(x.basis),gross:Math.round(x.gross),fee:Math.round(x.fee),tax:Math.round(x.tax)}); }),
-      skipped:skipped.map(function(x){ return Object.assign({},x,{one:Math.round(x.one),per:Math.round(x.per)}); })};
+      skipped:skipped.map(function(x){ return Object.assign({},x,{one:Math.round(x.one),per:Math.round(x.per)}); }),
+      cands:M0.cands||[]};                                                      // 그달 말 확정 후보(원래 장부 값): 마지막 달이면 이번 달 첫날 구매·예정 주문 계산에 씀
     snaps[ym]=holds.map(function(h){ return {y:h.y,name:h.name,buyYm:h.buyYm,buyPx:h.buyPx,curPx:h.last,sh:h.sh,basis:h.basis,ret:h.last/h.buyPx-1,score:h.score}; });
   });
   return {meta:LED0.meta,months:months,snaps:snaps};
