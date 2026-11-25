@@ -1348,6 +1348,25 @@ function renderPlanView(){
   };
   if(FDP){ sellRows(); depRow(); } else { depRow(); sellRows(); buyRows(); }      // 첫날 구매 방식: 이달 첫날 구매(이미 체결) → 월말 판매 예정 → 입금
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">예상 월말 현금</div></div><div class="lr-a">'+won(P.cashEnd)+'</div></div></div>';
+  if(P.fd&&P.next&&P.next.length){                                         // 다음 달 1일 구매(잠정): 지금 확정된 후보(점수 순)를 예상 월말 현금으로 첫날에 산다면
+    var dnx=nextYmOf(ym), nc=P.next.slice().sort(function(a,b){ return (+b['점수'])-(+a['점수']); }).map(function(r){
+      var us=r['시장']==='US'; return {y:us?r['코드']:r['코드']+(r['시장']==='KOSPI'?'.KS':'.KQ'),name:r['이름'],us:us,px:+r['최근종가'],score:+r['점수'],brk:+r['돌파월']||null,row:r}; });
+    var p2=planCore({nowYm:dnx,lastYm:ym,holds:planHoldings(P),cash:P.cashEnd,dep:LED.meta.dep,fx:P.fx,rateUp:false,picks:[],N:4,usGainYtd:0,fd:true,cands:nc});
+    var rowOf={}; nc.forEach(function(c){ rowOf[c.y]=c.row; });
+    bal=P.cashEnd;
+    html+='<div class="lr end" style="margin-top:8px"><div class="lr-h"><div><div class="lr-n">'+fmt(dnx)+' 1일 · 첫날 구매 <span class="plan-tag">잠정</span> <span class="meta">(지금 확정된 후보 기준, 월말에 바뀔 수 있음)</span></div></div></div></div>';
+    p2.buys.forEach(function(x){
+      bal-=x.amt;
+      var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
+      var cost='+ 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span> = <b>'+won(x.amt)+'</b>';
+      row('buy','구매 예정(1일)',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),calc+'<br>'+cost+'<br>점수 '+x.score+' <span class="meta">(가격은 지금 가격, 실제는 첫날 종가)</span>',signWon(-x.amt),bal,{y:x.y,end:dnx,buy:dnx,sell:null,raw:chartRaw(rowOf[x.y])});
+    });
+    p2.skipped.forEach(function(x){
+      row('skip','못 삼',esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),'1주 '+pxS(x.px,x.us)+(x.us?' (≈'+won(x.one)+')':'')+' &gt; 배정액 '+won(x.per)+' → 정수 주문 불가, 다음 점수 순위로 넘김','0원',bal);
+    });
+    if(!p2.buys.length&&!p2.skipped.length) html+='<div class="empty" style="padding:8px 4px">지금 확정된 후보가 없습니다.</div>';
+    html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">첫날 구매 후 현금 <span class="meta">(잠정)</span></div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
+  }
   if(P.fd){ html+='<div class="sum-note" style="margin:8px 4px 0"><b>다음 달 첫날 구매 후보</b> (이번 달 말에 확정되면 삽니다): '+(P.next&&P.next.length?P.next.slice(0,8).map(function(r){ return esc(r["이름"])+' <span class="meta">'+(r["점수"]!==''&&r["점수"]!=null?r["점수"]+'점':'')+'</span>'; }).join(' · '):'시트(Apps Script)가 확인 매수 후보를 아직 내려주지 않아 표시할 수 없습니다. 최신 Apps Script로 업데이트하면 여기에 나옵니다.')+'</div>'; }
   if(P.watch.length) html+='<div class="sum-note" style="margin:6px 4px 0">유예 중: '+P.watch.map(function(w){ return esc(w.name); }).join(', ')+' — 이번 달 처음 10이평 아래로 내려왔고, 월말에도 아래면 다음 달에 판매됩니다.</div>';
   list.innerHTML=html;
