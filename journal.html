@@ -13,6 +13,12 @@ main{max-width:680px;margin:0 auto;padding:16px 16px 48px}
 h1{font-size:18px;margin:0 0 2px;font-weight:700}
 .sub{color:var(--mut);font-size:12px;margin-bottom:18px}
 .sub a{color:var(--acc);text-decoration:none}
+.botbar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--card);border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom))}
+.botin{max-width:680px;margin:0 auto;display:flex;gap:8px}
+.bt{flex:1;padding:10px;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:10px;font:inherit;font-weight:700;cursor:pointer}
+.bt.on{background:color-mix(in srgb,var(--acc) 14%,var(--card));color:var(--acc);border-color:var(--acc)}
+main{padding-bottom:96px}
+[hidden]{display:none !important}
 .navtabs{display:flex;gap:8px;margin:0 0 12px}.ntab{flex:1;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;font-weight:600;text-align:center;text-decoration:none}.ntab.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 
 
@@ -297,6 +303,7 @@ canvas{display:block;width:100%;height:230px}
   </div>
 
 
+  <div id="pane-log">
   <div id="my-card" class="my-card">
     <div class="my-h"><span class="my-t">내 체결 내역</span><span class="my-c" id="my-cnt"></span></div>
     <div class="my-sync"><span id="my-sync-t">동기화 확인 중…</span><button type="button" id="my-sync-k">동기화 키 설정</button></div>
@@ -316,7 +323,6 @@ canvas{display:block;width:100%;height:230px}
     </div>
     <div id="my-sum"></div>
     <div id="my-hold"></div>
-    <div id="my-ret"></div>
     <div id="my-list"></div>
     <div id="my-rec" class="my-rec">
       <div class="my-h" style="margin-top:12px"><span class="my-t">내 보유 기준 추천 <span class="plan-tag">잠정</span></span><span class="my-c" id="my-rec-m"></span></div>
@@ -329,14 +335,6 @@ canvas{display:block;width:100%;height:230px}
     </details>
     <p class="amt-note" style="margin:8px 0 0">동기화 키를 설정하면 내 체결·금액·시작 시점이 서버(내 시트)에 저장돼 폰·PC가 같아져요. 평가금은 직전 마감 종가 기준이고, 이동평균 단가로 계산해요. 수수료·세금은 자동 계산한 값이며 직접 고칠 수 있어요(미국 양도세는 연말 정산이라 넣지 않아요, 국내 ETF는 세금 0).</p>
   </div>
-
-  <div id="cum-card"></div>
-
-  <div id="yr-card"></div>
-
-  <div id="ret-card"></div>
-
-  <div id="mt-card"></div>
 
   <div class="nav">
     <div class="yr-row" id="yr-row"></div>
@@ -385,6 +383,19 @@ canvas{display:block;width:100%;height:230px}
     </div>
     <p class="jf-foot">백테스트 기록이며 앞으로의 수익을 보장하지 않습니다.</p>
   </section>
+  </div>
+  <div id="pane-ret" hidden>
+    <div id="my-ret"></div>
+  <div id="cum-card"></div>
+
+  <div id="yr-card"></div>
+
+  <div id="ret-card"></div>
+
+  <div id="mt-card"></div>
+
+  </div>
+  <div class="botbar"><div class="botin"><button type="button" class="bt on" data-p="log">📒 일지</button><button type="button" class="bt" data-p="ret">📈 수익률</button></div></div>
 </main>
 
 <!-- 점수 설명 모달 -->
@@ -2177,6 +2188,14 @@ function wireMy(){
   $('my-exp').onclick=function(){ var tx=JSON.stringify(MY); $('my-bk-t').value=tx; try{ navigator.clipboard.writeText(tx); }catch(e){} $('my-bk-t').select(); };
   $('my-imp').onclick=function(){ try{ var a=JSON.parse($('my-bk-t').value); if(!Array.isArray(a)) throw 0; if(!confirm('지금 저장된 내 체결 '+MY.length+'건을 지우고 '+a.length+'건으로 바꿀까요?')) return; MY=a; MYDEL=MYDEL.filter(function(d){ return !a.some(function(t){ return t.id===d; }); }); mySave(); renderMy(); }catch(e){ alert('불러올 수 없는 글이에요. 내보내기로 만든 글을 그대로 붙여 넣어 주세요.'); } };
 }
+function showPane(p){                          // 아래 탭: 일지(거래 내역·보유·추천) ↔ 수익률(내 수익률·누적·연도별·월별 그래프와 표)
+  document.getElementById('pane-log').hidden=(p!=='log'); document.getElementById('pane-ret').hidden=(p!=='ret');
+  document.querySelectorAll('.botbar .bt').forEach(function(b){ b.classList.toggle('on',b.dataset.p===p); });
+  try{ localStorage.setItem('jtab',p); }catch(e){}
+  if(p==='ret'&&LED&&SEL_YM){ renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); myRetRender(); }       // 숨겨져 있던 그래프는 보일 때 다시 그려야 폭이 맞음
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.botbar .bt').forEach(function(b){ b.onclick=function(){ showPane(b.dataset.p); }; });
 function renderAll(){
   try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) sl.textContent=DATA.meta.firstDay?'10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매) · tp2x트레일+국채10년 금리 유예2달':DATA.meta.strategy; }catch(e){}
   wireMy(); if(XMODE&&!window._myb){ window._myb=1; loadBars(renderMy); } renderMy(); wireAmtInputs(); syncAmtInputs(); renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
@@ -2202,7 +2221,8 @@ fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).th
   var S0=null; if(XMODE){ try{ S0=localStorage.getItem('jstart'); }catch(e){} if(!S0) S0='202611'; if(!(S0===PLAN_YM || (LED0&&LED0.months[S0]))) S0=null; }
   if(S0) applyStart(S0);
   else if(!isDefaultAmt() && START_YM) applyStart(START_YM); else renderAll();                      // 저장해 둔 금액이 기본값이 아니면 그 금액으로 다시 계산
-  if(XMODE) syncPull();                                                                              // 내 일지: 서버에 저장된 체결·금액·시작 시점을 받아 합침
+  if(XMODE) syncPull();
+  try{ if(localStorage.getItem('jtab')==='ret') showPane('ret'); }catch(e){}                           // 마지막으로 본 아래 탭(일지/수익률)으로 열기                                                                              // 내 일지: 서버에 저장된 체결·금액·시작 시점을 받아 합침
 }).catch(function(){
   document.querySelector('main').innerHTML='<p style="color:var(--mut);padding:40px;text-align:center">데이터를 불러오지 못했어요.</p>';
 });
