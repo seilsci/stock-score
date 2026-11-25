@@ -236,9 +236,9 @@ canvas{display:block;width:100%;height:230px}
 
   <div id="start-card"></div>
   <div id="amt-card" class="amt-card">
-    <label>초기 시작 자금 <span><input id="in-init" type="number" inputmode="numeric" min="0" max="1000000" step="1" value="0"> 만원</span><em class="amt-kor" id="kor-init">0원</em></label>
+    <label>초기 시작 자금 <span><input id="in-init" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-init">100만원</em></label>
     <label>매월 불입금 <span><input id="in-dep" type="number" inputmode="numeric" min="0" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-dep">100만원</em></label>
-    <p class="amt-note" id="amt-note">금액을 바꾸고 Enter(또는 다른 곳을 누르면) 선택한 시작 시점부터 같은 규칙으로 다시 계산해요.</p>
+    <p class="amt-note" id="amt-note">초기 시작 자금은 첫 달에 쓸 돈 전체예요(그 달 월 불입금은 따로 더하지 않아요). 금액을 바꾸고 Enter(또는 다른 곳을 누르면) 선택한 시작 시점부터 같은 규칙으로 다시 계산해요.</p>
   </div>
 
   <div id="cum-card"></div>
@@ -870,7 +870,7 @@ function renderSummary(){
   if(!m){ el.style.display='none'; return; }
   el.style.display='block';
   var yms=Object.keys(LED.months).sort(), idx=yms.indexOf(String(ym));
-  var cumDep=LED.meta.dep*(idx+1)+(LED.meta.init||0), total=m.cash+m.holdVal, pl=total-cumDep, pr=total/cumDep-1;
+  var cumDep=(LED.meta.init!=null?LED.meta.init:LED.meta.dep)+LED.meta.dep*idx, total=m.cash+m.holdVal, pl=total-cumDep, pr=total/cumDep-1;
   var sellSum=m.sells.reduce(function(t,x){return t+x.amt;},0), buySum=m.buys.reduce(function(t,x){return t+x.amt;},0);
   var cls=pl>=0?'p':'n';
   el.innerHTML='<div class="sum-t">'+fmt(ym)+' 월말 현황</div><div class="sum-g">'
@@ -981,9 +981,9 @@ function benchKRW(k, ym){ var c=BENCH&&BENCH[k]&&BENCH[k][ym]; if(!c) return nul
 function benchRet(k, ym){ var a=benchKRW(k,ym), b=benchKRW(k,prevYmOf(ym)); return (a!=null&&b!=null)?a/b-1:null; }
 function benchDca(k, ym){                                                    // 첫 입금 달부터 ym까지 매달 같은 금액씩 지수를 샀을 때 {value, dep}
   if(!BENCH||!LED) return null;
-  var ks=Object.keys(LED.months).sort(), dep=LED.meta.dep, init0=LED.meta.init||0, units=0, n=0;
-  for(var i=0;i<ks.length&&ks[i]<=String(ym);i++){ var p=benchKRW(k,ks[i]); if(p==null) return null; units+=(dep+(i===0?init0:0))/p; n++; }         // 첫 달에는 초기 자금도 같이 삼
-  var pn=benchKRW(k,String(ym)); return pn==null?null:{value:units*pn, dep:dep*n+init0};
+  var ks=Object.keys(LED.months).sort(), dep=LED.meta.dep, init0=(LED.meta.init!=null?LED.meta.init:LED.meta.dep), units=0, n=0;
+  for(var i=0;i<ks.length&&ks[i]<=String(ym);i++){ var p=benchKRW(k,ks[i]); if(p==null) return null; units+=(i===0?init0:dep)/p; n++; }         // 첫 달에는 초기 자금으로, 이후 매달 월 불입금으로 삼
+  var pn=benchKRW(k,String(ym)); return pn==null?null:{value:units*pn, dep:init0+dep*(n-1)};
 }
 function drawLabels(g, L){                                                  // 막대 위 숫자는 지수 점 위에 다시 그림(흰 테두리로 읽기 쉽게)
   g.textAlign='center'; g.textBaseline='middle'; g.lineJoin='round'; g.lineWidth=3; var halo=cssv('--card')||'#fff';
@@ -1481,11 +1481,11 @@ function renderPlanView(){
 /* ── 시작 시점 바꾸기: 그 달부터 같은 규칙으로 월 100만원씩 투자했다면 (브라우저에서 다시 계산) ──
    매달 무엇을 사는지(점수 상위 4)와 언제 파는지는 현금과 무관하게 정해지므로, 현금·수량·세금만 다시 계산한다. */
 var LED0=null, SNAP0=null, START_YM=null, START_Y=null, FIRST_YM=null, EXIT_C=null;
-var AMT={dep:null,init:0};                  // 사용자가 입력한 월 불입금·초기 자금(원). dep=null이면 장부 기본값(100만원)
-try{ var _d=localStorage.getItem('jdep'), _i=localStorage.getItem('jinit'); if(_d!==null&&_d!=='') AMT.dep=+_d; if(_i!==null&&_i!=='') AMT.init=+_i; }catch(e){}
+var AMT={dep:null,init:null};               // 사용자가 입력한 월 불입금·초기 자금(원). null이면 장부 기본값(100만원). 초기 자금 = 첫 달에 쓸 돈(그 달 월 불입금은 따로 안 더함)
+try{ var _d=localStorage.getItem('jdep'), _i=localStorage.getItem('jinit'); if(_d!==null&&_d!=='') AMT.dep=+_d; if(_i!==null&&_i!==''&&+_i>0) AMT.init=+_i; }catch(e){}
 function curDep(){ return AMT.dep!=null&&AMT.dep>=0?AMT.dep:(LED0?LED0.meta.dep:1000000); }
-function curInit(){ return AMT.init>0?AMT.init:0; }
-function isDefaultAmt(){ return curInit()===0 && LED0 && curDep()===LED0.meta.dep; }
+function curInit(){ return AMT.init!=null&&AMT.init>0?AMT.init:(LED0?LED0.meta.dep:1000000); }
+function isDefaultAmt(){ return LED0 && curInit()===LED0.meta.dep && curDep()===LED0.meta.dep; }
 function loadCosts(cb){ if(COSTS){ cb(); return; } fetch('tools/learn/costs.json').then(function(r){ return r.json(); }).then(function(c){ COSTS=c; cb(); }); }
 function exitMap(){
   if(EXIT_C) return EXIT_C; EXIT_C={};
@@ -1495,7 +1495,7 @@ function exitMap(){
 function simulateFrom(S){
   var C=COSTS, usFee=C.us.commission+C.us.fx_spread, krFee=C.kr.commission, dep=curDep(), EX=exitMap(), exHeld=!!LED0.meta.excludeHeld;
   var yms=Object.keys(LED0.months).sort().filter(function(ym){ return ym>=S; });
-  var holds=[], cash=curInit(), months={}, snaps={}, usGain={}, lastPx={}, fd=isFD(), pend=null;
+  var holds=[], cash=0, months={}, snaps={}, usGain={}, lastPx={}, fd=isFD(), pend=null;
   var closeAt=function(y,ym,fallback){ var b=barsOf(y); var i=b&&b.pos[ym]; return i!=null?b.cs[i]:fallback; };
   yms.forEach(function(ym){
     var M0=LED0.months[ym], fx=M0.fx, Y=+ym.slice(0,4), mo=+ym.slice(4), sells=[], keep=[], buys=[], skipped=[];
@@ -1525,8 +1525,8 @@ function simulateFrom(S){
       } else keep.push(h);
     });
     holds=keep;
-    var tax=0;
-    cash+=dep;                                                                      // 입금을 먼저 받고
+    var tax=0, depM=(ym===yms[0]?curInit():dep);                                     // 첫 달에는 초기 시작 자금만 넣고(그 달 월 불입금은 따로 안 더함), 이후 매달 월 불입금
+    cash+=depM;                                                                     // 입금을 먼저 받고
     if(mo===12){                                                                   // 12월 세금을 먼저 낸 뒤 남은 돈으로 산다
       tax=C.us.cg_tax_rate*Math.max(0,(usGain[Y]||0)-C.us.cg_exemption_krw); usGain[Y]=0;
       if(cash>=tax) cash-=tax;
@@ -1542,7 +1542,7 @@ function simulateFrom(S){
     } else pend=(M0.cands&&M0.cands.length)?M0.cands:null;                      // 첫날 구매: 이달 말에 확정된 후보는 다음 달 첫날 삼
     var hv=0;
     holds.forEach(function(h){ h.last=closeAt(h.y,ym,h.last); hv+=h.sh*h.last*(h.us?fx:1); });
-    months[ym]={dep:dep,tax:Math.round(tax),cash:Math.round(cash),holdVal:Math.round(hv),fx:fx,
+    months[ym]={dep:depM,tax:Math.round(tax),cash:Math.round(cash),holdVal:Math.round(hv),fx:fx,
       buys:buys.map(function(x){ return Object.assign({},x,{amt:Math.round(x.amt),gross:Math.round(x.gross),fee:Math.round(x.fee)}); }),
       sells:sells.map(function(x){ return Object.assign({},x,{amt:Math.round(x.amt),basis:Math.round(x.basis),gross:Math.round(x.gross),fee:Math.round(x.fee),tax:Math.round(x.tax)}); }),
       skipped:skipped.map(function(x){ return Object.assign({},x,{one:Math.round(x.one),per:Math.round(x.per)}); }),
@@ -1578,13 +1578,13 @@ function syncAmtInputs(){
   if(document.activeElement!==a) a.value=Math.round(curInit()/10000);
   if(document.activeElement!==b) b.value=Math.round(curDep()/10000);
   showKor();
-  var dl=document.getElementById('dep-label'); if(dl) dl.textContent=(curInit()>0?'초기 '+manText(curInit())+' · ':'')+'월 '+manText(curDep());
+  var dl=document.getElementById('dep-label'); if(dl) dl.textContent='초기 '+manText(curInit())+' · 월 '+manText(curDep());
   var jd=document.getElementById('jf-dep'); if(jd) jd.textContent=manText(curDep());
 }
 function wireAmtInputs(){
   var a=document.getElementById('in-init'), b=document.getElementById('in-dep'); if(!a||!b||a._w) return; a._w=1;
   var apply=function(){
-    var ni=Math.max(0,Math.min(1000000,Math.round(+a.value||0))), nd=Math.max(0,Math.min(1000000,Math.round(+b.value||0)));
+    var ni=Math.max(1,Math.min(1000000,Math.round(+a.value||0))), nd=Math.max(0,Math.min(1000000,Math.round(+b.value||0)));
     a.value=ni; b.value=nd;
     var oi=Math.round(curInit()/10000), od=Math.round(curDep()/10000); if(ni===oi && nd===od) return;
     AMT.init=ni*10000; AMT.dep=nd*10000;
@@ -1602,7 +1602,7 @@ function renderStartCard(){
     +'<div class="yr-row">'+years.map(function(y){ return '<button class="yr-btn'+(y===selY?' sel':'')+'" data-sy="'+y+'">'+y+'</button>'; }).join('')+'</div>'
     +'<div class="mo-row">'+MONTHS.map(function(m){ var ym=selY+m, ok=yms.indexOf(ym)>=0;
         return '<button class="mo-btn'+(ym===START_YM?' sel':'')+'" data-sm="'+ym+'"'+(ok?'':' hidden')+'>'+m+'월</button>'; }).join('')+'</div>'
-    +'<div class="st-note">'+(START_YM===FIRST_YM&&isDefaultAmt()?'기본(2011-12)부터 매달 100만원씩 같은 규칙으로 투자한 기록입니다. ':'선택한 달부터 '+(curInit()>0?'초기 자금 '+manText(curInit())+'으로 시작해 ':'빈손으로 시작해 ')+'매달 '+manText(curDep())+'씩 같은 규칙으로 투자했다면의 계산입니다. ')
+    +'<div class="st-note">'+(START_YM===FIRST_YM&&isDefaultAmt()?'기본(2011-12)부터 매달 100만원씩 같은 규칙으로 투자한 기록입니다. ':'선택한 달부터 첫 달에 '+manText(curInit())+'으로 시작해 ' + '그다음 달부터 매달 '+manText(curDep())+'씩 같은 규칙으로 투자했다면의 계산입니다. ')
     +'시작 시점을 바꾸면 아래 모든 그래프·거래 내역이 다시 계산돼요.</div>';
   card.innerHTML=h;
   card.querySelectorAll('[data-sy]').forEach(function(b){
