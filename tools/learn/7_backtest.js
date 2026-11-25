@@ -231,7 +231,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         if (fill && slots <= 0) break;
         const { r } = list[li];
         if (holds.some(h => h.y === r.y)) continue;           // 이미 가진 종목은 또 사지 않음(매수 후보에서 뺌)
-        if (opt.oneCo) { const ck = coKey(r.y); if (pickedCo.has(ck) || holds.some(h => coKey(h.y) === ck)) continue; }      // 같은 회사(우선주·Class A/B 등)는 하나만
+        if (opt.oneCo) { const ck = coKey(r.y); if (pickedCo.has(ck) || holds.some(h => coKey(h.y) === ck)) { coSkipN++; continue; } }      // 같은 회사(우선주·Class A/B 등)는 하나만
         let per = fill ? cash / Math.min(slots, opt.minDiv ? Math.max(list.length - li, opt.minDiv) : list.length - li) : per0;      // minDiv: 남은 후보가 적어도 최소 minDiv개 몫으로 나눔(나머지는 현금으로 둠)      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
         if (fill && opt.wRank) { const nn = Math.min(slots, list.length - li); if (nn > 1) per = opt.wRank > 0 ? cash * 2 / (nn + 1) : cash * 2 / (nn * (nn + 1)); }   // wRank: 순위 비례 비중(+1: 앞순위에 더, −1: 뒷순위에 더(대조)). 남은 nn자리에 nn, nn−1, … 1 (또는 반대) 몫
         const o = px(r.y), p = priceAt(o, r); if (p === undefined || !(p > 0)) { if (opt.firstDay) fdMiss++; continue; }
@@ -277,7 +277,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       }
     }
   };
-  let pend = null, fdMiss = 0, tlhN = 0, taxTotal = 0;
+  let pend = null, fdMiss = 0, tlhN = 0, taxTotal = 0, coSkipN = 0;
   for (let k = START; k <= END; k++) {
     cur = led ? { k, dep, sells: [], buys: [], skipped: [], order: [], tax: 0 } : null;
     if (opt.cashRateFn && k > START) cash += cash * Math.max(0, opt.cashRateFn(k) || 0) / 12;          // 현금 이자(월 단위, 세금 제외): 놀고 있는 현금에 연 이율/12를 더함
@@ -392,7 +392,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   }
   liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal };
+  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN };
 }
 function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };
@@ -1496,6 +1496,7 @@ if (process.env.STAGE14 !== '0') {
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
     V.push({ sec: '기준', name: 'A 지금: 같은 회사 여러 종목 허용', cand: conf, rule: rule10 });
     V.push({ sec: '같은 회사', name: 'C1 같은 회사는 하나만(보유 중이어도 같은 회사는 안 삼)', cand: conf, rule: rule10, o: { oneCo: true } });
+    AD8.co = true;
   }
   if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' });
@@ -1591,6 +1592,14 @@ if (process.env.STAGE14 !== '0') {
     const base0 = A.full.cagr, base1 = T1.full.cagr; log(`(뺀 것 없음)                ${pc1(base0).padStart(8)} → ${pc1(base1).padStart(8)}   ${pp(base1 - base0)}`);
     top.slice(0, 6).forEach(y => { const f = e => e.r.y !== y, a = run14(A, f).cagr, b = run14(T1, f).cagr; log(`${String(y).padEnd(24)} ${pc1(a).padStart(8)} → ${pc1(b).padStart(8)}   ${pp(b - a)}`); });
     const f6 = e => !top.slice(0, 3).includes(e.r.y), a3 = run14(A, f6).cagr, b3 = run14(T1, f6).cagr; log(`위 3종목 모두 뺌             ${pc1(a3).padStart(8)} → ${pc1(b3).padStart(8)}   ${pp(b3 - a3)}`);
+  }
+  if (AD8.co) {                                                           // 같은 회사라서 건너뛴 후보 수
+    const o = simOpt(V[1].rule, V[1].o), sm = simulate(ym => V[1].cand(ym).slice(0, 4), 4, C1, { ...o, cand: V[1].cand, log: true });
+    log(''); log(`## 같은 회사 하나만 — 건너뛴 후보 ${sm.coSkipN}번 (전체 기간)`);
+    const byM = new Map(); (sm.trades || []).forEach(t => { const k = t.buyYm + '|' + coKey(t.y); byM.set(k, (byM.get(k) || 0) + 1); });
+    const o0 = simOpt(V[0].rule, V[0].o || {}), s0 = simulate(ym => V[0].cand(ym).slice(0, 4), 4, C1, { ...o0, cand: V[0].cand, log: true }), b0 = new Map();
+    (s0.trades || []).forEach(t => { const k = t.buyYm + '|' + coKey(t.y); b0.set(k, (b0.get(k) || 0) + 1); });
+    const dup = [...b0.entries()].filter(([, n]) => n > 1); log(`기준(A)에서 같은 달 같은 회사 종목을 2개 이상 산 경우: ${dup.length}건 ${dup.slice(0, 8).map(([k, n]) => k + '×' + n).join(', ')}`);
   }
   if (AD8.tlh) {                                                          // 변형별 세금 합계·손절 판매 건수
     log(''); log('## 세금 줄이기 시험 — 변형별 낸 양도세 합계 · 손실 종목 미리 판 건수 (전체 기간, 월 100만원)');
