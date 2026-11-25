@@ -1030,7 +1030,7 @@ function renderLedger(){
       +' = <b>'+won(x.amt)+'</b>'+(x.us?'<br><span class="meta">미국 양도세는 12월에 한꺼번에 계산해 아래 "세금" 줄에서 뺍니다</span>':'');
     add('sell','판매'+(FD?'(월말)':''),esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
       calc+'<br>'+cost+'<br><span class="'+(x.ret>=0?'p':'n')+'">수익 '+pc(x.ret)+'</span> · '+esc(rr)
-      +'<br><b>구매 '+fmt(x.buyYm)+'</b> · '+bpx+'에 매수'+(bamt?' (구매금액 '+won(bamt)+')':'')+' · '+hm+'개월 보유'
+      +'<br><b>구매 '+fmt(x.buyYm)+'</b> · '+bpx+'에 매수 · '+hm+'개월 보유'+(bamt?'<br>구매금액 '+won(bamt):'')
       +'<br>구매 당시 점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+x.buyYm+'" data-sn="'+esc(x.name)+'" data-sp="'+(buyTr?buyTr.score:'')+'">'+buyScore+'</span> <span class="meta">(눌러서 이유 보기)</span>',
       signWon(x.amt),bal,{y:x.y,end:ym,buy:x.buyYm,sell:ym});
   });
@@ -1554,7 +1554,7 @@ function renderPlanView(){
     var cost='− 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span>'+(x.tax>0?' − 거래세 '+won(x.tax)+' <span class="meta">('+(x.taxRate*100).toFixed(2)+'%)</span>':'')+' = <b>'+won(x.amt)+'</b>'+(x.us?'<br><span class="meta">미국 양도세는 12월에 한꺼번에 계산해 뺍니다</span>':'');
     row('sell','판매 예정'+(FDP?'(월말)':''),esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
       calc+'<br>'+cost+'<br><span class="'+(x.ret>=0?'p':'n')+'">수익 '+pc(x.ret)+'</span> · '+esc(rr)
-      +'<br><b>구매 '+fmt(x.buyYm)+'</b> · '+pxS(x.buyPx,x.us)+'에 매수 (구매금액 '+won(x.basis)+') · '+hm+'개월 보유'
+      +'<br><b>구매 '+fmt(x.buyYm)+'</b> · '+pxS(x.buyPx,x.us)+'에 매수 · '+hm+'개월 보유<br>구매금액 '+won(x.basis)
       +'<br>구매 당시 점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+x.buyYm+'" data-sn="'+esc(x.name)+'" data-sp="'+(buyTr?buyTr.score:'')+'">'+buyScore+'</span> <span class="meta">(눌러서 이유 보기)</span>',
       signWon(x.amt),bal,{y:x.y,end:ym,buy:x.buyYm,sell:ym,raw:null});
   });
