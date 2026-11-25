@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>월봉 10이평 신호</title>
-<meta name="description" content="한국·미국 주식 월봉 10이평 돌파 매수·매도 대상">
+<title>월봉 10이평 확인 매수</title>
+<meta name="description" content="한국·미국 주식 월봉 10이평 돌파 후 확인 매수 후보와 매도 대상">
 <style>
 :root{--ma:#f59e0b;--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#6b7280;--line:#e5e7eb;--seg:#e9ebef;--chip:#f0f1f3;--buy:#d9363e;--sell:#2563eb}
 @media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1e24;--fg:#e8eaed;--mut:#9aa1ab;--line:#2a2f37;--seg:#22272e;--chip:#262b33;--buy:#ff6b6b;--sell:#6ea8ff}}
@@ -86,13 +86,14 @@ a{color:inherit}
 .tr-v{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
 .tr-v.p{color:var(--buy)}.tr-v.n{color:var(--sell)}
 .sc-note{font-size:11px;color:var(--mut);margin-top:14px;line-height:1.6}
+#hint{font-size:12px;color:var(--mut);margin:0 6px 12px;line-height:1.5}
 </style>
 </head>
 <body>
 <main>
   <a class="jlink" href="journal.html">📒 매매일지 (백테스트 기록) →</a>
   <header>
-    <h1>월봉 10이평 돌파</h1>
+    <h1>월봉 10이평 확인 매수</h1>
     <div class="sub" id="upd">불러오는 중…</div>
   </header>
   <div class="tabs">
@@ -103,6 +104,7 @@ a{color:inherit}
     <button class="on b" data-s="매수" id="sb">매수 대상</button>
     <button data-s="매도" id="ss">매도 대상</button>
   </div>
+  <div class="hint" id="hint"></div>
   <div class="chartbox"><div class="chart">
     <div class="ch-h"><div class="ch-n" id="cn">&nbsp;</div><div class="ch-p" id="cp"></div></div>
     <canvas id="cv"></canvas>
@@ -112,8 +114,8 @@ a{color:inherit}
   <footer>
     매수 대상(확인 매수): 10이평을 위로 돌파한 달(전달 종가 ≤ 전달 10이평, 그달 종가 > 10이평)의 다음 달 시가에 샀다고 가정한 가상 수익이 +10% 이상이고 5>10>20 정배열이 이번 달에 처음 된 종목입니다. 이번 달 말에 확정되면 다음 달 첫날 종가에 삽니다(월말 전까지는 바뀔 수 있음). 점수는 돌파한 달 시점의 "예상 수익의 순위"(0~100)이며 올라갈 확률이 아닙니다. 점수 순으로 4종목을 같은 금액으로 사는 것이 일지의 전략입니다. 과거 시험에서 점수 상위를 고른 결과가 무작위와 뚜렷하게 구분되지 않는 경우가 많았고(시장·기간에 따라 다름), 상장폐지 종목이 빠진 자료라 과거 성적이 유리하게 나왔을 수 있으며 앞으로를 보장하지 않으니 참고용으로 보세요(점수를 누르면 계산 이유를 볼 수 있어요).<br>
 
-    매도: 10이평 아래로 내려온 뒤 2개월째에도 계속 아래면 매도(미국 국채 10년 금리가 6개월 전보다 오르는 중이면 내려온 즉시 매도). 내려온 첫 달은 '유예'로 표시.<br>
-    한국 코스피 상위 300·코스닥 상위 200, 미국 상위 500 (시가총액 순). 투자 판단의 책임은 본인에게 있습니다.<br>
+    매도 대상: 10이평 아래로 내려온 뒤 2개월째에도 계속 아래면 매도(미국 국채 10년 금리가 6개월 전 달말보다 오르는 중이면 내려온 즉시 매도). 내려온 첫 달은 '유예'로 표시합니다. 가격이 10이평의 2배에 닿은 뒤 다시 내려오면 파는 익절(트레일)은 보유 종목 기준이라 매매일지에서 확인하세요.<br>
+    한국 코스피 상위 300·코스닥 상위 200, 미국 상위 500 (시가총액 순, 구매 시점의 시총 기준). 투자 판단의 책임은 본인에게 있습니다.<br>
   </footer>
 </main>
 <div id="sc-modal"><div id="sc-box"><div id="sc-body"></div></div></div>
@@ -139,6 +141,9 @@ function render() {
   var rows = DATA.rows.filter(function (r) { return kr ? r['시장'] !== 'US' : r['시장'] === 'US'; });
   var nb = 0, ns = 0, ny = 0;
   rows.forEach(function (r) { if (r['신호'] === '확인') nb++; else if (r['신호'] === '매도') ns++; else if (r['신호'] === '유예') ny++; });
+  document.getElementById('hint').textContent = S === '매수'
+    ? '10이평을 돌파한 뒤 가상 수익이 +10% 이상이고 5>10>20 정배열이 이번 달 처음 된 종목(점수 높은 순). 이번 달 말에 확정되면 다음 달 첫날 종가에 삽니다.'
+    : '10이평 아래로 내려온 뒤 2개월째에도 아래면 매도(국채 10년 금리가 오르는 중이면 내려온 즉시 매도). 첫 달은 유예.';
   sb.textContent = '매수 대상 ' + nb; ss.textContent = '매도 대상 ' + ns + (ny ? ' · 유예 ' + ny : '');
   var day = '';
   rows.forEach(function (r) { if (String(r['기준일']) > day) day = String(r['기준일']); });
