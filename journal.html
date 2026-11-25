@@ -313,7 +313,7 @@ canvas{display:block;width:100%;height:230px}
     <div id="my-list"></div>
     <div id="my-rec" class="my-rec">
       <div class="my-h" style="margin-top:12px"><span class="my-t">내 보유 기준 추천 <span class="plan-tag">잠정</span></span><span class="my-c" id="my-rec-m"></span></div>
-      <label class="my-cashl">내 현금 (만원) <span class="my-cashs"><button type="button" class="my-sgn" id="my-cash-s">+ 현금</button><input id="my-cash" type="number" step="1" placeholder="0"><em class="amt-kor" id="my-cash-k"></em></span></label>
+      <label class="my-cashl">내 현금 (만원) <span class="my-cashs"><button type="button" class="my-sgn" id="my-cash-s" aria-label="현금 부호 바꾸기(+/−)">+</button><input id="my-cash" type="number" step="1" placeholder="0"><em class="amt-kor" id="my-cash-k"></em></span></label>
       <div id="my-rec-b"></div>
     </div>
     <details class="my-bk"><summary>백업 · 다른 기기로 옮기기</summary>
@@ -1959,7 +1959,8 @@ function myNoScoreText(code){                 // 점수를 못 구하는 종목 
   return inList?'월봉이 형성되지 않음':'목록 밖 종목';
 }
 var MYREC={api:null,busy:false,t:0}, MYH_G=[], MYH_S=[], MYH_OPEN={};
-var CASHSIGN=MYCASH<0?-1:1;
+var CASHSIGN=MYCASH<0?-1:1; try{ if(MYCASH===0&&localStorage.getItem('jcashsign')==='-1') CASHSIGN=-1; }catch(e){}
+function cashSignSave(){ try{ localStorage.setItem('jcashsign',String(CASHSIGN)); }catch(e){} }   // 부호는 따로 기억: 버튼으로만 바뀌고(빈 칸이어도) 다른 곳을 눌러도 풀리지 않음
 function korSigned(n){ return n<0?'−'+korMan(-n):korMan(n); }            // 만원 단위 정수(음수 가능) → '−200만원'
 function myThisYm(){ var k=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'})); return k.getFullYear()*100+k.getMonth()+1; }
 function myPrevYm(y){ return y%100===1?y-89:y-1; }
@@ -1985,7 +1986,7 @@ function myRecCompute(open){
 function myRecRender(open){
   var host=document.getElementById('my-rec-b'); if(!host) return;
   var cashEl=document.getElementById('my-cash'), ck=document.getElementById('my-cash-k');
-  if(cashEl&&document.activeElement!==cashEl) if(MYCASH!==0) CASHSIGN=MYCASH<0?-1:1; cashEl.value=MYCASH!==0?Math.abs(Math.round(MYCASH/10000)):''; var sb=document.getElementById('my-cash-s'); if(sb){ sb.textContent=CASHSIGN<0?'− 빚':'+ 현금'; sb.classList.toggle('neg',CASHSIGN<0); }
+  if(cashEl&&document.activeElement!==cashEl) if(MYCASH!==0){ CASHSIGN=MYCASH<0?-1:1; cashSignSave(); } cashEl.value=MYCASH!==0?Math.abs(Math.round(MYCASH/10000)):''; var sb=document.getElementById('my-cash-s'); if(sb){ sb.textContent=CASHSIGN<0?'−':'+'; sb.classList.toggle('neg',CASHSIGN<0); }
   if(ck) ck.textContent=MYCASH!==0?korSigned(Math.round(MYCASH/10000)):'';
   if(!open.length&&MYCASH===0){ host.innerHTML='<p class="amt-note">보유 종목을 입력하거나 내 현금을 넣으면 이번 달 판매·구매 추천이 나와요.</p>'; document.getElementById('my-rec-m').textContent=''; return; }
   var keys=open.map(function(p){ return myBarKey(p.code); }).filter(function(k){ return k; });
@@ -2084,9 +2085,9 @@ function wireMy(){
   card.querySelectorAll('.my-seg button').forEach(function(b){ b.onclick=function(){ MY_SIDE=b.dataset.side; myAutoFee(); card.querySelectorAll('.my-seg button').forEach(function(x){ x.classList.toggle('on',x===b); }); }; });
   $('my-c2').onchange=function(){ var us=$('my-c2').value==='USD'; $('my-fxl').style.display=us?'flex':'none'; if(us&&!$('my-fx').value) $('my-fx').value=Math.round(myFxNow()); };
   $('my-sync-k').onclick=syncSetKey;
-  $('my-cash-s').onclick=function(){ CASHSIGN=-CASHSIGN; var raw=Math.abs(Math.round(+$('my-cash').value||0)); MYCASH=CASHSIGN*raw*10000; try{ localStorage.setItem('jmycash',String(MYCASH)); }catch(e){} stampSettings(); syncSoon(); renderMy(); };
+  $('my-cash-s').onclick=function(ev){ ev.stopPropagation(); CASHSIGN=-CASHSIGN; cashSignSave(); var raw=Math.abs(Math.round(+$('my-cash').value||0)); MYCASH=CASHSIGN*raw*10000; try{ localStorage.setItem('jmycash',String(MYCASH)); }catch(e){} stampSettings(); syncSoon(); renderMy(); };
   $('my-cash').addEventListener('input',function(){ var m=Math.abs(Math.round(+$('my-cash').value||0)), sg=(+$('my-cash').value<0)?-1:CASHSIGN, v=sg*m*10000; $('my-cash-k').textContent=v!==0?korSigned(v/10000):''; });
-  $('my-cash').addEventListener('change',function(){ var raw=+$('my-cash').value||0; if(raw<0) CASHSIGN=-1; MYCASH=CASHSIGN*Math.abs(Math.round(raw))*10000; try{ localStorage.setItem('jmycash',String(MYCASH)); }catch(e){} stampSettings(); syncSoon(); renderMy(); });
+  $('my-cash').addEventListener('change',function(){ var raw=+$('my-cash').value||0; if(raw<0){ CASHSIGN=-1; cashSignSave(); } MYCASH=CASHSIGN*Math.abs(Math.round(raw))*10000; try{ localStorage.setItem('jmycash',String(MYCASH)); }catch(e){} stampSettings(); syncSoon(); renderMy(); });
   loadCosts(function(){ myAutoFee(); });
   $('my-n').addEventListener('input',myAcInput); $('my-n').addEventListener('focus',function(){ if($('my-n').value) myAcInput(); });
   $('my-n').addEventListener('blur',function(){ setTimeout(function(){ var b=$('my-ac'); if(b) b.hidden=true; },250); });
