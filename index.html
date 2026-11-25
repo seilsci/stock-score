@@ -87,6 +87,44 @@ a{color:inherit}
 .tr-v.p{color:var(--buy)}.tr-v.n{color:var(--sell)}
 .sc-note{font-size:11px;color:var(--mut);margin-top:14px;line-height:1.6}
 #hint{font-size:12px;color:var(--mut);margin:0 6px 12px;line-height:1.5}
+
+.inf{padding:6px 14px 34px}
+.inf-h{font-size:15px;margin:22px 2px 10px;display:flex;align-items:center;gap:8px}
+.inf-h em{font-style:normal;font-weight:400;font-size:11.5px;color:var(--mut)}
+.inf-h .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.inf-h .dot.d1{background:var(--buy)}.inf-h .dot.d2{background:var(--sell)}
+.inf-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px}
+.inf-svg{width:100%;max-width:520px;height:auto;display:block;margin:0 auto 6px}
+.inf-svg .ax{stroke:var(--line);stroke-width:1}
+.inf-svg .gd{stroke:var(--line);stroke-width:1;stroke-dasharray:3 3}
+.inf-svg .ma{fill:none;stroke:var(--ma);stroke-width:2.2;stroke-linecap:round}
+.inf-svg .px{fill:none;stroke:var(--buy);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.inf-svg .mk{fill:var(--buy)}.inf-svg .mt{fill:#fff;font-size:8.5px;text-anchor:middle;font-weight:700}
+.inf-svg .dt{fill:var(--card);stroke:var(--buy);stroke-width:2}.inf-svg .by{fill:var(--buy)}
+.inf-svg .lb{fill:var(--mut);font-size:9px;text-anchor:middle}.inf-svg .lb.by2{fill:var(--buy);font-weight:700}
+.inf-svg .lm{fill:var(--ma);font-size:9px;text-anchor:middle;font-weight:600}
+.inf-steps{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:6px}
+.inf-steps .inf-st{display:flex;gap:9px;align-items:flex-start;background:var(--chip);border-radius:12px;padding:9px 10px}
+.inf-steps .inf-st b{flex:none;width:22px;height:22px;border-radius:50%;background:var(--buy);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.inf-steps .inf-st strong{display:block;font-size:12.5px;line-height:1.35}
+.inf-steps .inf-st span{display:block;font-size:11px;color:var(--mut);line-height:1.45;margin-top:2px}
+.inf-go{margin-top:10px;background:linear-gradient(90deg,var(--buy),#ff8a5c);color:#fff;border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.5}
+.inf-go i{font-style:normal;margin:0 3px}.inf-go b{background:rgba(255,255,255,.22);border-radius:6px;padding:1px 6px}
+.inf-sell{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.inf-sell>*,.inf-steps>*{min-width:0}
+.inf-sell .inf-sc{background:var(--card);border:1px solid var(--line);border-left-width:5px;border-radius:14px;padding:10px 12px 11px 12px;position:relative}
+.inf-sell .inf-sc.c1{border-left-color:var(--ma)}.inf-sell .inf-sc.c2{border-left-color:var(--buy)}.inf-sell .inf-sc.c3{border-left-color:var(--sell)}
+.inf-sell .inf-ic{position:absolute;right:12px;top:8px;font-size:22px;opacity:.9}
+.inf-sell strong{font-size:13.5px}.inf-sell p{margin:4px 30px 0 0;font-size:12px;color:var(--mut);line-height:1.55}
+.inf-sell p b{color:var(--fg)}.inf-sell small{font-size:11px}
+.inf-y{display:inline-block;background:rgba(245,158,11,.18);color:var(--ma);border-radius:6px;padding:0 6px;font-weight:700}
+.inf-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.inf-chips span{background:var(--chip);border-radius:999px;padding:4px 10px;font-size:11.5px}
+.inf-chips span.mut{background:none;color:var(--mut);padding-left:2px}
+.inf-note{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--mut)}
+.inf-note summary{cursor:pointer;font-weight:600;color:var(--fg)}.inf-note p{margin:8px 0 0;line-height:1.6}
+.inf-foot{text-align:center;font-size:11.5px;color:var(--mut);margin:14px 0 0}
+@media(min-width:560px){.inf-sell{grid-template-columns:repeat(3,minmax(0,1fr))}.inf-sell .inf-sc{padding-bottom:12px}.inf-sell .inf-ic{position:static;margin-bottom:2px;display:block}.inf-sell p{margin-right:0}}
 </style>
 </head>
 <body>
@@ -111,13 +149,42 @@ a{color:inherit}
     <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span>월봉 3년 · 아래는 거래대금(≈월 거래량×종가)</span></div>
   </div></div>
   <div class="list" id="L"><div class="msg">불러오는 중…</div></div>
-  <footer>
-    매수 대상(10이평 돌파 후 +10% · 정배열): ① 월봉 10이평을 위로 돌파(전달 종가 ≤ 전달 10이평, 그달 종가 > 10이평)하고, ② 돌파 다음 달 시가보다 지금 가격이 +10% 이상 올랐으며, ③ 5>10>20 이평 정배열이 되고, ④ 이 조건을 이번 달에 처음 채운 종목입니다(그 사이 2배 익절 트레일이나 10이평 아래 유예 만료로 팔렸을 종목은 제외). 이번 달 말에 확정되면 다음 달 첫날 종가에 삽니다(월말 전까지는 바뀔 수 있음). 점수는 돌파한 달 시점의 "예상 수익의 순위"(0~100)이며 올라갈 확률이 아닙니다. 점수 순으로 4종목을 같은 금액으로 사는 것이 일지의 전략입니다. 과거 시험에서 점수 상위를 고른 결과가 무작위와 뚜렷하게 구분되지 않는 경우가 많았고(시장·기간에 따라 다름), 상장폐지 종목이 빠진 자료라 과거 성적이 유리하게 나왔을 수 있으며 앞으로를 보장하지 않으니 참고용으로 보세요(점수를 누르면 계산 이유를 볼 수 있어요).<br>
-
-
-    매도 대상: 10이평 아래로 내려온 뒤 2개월째에도 계속 아래면 매도(미국 국채 10년 금리가 6개월 전 달말보다 오르는 중이면 내려온 즉시 매도). 내려온 첫 달은 '유예'로 표시합니다. 가격이 10이평의 2배에 닿은 뒤 다시 내려오면 파는 익절(트레일)은 보유 종목 기준이라 매매일지에서 확인하세요.<br>
-    한국 코스피 상위 300·코스닥 상위 200, 미국 상위 500 (시가총액 순, 구매 시점의 시총 기준). 투자 판단의 책임은 본인에게 있습니다.<br>
-  </footer>
+  <section class="inf">
+    <h2 class="inf-h"><span class="dot d1"></span>어떻게 사나요</h2>
+    <div class="inf-card">
+      <svg class="inf-svg" viewBox="0 0 320 120" role="img" aria-label="돌파 후 +10% 정배열 매수 예시 그림">
+        <line x1="8" y1="104" x2="312" y2="104" class="ax"/>
+        <polyline class="ma" points="8,70 60,68 112,66 164,62 216,56 268,48 312,42"/>
+        <polyline class="px" points="8,86 40,92 70,80 100,60 130,64 160,54 190,46 224,36 258,28 296,22"/>
+        <line x1="100" y1="12" x2="100" y2="104" class="gd"/><line x1="130" y1="12" x2="130" y2="104" class="gd"/><line x1="224" y1="12" x2="224" y2="104" class="gd"/><line x1="296" y1="12" x2="296" y2="104" class="gd"/>
+        <circle cx="100" cy="60" r="9" class="mk"/><text x="100" y="63.5" class="mt">①</text>
+        <circle cx="130" cy="64" r="3.5" class="dt"/><text x="130" y="116" class="lb">시가</text>
+        <circle cx="224" cy="36" r="9" class="mk"/><text x="224" y="39.5" class="mt">②③</text>
+        <circle cx="296" cy="22" r="3.5" class="by"/><text x="296" y="116" class="lb by2">첫날 매수</text>
+        <text x="100" y="116" class="lb">돌파</text><text x="224" y="116" class="lb">월말 확정</text>
+        <text x="272" y="56" class="lm">10이평</text>
+      </svg>
+      <div class="inf-steps">
+        <div class="inf-st"><b>1</b><div><strong>10이평 돌파</strong><span>전달 종가 ≤ 전달 10이평이고, 그달 종가가 10이평 위</span></div></div>
+        <div class="inf-st"><b>2</b><div><strong>돌파 다음 달 시가 대비 +10%</strong><span>그 시가에 샀다면 지금 +10% 이상</span></div></div>
+        <div class="inf-st"><b>3</b><div><strong>5 &gt; 10 &gt; 20 정배열</strong><span>단기·중기·장기 이평이 위에서부터 차례로</span></div></div>
+        <div class="inf-st"><b>4</b><div><strong>이번 달 처음 충족</strong><span>그 사이 익절·유예 만료로 팔렸을 종목은 제외</span></div></div>
+      </div>
+      <div class="inf-go">월말에 확정 <i>→</i> <b>다음 달 첫날 종가</b>에 점수 상위 4종목을 같은 금액으로 (정수 주)</div>
+    </div>
+    <h2 class="inf-h"><span class="dot d2"></span>언제 파나요 <em>월말 종가 기준, 먼저 걸리는 것</em></h2>
+    <div class="inf-sell">
+      <div class="inf-sc c1"><div class="inf-ic">🚀</div><strong>익절 트레일</strong><p>가격이 10이평의 <b>2배</b>에 닿은 뒤 다시 내려오면 매도</p></div>
+      <div class="inf-sc c2"><div class="inf-ic">📈</div><strong>금리가 오르는 중</strong><p>미국 국채 10년 금리가 6개월 전 달말보다 높으면, 10이평 아래로 내려온 <b>즉시</b> 매도</p></div>
+      <div class="inf-sc c3"><div class="inf-ic">⏳</div><strong>그 외에는 유예</strong><p>10이평 아래로 내려온 첫 달은 <span class="inf-y">유예</span> → <b>2개월째</b>에도 아래면 매도 <small>(위로 올라오면 유예 초기화)</small></p></div>
+    </div>
+    <div class="inf-chips">
+      <span>🇰🇷 코스피 상위 300</span><span>코스닥 상위 200</span><span>🇺🇸 미국 상위 500</span><span class="mut">시가총액 순 · 구매 시점 기준</span>
+      <span>월 100만원</span><span>점수 순 4종목 균등</span><span>못 사면 다음 순위</span><span class="mut">채권·레버리지·인버스형 제외</span>
+    </div>
+    <details class="inf-note"><summary>점수와 과거 성적, 유의사항</summary><p>과거 시험에서 점수 상위를 고른 결과가 무작위와 뚜렷하게 구분되지 않는 경우가 많았고(시장·기간에 따라 다름), 상장폐지 종목이 빠진 자료라 과거 성적이 유리하게 나왔을 수 있으며 앞으로를 보장하지 않습니다. 점수는 돌파한 달 시점의 "예상 수익의 순위"(0~100)이며 올라갈 확률이 아닙니다(점수를 누르면 계산 이유를 볼 수 있어요).</p></details>
+    <p class="inf-foot">투자 판단의 책임은 본인에게 있습니다.</p>
+  </section>
 </main>
 <div id="sc-modal"><div id="sc-box"><div id="sc-body"></div></div></div>
 <script>
