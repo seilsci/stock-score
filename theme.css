@@ -11,6 +11,6 @@ h1{font-size:24px;border-bottom:3px double var(--fg);padding-bottom:8px}
 .tab.on,.ntab.on,.yr-btn.sel,.mo-btn.sel,.sd-btn.sel,.mt-tabs button.on,.seg button.on{background:transparent !important;color:var(--acc) !important;border-bottom:3px solid var(--acc) !important}
 input,select,textarea{border:none !important;border-bottom:1.5px solid var(--fg) !important;border-radius:0 !important;background:transparent !important}
 .my-add{background:var(--fg) !important;color:var(--bg) !important;border:none !important;border-radius:0 !important}
-/* 노란 형광펜 느낌 제거: 태그는 배경 없이 가는 테두리만 */
-.tag,.tag.yu,.rtag,.rtag.tp{background:transparent !important;border:1px solid currentColor !important;border-radius:0 !important}
+/* 태그는 박스 없이 그냥 글씨 */
+.tag,.tag.yu,.rtag,.rtag.tp{background:transparent !important;border:none !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important}
 .tag.yu,.rtag.tp{color:var(--ma) !important}
