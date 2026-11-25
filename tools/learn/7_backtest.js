@@ -1649,7 +1649,7 @@ if (process.env.STAGE14 !== '0') {
     const man = x => Math.round(x / 10000).toLocaleString() + '만원';
     V.forEach(v => {
       const o = simOpt(v.rule, v.o || {}), sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand, log: true });
-      log(`${v.name.slice(0, 44).padEnd(44)} | 받은 배당 ${man(sm.divTotal || 0).padStart(9)} | 최종 평가액 ${man(sm.val).padStart(11)} | 총 입금 ${man(sm.deposits)}`);
+      log(`${v.name.slice(0, 44).padEnd(44)} | 받은 배당 ${man(sm.divTotal || 0).padStart(9)} | 최종 평가액 ${man(sm.val).padStart(11)}`);
     });
   }
   if (AD8.co) {                                                           // 같은 회사라서 건너뛴 후보 수
