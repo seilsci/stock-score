@@ -25,6 +25,22 @@ const SEEDS = +process.env.SEEDS || 30;
 const clipT = t => Math.max(-2, Math.min(3, t));
 const avg = (a, s, e) => { let t = 0; for (let k = s; k <= e; k++) t += a[k]; return t / (e - s + 1); };
 const mi = ym => Math.floor(ym / 100) * 12 + ym % 100, ymOf = k => Math.floor((k - 1) / 12) * 100 + (k - 1) % 12 + 1;
+// 배당(백테스트 전용, 사이트에는 안 씀): data/div/<종목>.json [[배당락일(초), 주당 배당금], ...](2f_div.js) → 종목별 월(k)별 주당 배당 합계
+const DIVC = new Map();
+function divOf(y, k) {
+  let m = DIVC.get(y);
+  if (!m) {
+    m = new Map();
+    try {
+      JSON.parse(fs.readFileSync(path.join(DATA, 'div', y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'), 'utf8')).forEach(([ts, a]) => {
+        const d = new Date((ts + (/\.(KS|KQ)$/.test(y) ? 9 * 3600 : 0)) * 1000), kk = mi(d.getUTCFullYear() * 100 + d.getUTCMonth() + 1);
+        m.set(kk, (m.get(kk) || 0) + a);
+      });
+    } catch (e) {}
+    DIVC.set(y, m);
+  }
+  return m.get(k) || 0;
+}
 const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1;
 const START = mi((START_Y - 1) * 100 + 12), END = mi(CUR) - 1;
 const yOfK = k => Math.floor((k - 1) / 12);
@@ -277,7 +293,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       }
     }
   };
-  let pend = null, fdMiss = 0, tlhN = 0, taxTotal = 0, coSkipN = 0;
+  let pend = null, fdMiss = 0, tlhN = 0, taxTotal = 0, coSkipN = 0, divTotal = 0;
   for (let k = START; k <= END; k++) {
     cur = led ? { k, dep, sells: [], buys: [], skipped: [], order: [], tax: 0 } : null;
     if (opt.cashRateFn && k > START) cash += cash * Math.max(0, opt.cashRateFn(k) || 0) / 12;          // 현금 이자(월 단위, 세금 제외): 놀고 있는 현금에 연 이율/12를 더함
@@ -289,6 +305,10 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
+      if (opt.divFn && !(opt.divSkipBuy && h.buyK === k)) {                       // 배당 시험: 그달 배당락이 있는 보유 종목의 배당을 (세후) 현금으로 받음 — 다음 달 구매에 재투자됨
+        const d = opt.divFn(h.y, k);
+        if (d > 0) { const net = h.sh * d * (h.us ? fx(k) : 1) * (1 - (h.us ? (opt.divTaxUS || 0) : (opt.divTaxKR || 0))); cash += net; divTotal += net; }
+      }
       if (opt.skipBuyMonth && h.buyK === k) { keep.push(h); continue; }      // 산 달 말에는 판매 판단을 하지 않음(첫날 구매 방식에서 사자마자 파는 것을 막는 변형)
       if (!opt.grace && h.sellK !== null && h.sellK <= k) { cash += sellCash(h, k, 'ma10'); continue; }
       // 손절: 종가가 매수가 대비 opt.sl 비율 이하로 하락 시 즉시 매도
@@ -393,7 +413,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   }
   liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN };
+  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN, divTotal };
 }
 function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };
@@ -1512,6 +1532,14 @@ if (process.env.STAGE14 !== '0') {
     ['R1', 'R2', 'R3', 'R4'].forEach(t => mk(nm[t], t));
     AD8.rev = true;
   }
+  if (process.env.AD8_DIV === '1' && RT14) {                            // 배당 반영 시험(백테스트 전용): 보유 종목 배당(세후)을 현금으로 받아 재투자 — 후보·판매 규칙은 현재 그대로
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
+    V.push({ sec: '배당 반영', name: 'A 지금: 배당 없음(가격만)', cand: conf, rule: rule10 });
+    V.push({ sec: '배당 반영', name: 'D1 배당 세후(미국 15%·한국 15.4%), 구매 달 제외', cand: conf, rule: rule10, o: { divFn: divOf, divTaxUS: 0.15, divTaxKR: 0.154, divSkipBuy: true } });
+    V.push({ sec: '배당 반영', name: 'D2 배당 세후, 구매 달 포함', cand: conf, rule: rule10, o: { divFn: divOf, divTaxUS: 0.15, divTaxKR: 0.154 } });
+    V.push({ sec: '배당 반영', name: 'D3 배당 세전(위쪽 한계), 구매 달 포함', cand: conf, rule: rule10, o: { divFn: divOf } });
+    AD8.div = true;
+  }
   if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' });
     const mk = f => ym => (mC.get(ym) || []).filter(f);
@@ -1614,6 +1642,14 @@ if (process.env.STAGE14 !== '0') {
       (sm.trades || []).forEach(t => { if (t.ret == null) return; const k = t.reason || 'ma10'; (by[k] = by[k] || []).push(t.ret); });
       const f = k => by[k] ? `${by[k].length}건 ${(by[k].reduce((a, b) => a + b, 0) / by[k].length * 100 >= 0 ? '+' : '') + (by[k].reduce((a, b) => a + b, 0) / by[k].length * 100).toFixed(1)}%` : '0건';
       log(`${v.name.slice(0, 40).padEnd(40)} | 역배열 ${f('ma10-역배열')} | 유예만료 ${f('ma10-유예만료')} | 금리인상 ${f('ma10-금리인상')} | 익절 ${f('tpTrail')}`);
+    });
+  }
+  if (AD8.div) {                                                          // 변형별 받은 배당 합계·최종 평가액·종목별 배당
+    log(''); log('## 배당 반영 시험 — 받은 배당 합계(세후) · 최종 평가액 · 배당 받은 거래 비율 (전체 기간, 월 100만원)');
+    const man = x => Math.round(x / 10000).toLocaleString() + '만원';
+    V.forEach(v => {
+      const o = simOpt(v.rule, v.o || {}), sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand, log: true });
+      log(`${v.name.slice(0, 44).padEnd(44)} | 받은 배당 ${man(sm.divTotal || 0).padStart(9)} | 최종 평가액 ${man(sm.val).padStart(11)} | 총 입금 ${man(sm.deposits)}`);
     });
   }
   if (AD8.co) {                                                           // 같은 회사라서 건너뛴 후보 수
