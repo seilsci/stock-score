@@ -222,7 +222,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         if (fill && slots <= 0) break;
         const { r } = list[li];
         if (holds.some(h => h.y === r.y)) continue;           // 이미 가진 종목은 또 사지 않음(매수 후보에서 뺌)
-        let per = fill ? cash / Math.min(slots, list.length - li) : per0;      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
+        let per = fill ? cash / Math.min(slots, opt.minDiv ? Math.max(list.length - li, opt.minDiv) : list.length - li) : per0;      // minDiv: 남은 후보가 적어도 최소 minDiv개 몫으로 나눔(나머지는 현금으로 둠)      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
         if (fill && opt.wRank) { const nn = Math.min(slots, list.length - li); if (nn > 1) per = opt.wRank > 0 ? cash * 2 / (nn + 1) : cash * 2 / (nn * (nn + 1)); }   // wRank: 순위 비례 비중(+1: 앞순위에 더, −1: 뒷순위에 더(대조)). 남은 nn자리에 nn, nn−1, … 1 (또는 반대) 몫
         const o = px(r.y), p = priceAt(o, r); if (p === undefined || !(p > 0)) { if (opt.firstDay) fdMiss++; continue; }
         const us = r.x[US] === 1, fee = us ? usFee : C.kr.commission;
@@ -268,6 +268,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   let pend = null, fdMiss = 0;
   for (let k = START; k <= END; k++) {
     cur = led ? { k, dep, sells: [], buys: [], skipped: [], order: [], tax: 0 } : null;
+    if (opt.cashRateFn && k > START) cash += cash * Math.max(0, opt.cashRateFn(k) || 0) / 12;          // 현금 이자(월 단위, 세금 제외): 놀고 있는 현금에 연 이율/12를 더함
     if (opt.firstDay && k > START) doBuys(k - 1, k, (o, r) => fdPx(r.y, k));   // 지난달 신호 → 이번 달 첫날 종가에 체결(입금·세금 처리 뒤 남은 현금)
     const keep = [];
     for (const h of holds) {
@@ -1442,6 +1443,14 @@ if (process.env.STAGE14 !== '0') {
       V.push({ sec: '지수 필터(신규 매수만 쉼)', name: '코스피가 10개월 이평 아래면 전부 쉼', cand: filt('ks', 10), rule: rule10 });
       V.push({ sec: '지수 필터(신규 매수만 쉼)', name: '코스피·S&P500 둘 다 10개월 이평 아래일 때만 쉼', cand: filt('both', 10), rule: rule10 }); }
     [6, 8, 10, 12, 16, 20].forEach(h => V.push({ sec: '총 보유 종목 상한', name: `보유 ${h}종목까지만`, cand: conf, rule: rule10, o: { maxHold: h } }));
+  }
+  if (process.env.AD8_CASH === '1' && RT14) {                           // 후보가 적은 달에 몰아 사지 않기(minDiv) · 현금 이자 반영(cashRateFn) — 판매 규칙·금리 판단은 현재 규칙
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
+    V.push({ sec: '기준', name: '현재: 후보 수대로 나눠 삼 · 현금 이자 없음', cand: conf, rule: rule10 });
+    [2, 3, 4].forEach(d => V.push({ sec: '후보가 적은 달 현금 유지', name: `후보가 적어도 최소 ${d}종목 몫으로 나눔(나머지 현금 유지)`, cand: conf, rule: rule10, o: { minDiv: d } }));
+    [0.02, 0.03, 0.04].forEach(r => V.push({ sec: '현금 이자 반영(세금 제외)', name: `놀고 있는 현금에 연 ${r * 100}% 이자`, cand: conf, rule: rule10, o: { cashRateFn: () => r } }));
+    V.push({ sec: '현금 이자 반영(세금 제외)', name: '놀고 있는 현금에 미국 3개월 단기국채 금리(그 달 값)', cand: conf, rule: rule10, o: { cashRateFn: k => { const v = rtk(k).dtb3; return v != null ? v / 100 : 0; } } });
+    V.push({ sec: '현금 이자 반영(세금 제외)', name: '최소 4종목 몫 + 연 3% 이자', cand: conf, rule: rule10, o: { minDiv: 4, cashRateFn: () => 0.03 } });
   }
   const base = V[0];
   V.forEach((v, i) => { progress('후속 시험', i / V.length); v.full = run14(v); v.halves = []; });
