@@ -1305,6 +1305,14 @@ if (process.env.STAGE14 !== '0') {
   const B = +process.env.AD8_HALVES || 8, iVol = fi('volat12');
   const maAt = (o, k, n) => { let t = 0; for (let j = k; j > k - n; j--) { const p = o.m.get(j); if (p === undefined) return null; t += p; } return t / n; };
   const aligned = (o, k) => { const a = maAt(o, k, 5), b = maAt(o, k, 10), d = maAt(o, k, 20); return (a != null && b != null && d != null) ? (a > b && b > d) : null; };
+  const alignMode = (mode, o, k) => {                                // 정배열 변형(튜닝 시험용): full = 5>10>20(현재), s5_10 = 5>10만, p20 = 5>10 이고 종가>20이평, none = 안 봄
+    const a = maAt(o, k, 5), b = maAt(o, k, 10), d = maAt(o, k, 20), c = o.m.get(k);
+    if (mode === 'none') return true;
+    if (a == null || b == null) return null;
+    if (mode === 's5_10') return a > b;
+    if (mode === 'p20') return d == null ? null : (a > b && c > d);
+    return d == null ? null : (a > b && b > d);
+  };
   let RT14 = null; try { RT14 = JSON.parse(fs.readFileSync(path.join(DATA, 'rates.json'))); } catch (e) {}
   const rtk = k => (RT14 && RT14[ymOf(k)]) || {};
   const chg = (key, m) => k => { const a = rtk(k)[key], b = rtk(k - m)[key]; return a != null && b != null ? a > b : null; };
@@ -1312,7 +1320,7 @@ if (process.env.STAGE14 !== '0') {
   // 풀 만들기: 돌파 신호 → (가상 포지션이 팔리기 전에) 처음으로 "가상 수익 ≥ 문턱 + 정배열"인 달에 후보. 문턱 = thr 또는 volK × 12개월 변동성
   const poolCache = new Map();
   const pool = (q) => {
-    const rule = q.rule || RULE0, key = JSON.stringify([q.thr, q.volK, q.maxWait, rule, q.rateName]);
+    const rule = q.rule || RULE0, key = JSON.stringify([q.thr, q.volK, q.maxWait, rule, q.rateName, q.align]);
     if (poolCache.has(key)) return poolCache.get(key);
     const m = new Map(), rateVirt = rule.rateFn || (rule.rate ? (j => { const f = ffChg12(j); return f != null && f > 0 ? true : null; }) : null);
     scored[kA].forEach(list => list.forEach(e => {
@@ -1328,7 +1336,7 @@ if (process.env.STAGE14 !== '0') {
           if (p < ma) { if (!rule.grace) return; cnt++; const up = rateVirt && rateVirt(j) === true; if (cnt >= (up ? 1 : rule.grace)) return; } else cnt = 0;
         }
         if (p > hi) hi = p;
-        if (p / p0 - 1 >= thr && aligned(o, j) === true) {
+        if (p / p0 - 1 >= thr && alignMode(q.align || 'full', o, j) === true) {
           const ym = ymOf(j), r2 = Object.assign({}, r, { ym, exoff: null }), a = m.get(ym) || [];
           a.push({ r: r2, s: e.s, pnl: p / p0 - 1, wait: j - t0, pos: p / hi }); m.set(ym, a); return;
         }
@@ -1452,10 +1460,41 @@ if (process.env.STAGE14 !== '0') {
     V.push({ sec: '현금 이자 반영(세금 제외)', name: '놀고 있는 현금에 미국 3개월 단기국채 금리(그 달 값)', cand: conf, rule: rule10, o: { cashRateFn: k => { const v = rtk(k).dtb3; return v != null ? v / 100 : 0; } } });
     V.push({ sec: '현금 이자 반영(세금 제외)', name: '최소 4종목 몫 + 연 3% 이자', cand: conf, rule: rule10, o: { minDiv: 4, cashRateFn: () => 0.03 } });
   }
+  if (process.env.AD8_TUNE === '1' && RT14) {                           // 궁금증 시험: 삼성전자·SK하이닉스(2025)를 잡도록 정배열 완화·순위 기준·보유 수를 바꿔 보고 성과와 두 종목 매수 여부를 봄
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) };
+    const P = al => pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월', align: al });
+    const byScore = m => ym => m.get(ym) || [];
+    const byPnl = m => ym => [...(m.get(ym) || [])].sort((x, y) => y.pnl - x.pnl);
+    const byRank = m => rankOrder(m, [e => e.s, e => e.pnl]);
+    const add = (sec, name, al, ord, N) => { const m = P(al); V.push({ sec, name, cand: ord(m), rule: rule10, ...(N ? { N } : {}) }); };
+    add('기준', 'A 지금: 5>10>20 정배열 · 점수 순 · 4종목', 'full', byScore);
+    add('정배열 완화', 'B1 5>10 이평만 (점수 순)', 's5_10', byScore);
+    add('정배열 완화', 'B2 5>10 이고 종가>20이평 (점수 순)', 'p20', byScore);
+    add('정배열 완화', 'B3 정배열 안 봄 (점수 순)', 'none', byScore);
+    add('순위 기준', 'C1 정배열 그대로 · 가상 수익 큰 순', 'full', byPnl);
+    add('순위 기준', 'C2 정배열 그대로 · 점수+가상 수익 순위합', 'full', byRank);
+    add('조합', 'D1 5>10만 · 가상 수익 큰 순', 's5_10', byPnl);
+    add('조합', 'D2 5>10만 · 점수+가상 수익 순위합', 's5_10', byRank);
+    add('조합', 'D3 정배열 안 봄 · 가상 수익 큰 순', 'none', byPnl);
+    add('보유 수', 'E1 정배열 그대로 · 점수 순 · 6종목', 'full', byScore, 6);
+    add('보유 수', 'E2 5>10만 · 점수 순 · 6종목', 's5_10', byScore, 6);
+    add('보유 수', 'E3 5>10만 · 점수+가상 수익 순위합 · 6종목', 's5_10', byRank, 6);
+    AD8.tune = true;
+  }
   const base = V[0];
   V.forEach((v, i) => { progress('후속 시험', i / V.length); v.full = run14(v); v.halves = []; });
   for (let b = 1; b <= B; b++) { progress('후속 시험(절반)', (b - 1) / B); V.forEach(v => v.halves.push(run14(v, e => hash(e.r.y + '|' + b) < 0.5).cagr)); }
   progress('후속 시험(절반)', 1); process.stdout.write('\n');
+  if (AD8.tune) {                                                         // 두 종목(삼성전자·SK하이닉스)이 2025년에 실제로 매수되는지
+    const WATCH = [['005930.KS', '삼성전자'], ['000660.KS', 'SK하이닉스']];
+    log(''); log('## 삼성전자·SK하이닉스 매수 여부 (변형별, 첫날 구매 · 2024년 이후 거래: 구매 달 → 판매 달 · 수익)');
+    V.forEach(v => {
+      const o = simOpt(v.rule || RULE0, v.o || {}), N = v.N || 4, cand = v.cand;
+      const sm = simulate(ym => cand(ym).slice(0, N), N, C1, { ...o, cand, log: true });
+      const parts = WATCH.map(([y, nm]) => { const T = (sm.trades || []).filter(t => t.y === y && +String(t.buyYm).slice(0, 4) >= 2024).map(t => `${t.buyYm}→${t.sellYm || '보유중'} ${t.ret == null ? '' : (t.ret >= 0 ? '+' : '') + (t.ret * 100).toFixed(0) + '%'}`); return `${nm}: ${T.length ? T.join(', ') : '매수 없음'}`; });
+      log(`${v.name.slice(0, 42).padEnd(42)} | ${parts.join(' | ')}`);
+    });
+  }
   AD8.sec = { V, base };
 }
 if (AD8.sec) {
