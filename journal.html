@@ -159,7 +159,7 @@ canvas{display:block;width:100%;height:230px}
 .sd-row{cursor:pointer}
 .sd-c{display:none;grid-column:1/3;padding-top:6px}
 .sd-c.open{display:block}
-.sd-s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;color:var(--mut);grid-column:1/3;font-variant-numeric:tabular-nums}
+.sd-s{display:grid !important;grid-template-columns:8.6em 3.4em 5.4em 1fr;column-gap:6px;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;color:var(--mut);grid-column:1/3;font-variant-numeric:tabular-nums}
 #sold-more[hidden]{display:none}
 #sold-more{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:inherit;font-size:13px;font-weight:700;color:var(--fg);cursor:pointer}
 /* 시작 시점 */
@@ -1819,7 +1819,7 @@ function renderSoldList(){
   document.getElementById('sold-list').innerHTML=shown.map(function(r){
     var hm=holdMonths(r.buyYm,r.sellYm), cls=r.ret>=0?'p':'n';
     return '<div class="sd-row" data-y="'+esc(r.y)+'" data-b="'+r.buyYm+'" data-s="'+r.sellYm+'"><div class="sd-n">'+esc(r.name)+(r.us?' <span class="lr-b">미국</span>':'')+'</div><div class="sd-r '+cls+'">'+pc(r.ret)+'</div>'
-      +'<div class="sd-s"><b>'+fmt(r.buyYm)+'</b>→'+fmt(r.sellYm)+' · '+hm+'개월 · 점수 <span class="lr-sc" data-sy="'+esc(r.y)+'" data-sb="'+r.buyYm+'" data-sn="'+esc(r.name)+'" data-sp="">'+(r.score==null?'-':r.score)+'</span> · '+esc(REASON_S[r.reason]||REASON[r.reason]||r.reason||'')+'</div><div class="sd-c"><canvas></canvas></div></div>';
+      +'<div class="sd-s"><span class="c1"><b>'+fmt(r.buyYm)+'</b>→'+fmt(r.sellYm)+'</span><span class="c2">'+hm+'개월</span><span class="c3">점수 <span class="lr-sc" data-sy="'+esc(r.y)+'" data-sb="'+r.buyYm+'" data-sn="'+esc(r.name)+'" data-sp="">'+(r.score==null?'-':r.score)+'</span></span><span class="c4">'+esc(REASON_S[r.reason]||REASON[r.reason]||r.reason||'')+'</span></div><div class="sd-c"><canvas></canvas></div></div>';
   }).join('');
   document.querySelectorAll('#sold-list .sd-row').forEach(function(row){          // 줄을 누르면 판매 당시까지의 월봉 그래프
     row.onclick=function(ev){
