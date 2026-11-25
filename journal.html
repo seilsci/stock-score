@@ -293,7 +293,14 @@ canvas{display:block;width:100%;height:230px}
   <h1 id="pg-title">매매일지</h1>
   <div class="sub"><span id="strat-label">10이평 돌파 후 +10%·정배열 매수 · tp2x트레일+금리유예2달</span> · <span id="dep-label">월 100만원</span> · 비용·세금 반영</div>
 
-  <div class="subtabs" id="subtabs"><button type="button" data-v="how">📖 매매방법</button><button type="button" data-v="hist" class="on">🧾 거래내역 보기</button></div>
+  <div class="subtabs" id="subtabs"><button type="button" data-v="how">📖 매매방법</button><button type="button" data-v="hist" class="on">🧾 거래내역 보기</button><button type="button" data-v="sold">💰 매도 거래</button></div>
+  <div id="view-sold" hidden>
+  <div class="sec-title" id="sold-label">매도한 거래 전체</div>
+  <div id="sold-ctl"></div>
+  <div class="sd-sum" id="sold-sum"></div>
+  <div id="sold-list"></div>
+  <button id="sold-more" hidden>더 보기</button>
+  </div>
   <div id="view-how" hidden>
   <section class="jf">
     <h2 class="jf-h"><span class="jf-dot"></span>일지는 이렇게 계산해요</h2>
@@ -379,11 +386,7 @@ canvas{display:block;width:100%;height:230px}
     <div id="hold-list"></div>
   </div>
 
-  <div class="sec-title" id="sold-label">매도한 거래 전체</div>
-  <div id="sold-ctl"></div>
-  <div class="sd-sum" id="sold-sum"></div>
-  <div id="sold-list"></div>
-  <button id="sold-more" hidden>더 보기</button>
+
 
 
   </div>
@@ -2192,13 +2195,14 @@ function wireMy(){
 }
 var SUBV='hist';
 function applySub(){
-  var p=(document.getElementById('pane-ret')&&!document.getElementById('pane-ret').hidden)?'ret':'log', how=(p==='log'&&SUBV==='how');
-  document.getElementById('subtabs').hidden=(p!=='log'); document.getElementById('view-how').hidden=!how;
-  ['start-card','amt-card','pane-log'].forEach(function(i){ var e=document.getElementById(i); if(!e) return; if(how) e.setAttribute('data-hid','1'); else e.removeAttribute('data-hid'); });
+  var p=(document.getElementById('pane-ret')&&!document.getElementById('pane-ret').hidden)?'ret':'log', how=(p==='log'&&SUBV==='how'), sold=(p==='log'&&SUBV==='sold');
+  document.getElementById('subtabs').hidden=(p!=='log'); document.getElementById('view-how').hidden=!how; document.getElementById('view-sold').hidden=!sold;
+  var hid=(how||sold);
+  ['start-card','amt-card','pane-log'].forEach(function(i){ var e=document.getElementById(i); if(!e) return; if(hid) e.setAttribute('data-hid','1'); else e.removeAttribute('data-hid'); });
   document.querySelectorAll('#subtabs button').forEach(function(b){ b.classList.toggle('on',b.dataset.v===SUBV); });
 }
 document.querySelectorAll('#subtabs button').forEach(function(b){ b.onclick=function(){ SUBV=b.dataset.v; try{ localStorage.setItem('jsub',SUBV); }catch(e){} applySub(); window.scrollTo(0,0); }; });
-try{ SUBV=localStorage.getItem('jsub')==='how'?'how':'hist'; }catch(e){}
+try{ var _v=localStorage.getItem('jsub'); SUBV=(_v==='how'||_v==='sold')?_v:'hist'; }catch(e){}
 function showPane(p){                          // 위쪽 탭: 매매일지(거래 내역·보유·추천) ↔ 수익률(내 수익률·누적·연도별·월별 그래프와 표)
   document.getElementById('pane-log').hidden=(p!=='log'); document.getElementById('pane-ret').hidden=(p!=='ret');
   document.querySelectorAll('.navtabs .ntab[data-p]').forEach(function(b){ b.classList.toggle('on',b.dataset.p===p); });
