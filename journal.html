@@ -325,7 +325,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
   list.innerHTML = holds.map(function(h,i){
     var ret=h.ret, cls=ret>=0?'p':'n';
     var isSel = SEL_HOLD && SEL_HOLD.y===h.y;
-    var scN = scoreOf(h.y,h.buyYm), sc = scN!=null ? scN : Math.round(h.score*100);
+    var scN = scoreOf(h.y,h.buyYm), sc = scN!=null ? scN : ((h.score==null||isNaN(h.score))?null:Math.round(h.score*100));
     var hUS = !/\.(KS|KQ)$/.test(h.y), fxv = over ? over.fx : (LED && LED.months[ym] ? LED.months[ym].fx : 1);
     var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx * (hUS ? fxv : 1)) : null;
     var buyAmt = h.basis ? Math.round(h.basis) : null;
@@ -337,7 +337,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
         +(evalAmt?'평가 '+evalAmt.toLocaleString()+'원 '+shStr:'종가 '+px(h.curPx))
       +'</div>'
       +'<div class="h-ret '+cls+'">'+pc(ret)+'</div>'
-      +'<div class="h-sc" data-sc-i="'+i+'" title="점수 기준 보기">'+sc+'점</div>'
+      +'<div class="h-sc" data-sc-i="'+i+'" title="점수 기준 보기">'+(sc==null?'-':sc+'점')+'</div>'
       +'</div>';
   }).join('');
   list.querySelectorAll('.h-row').forEach(function(row){
@@ -1282,7 +1282,7 @@ function planHoldings(P){                    // 예상 보유 = 지난달 보유
     out.push({y:h.y,name:h.name,buyYm:h.buyYm,buyPx:h.buyPx,curPx:cur,sh:h.sh,basis:h.basis,ret:cur/h.buyPx-1,score:h.score});
   });
   P.buys.forEach(function(x){
-    out.push({y:x.y,name:x.name,buyYm:+nowYm,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:x.score/100,row:x.row,apiScore:x.score,raw:chartRaw(x.row)});
+    out.push({y:x.y,name:x.name,buyYm:+nowYm,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:typeof x.score==='number'?x.score/100:null,row:x.row,apiScore:x.score,raw:chartRaw(x.row)});
   });
   return out;
 }
