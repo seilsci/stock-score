@@ -924,7 +924,7 @@ document.getElementById('sc-modal').onclick=function(e){ if(e.target===this) thi
 function won(n){ return Math.round(n).toLocaleString()+'원'; }
 function signWon(n){ return (n>=0?'+':'−')+Math.abs(Math.round(n)).toLocaleString()+'원'; }
 function qtyS(sh,us){ return (+sh).toLocaleString(undefined,{maximumFractionDigits:2})+'주'; }
-function pxS(v,us){ return us ? '$'+(+v).toFixed(2) : Math.round(v).toLocaleString()+'원'; }
+function pxS(v,us){ return us ? '$'+(+v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : Math.round(v).toLocaleString()+'원'; }
 function prevYmOf(ym){ ym=+ym; return String(ym%100===1 ? ym-89 : ym-1); }
 
 var NEXTFD=null;
