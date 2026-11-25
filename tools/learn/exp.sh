@@ -7,15 +7,15 @@
 cd "$(dirname "$0")" || exit 1
 export STAGE3=0 STAGE4=0 STAGE5=0 STAGE6=0 STAGE7=0 STAGE8=0 STAGE9=0 STAGE10=0 STAGE11=0 STAGE12=0 STAGE13=0 STAGE14=1 NODE_NO_WARNINGS=1
 export AD8_HALVES="${AD8_HALVES:-6}"
-BATCHES="${*:-1 2 3 4 5 6 7 8 9 10}"
-declare -A NAME=([1]="매수 신호" [2]="순위" [3]="점수 모델" [4]="비중·구성" [5]="매도" [6]="자금·비용·세금" [7]="체결·시점" [8]="종목 범위" [9]="검증" [10]="다른 전략과 비교")
+BATCHES="${*:-1 2 3 4 5 6 7 8 9 10 11}"
+declare -A NAME=([1]="매수 신호" [2]="순위" [3]="점수 모델" [4]="비중·구성" [5]="매도" [6]="자금·비용·세금" [7]="체결·시점" [8]="종목 범위" [9]="검증" [10]="다른 전략과 비교" [11]="조합·일관성 점검")
 OUT=data/exp_result.txt
 : > "$OUT"
-echo "시험 시작: $(date '+%H:%M') — 묶음 ${BATCHES} (묶음마다 몇 분, 전체 30~60분)"
+echo "시험 시작: $(date '+%H:%M') — 묶음 ${BATCHES} (묶음마다 1~2분, 전체 15~30분)"
 for B in $BATCHES; do
   echo "── 묶음 $B ${NAME[$B]} 시작 $(date '+%H:%M')"
   if AD9="$B" node 7_backtest.js > "data/exp_run_$B.log" 2>&1; then
-    { echo; echo "================ 묶음 $B · ${NAME[$B]} ================"; awk '/^## (확인 매수 후속|9 검증|10 다른 전략)/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; } >> "$OUT"
+    { echo; echo "================ 묶음 $B · ${NAME[$B]} ================"; awk '/^## (확인 매수 후속|9 검증|10 다른 전략|11 일관성)/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; } >> "$OUT"
     echo "── 묶음 $B 끝 $(date '+%H:%M')"
   else
     { echo; echo "================ 묶음 $B · ${NAME[$B]} — 실행 오류 ================"; tr '\r' '\n' < "data/exp_run_$B.log" | tail -8; } >> "$OUT"

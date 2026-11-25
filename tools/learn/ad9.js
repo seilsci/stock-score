@@ -266,7 +266,42 @@ function build(c, which) {
     posts.push(() => post10(U, members));
   }
 
+  // ═════ 묶음 11: 조합·일관성 점검 — 묶음 1~10에서 앞·뒤·낙폭이 같이 좋아 보인 것들을 합쳐 보고, 해마다 이겼는지(15년 중 몇 해) 확인
+  if (on(11)) {
+    const S = n => `11-${n}`;
+    const up2 = ({ o, j }) => o.m.get(j) > o.m.get(j - 1);
+    const ruleMa5 = { ...rule10, exitMaN: 5 };
+    const dd20 = { exitFn: h => (h.last <= h.peak * 0.8 ? 'ddstop' : null) };
+    const spCash = { cashRetFn: k => { const a = idxAt('sp', k), b = idxAt('sp', k - 1); return a && b ? (a * fx(k)) / (b * fx(k - 1)) - 1 : 0; } };
+    const nUp = { nFn: ym => (rateJ(mi(ym)) === true ? 2 : 4) };
+    const mUp = mk({ ck: 'c_up2', cond: up2 }), mUp5 = mk({ ck: 'c_up2m5', cond: up2 }, ruleMa5), mM5 = mk({ ck: 'c_m5' }, ruleMa5);
+    add(S('단독'), '단독 ① 확인 때까지 2개월 연속 상승', { cand: candOf(mUp) });
+    add(S('단독'), '단독 ② 보유 중 고점에서 −20%면 판매', { cand: candOf(mBase), o: dd20 });
+    add(S('단독'), '단독 ③ 판매 기준을 5이평으로', { cand: candOf(mM5), rule: ruleMa5, o: { exitMaN: 5 } });
+    add(S('단독'), '단독 ④ 국채금리 오르는 중이면 2종목만', { cand: candOf(mBase), o: nUp });
+    add(S('단독'), '단독 ⑤ 남는 현금을 S&P500에(운용 방식)', { cand: candOf(mBase), o: spCash });
+    add(S('단독'), '단독 ⑥ 윗꼬리 20% 초과 돌파 제외', { cand: candOf(mk({ ck: 'uw0.2', sig: r => !(r.x[X.upwick] > 0.2) })) });
+    add(S('조합'), '①+② 연속 상승 + 고점 −20% 판매', { cand: candOf(mUp), o: dd20 });
+    add(S('조합'), '①+③ 연속 상승 + 5이평 판매', { cand: candOf(mUp5), rule: ruleMa5, o: { exitMaN: 5 } });
+    add(S('조합'), '①+④ 연속 상승 + 금리 오르면 2종목', { cand: candOf(mUp), o: nUp });
+    add(S('조합'), '①+②+③ 연속 상승 + 고점 −20% + 5이평', { cand: candOf(mUp5), rule: ruleMa5, o: { ...dd20, exitMaN: 5 } });
+    add(S('조합'), '①+② + 남는 현금 S&P500', { cand: candOf(mUp), o: { ...dd20, ...spCash } });
+    add(S('조합'), '①+⑥ 연속 상승 + 윗꼬리 20% 제외', { cand: candOf(mk({ ck: 'c_up2uw', cond: up2, sig: r => !(r.x[X.upwick] > 0.2) })) });
+    add(S('조합'), '①+②+④ 연속 상승 + 고점 −20% + 금리 오르면 2종목', { cand: candOf(mUp), o: { ...dd20, ...nUp } });
+    posts.push(() => post11());
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
+
+
+  function post11() {                                                          // 11 묶음: 해마다 기준을 이긴 횟수·3구간 연평균
+    const base = V[0], yrs = YEARS_ALL.filter(y => y < 2026), n = yrs.length;
+    log(''); log(`## 11 일관성 점검 — 해마다 기준(A)보다 높았던 해 수(${yrs[0]}~${yrs[n - 1]} ${n}년, 2026은 진행 중이라 뺌) · 3구간 연평균`);
+    log('방식                                                         이긴 해   2012~16   2017~21   2022~26   전체    낙폭');
+    const seg = (v, a, b) => pc(cagrOver(v.full.yearly, YEARS_ALL.filter(y => y >= a && y <= b)));
+    V.forEach(v => { if (!v.full || !v.full.yearly) return; const w = yrs.filter(y => (v.full.yearly[y] ?? 0) > (base.full.yearly[y] ?? 0)).length;
+      log(`${v.name.slice(0, 50).padEnd(50)} ${String(v === base ? '-' : w + '/' + n).padStart(7)}  ${seg(v, 2012, 2016).padStart(8)}  ${seg(v, 2017, 2021).padStart(8)}  ${seg(v, 2022, 2026).padStart(8)}  ${pc(v.full.cagr).padStart(7)}  ${pc(v.full.mdd).padStart(7)}`); });
+  }
 
   // ─────────────── 묶음 9·2 보고용 도구
   const baseSim = (extra = {}) => { const v = V[0], o = simOpt(v.rule, v.o || {}); return simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand, log: true, ...extra }); };
