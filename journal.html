@@ -14,6 +14,34 @@ h1{font-size:18px;margin:0 0 2px;font-weight:700}
 .sub{color:var(--mut);font-size:12px;margin-bottom:18px}
 .sub a{color:var(--acc);text-decoration:none}
 
+
+/* 내 체결 내역 (?x=1) */
+.my-card{display:none;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.my-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.my-t{font-size:14px;font-weight:700}.my-c{font-size:12px;color:var(--mut)}
+.my-form{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;margin-bottom:10px}
+.my-form label{font-size:11.5px;color:var(--mut);display:flex;flex-direction:column;gap:3px;min-width:0}
+.my-form input,.my-form select{font:inherit;font-size:15px;color:var(--fg);background:var(--chip);border:1px solid var(--line);border-radius:9px;padding:7px 9px;width:100%;min-width:0}
+.my-form input:focus,.my-form select:focus{outline:2px solid var(--acc);border-color:transparent}
+.my-seg{display:flex;gap:6px}.my-seg button{flex:1;padding:7px 0;border:1px solid var(--line);border-radius:9px;background:transparent;font:inherit;font-size:14px;font-weight:700;color:var(--mut);cursor:pointer}
+.my-seg button.on.b{background:color-mix(in srgb,var(--buy) 14%,var(--card));color:var(--buy);border-color:var(--buy)}
+.my-seg button.on.s{background:color-mix(in srgb,var(--sell) 14%,var(--card));color:var(--sell);border-color:var(--sell)}
+.my-add{grid-column:1/-1;padding:9px 0;border:none;border-radius:10px;background:var(--acc);color:#fff;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.my-msg{grid-column:1/-1;font-size:11.5px;color:var(--buy);min-height:1em}
+.my-sum{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin:6px 0 10px;padding-top:10px;border-top:1px solid var(--line)}
+.my-sum div{display:flex;justify-content:space-between;font-size:12.5px;color:var(--mut)}.my-sum b{color:var(--fg);font-variant-numeric:tabular-nums}
+.my-sum b.p{color:var(--buy)}.my-sum b.n{color:var(--sell)}
+.my-tb{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums;margin-bottom:8px}
+.my-tb th{font-weight:600;color:var(--mut);font-size:11.5px;text-align:right;padding:4px 4px;border-bottom:1px solid var(--line)}
+.my-tb td{text-align:right;padding:6px 4px;border-bottom:1px solid var(--line)}.my-tb th:first-child,.my-tb td:first-child{text-align:left}
+.my-tb td.p{color:var(--buy)}.my-tb td.n{color:var(--sell)}
+.my-l{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.my-l .tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px}.my-l .tag.b{background:color-mix(in srgb,var(--buy) 14%,var(--card));color:var(--buy)}.my-l .tag.s{background:color-mix(in srgb,var(--sell) 14%,var(--card));color:var(--sell)}
+.my-l .tx{flex:1;min-width:0}.my-l .tx small{display:block;color:var(--mut);font-size:11.5px}
+.my-l .x{border:none;background:transparent;color:var(--mut);font-size:18px;cursor:pointer;padding:0 4px}
+.my-bk{font-size:12px;color:var(--mut);margin-top:6px}.my-bk summary{cursor:pointer}.my-bk textarea{width:100%;height:90px;font:11px/1.4 monospace;background:var(--chip);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px;margin-top:6px}
+.my-bk button{margin:6px 6px 0 0;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);font:inherit;font-size:12px;cursor:pointer}
+
 /* 연도·월 선택 */
 .nav{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
 .yr-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
@@ -239,6 +267,33 @@ canvas{display:block;width:100%;height:230px}
     <label>첫달 투자금 <span><input id="in-init" type="number" inputmode="numeric" min="1" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-init">100만원</em></label>
     <label>매월 불입금 <span><input id="in-dep" type="number" inputmode="numeric" min="0" max="1000000" step="1" value="100"> 만원</span><em class="amt-kor" id="kor-dep">100만원</em></label>
     <p class="amt-note" id="amt-note">첫달 투자금은 첫 달에 쓸 돈 전체예요(그 달 월 불입금은 따로 더하지 않아요). 금액을 바꾸고 Enter(또는 다른 곳을 누르면) 선택한 시작 시점부터 같은 규칙으로 다시 계산해요.</p>
+  </div>
+
+
+  <div id="my-card" class="my-card">
+    <div class="my-h"><span class="my-t">내 체결 내역</span><span class="my-c" id="my-cnt"></span></div>
+    <div class="my-form">
+      <label>날짜<input id="my-d" type="date"></label>
+      <label>구분<div class="my-seg"><button type="button" class="b on" data-side="B">매수</button><button type="button" class="s" data-side="S">매도</button></div></label>
+      <label>종목명<input id="my-n" type="text" placeholder="예: 삼성전자" autocomplete="off"></label>
+      <label>종목 코드 (선택·평가용)<input id="my-k" type="text" placeholder="005930 또는 MSFT" autocomplete="off" autocapitalize="characters"></label>
+      <label>수량(주)<input id="my-q" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
+      <label>체결 가격<input id="my-p" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
+      <label>통화<select id="my-c2"><option value="KRW">원(KRW)</option><option value="USD">달러(USD)</option></select></label>
+      <label id="my-fxl" style="display:none">환율(원/$)<input id="my-fx" type="number" inputmode="decimal" min="0" step="any" placeholder="1334"></label>
+      <label>수수료(원, 비우면 0)<input id="my-f" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
+      <label>세금(원, 매도 때만)<input id="my-t2" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
+      <div class="my-msg" id="my-msg"></div>
+      <button type="button" class="my-add" id="my-add">체결 추가</button>
+    </div>
+    <div id="my-sum"></div>
+    <div id="my-hold"></div>
+    <div id="my-list"></div>
+    <details class="my-bk"><summary>백업 · 다른 기기로 옮기기</summary>
+      <textarea id="my-bk-t" placeholder="내보내기를 누르면 여기에 내 체결 내역이 글자로 나와요. 다른 기기에서는 이 글을 붙여 넣고 불러오기를 누르세요."></textarea>
+      <button type="button" id="my-exp">내보내기(복사)</button><button type="button" id="my-imp">불러오기(덮어쓰기)</button>
+    </details>
+    <p class="amt-note" style="margin:8px 0 0">내 체결 내역은 이 브라우저에만 저장돼요(서버로 보내지 않아요). 평가금은 월봉 자료의 최근 종가 기준이라 실제 현재가와 다를 수 있어요. 이동평균 단가로 계산하고, 수수료·세금은 직접 입력한 값만 반영해요.</p>
   </div>
 
   <div id="cum-card"></div>
@@ -1674,9 +1729,73 @@ function renderSoldList(){
   more.onclick=function(){ SOLD_LIMIT+=300; renderSoldList(); };
 }
 
+
+/* ── 내 체결 내역 (?x=1): 직접 입력한 매수·매도를 이 브라우저에 저장하고, 이동평균 단가로 보유·손익을 계산 ── */
+var MY=[], MY_SIDE='B';
+try{ MY=JSON.parse(localStorage.getItem('jmy')||'[]')||[]; if(!Array.isArray(MY)) MY=[]; }catch(e){ MY=[]; }
+function mySave(){ try{ localStorage.setItem('jmy',JSON.stringify(MY)); }catch(e){} }
+function myKey(t){ return (t.code||t.name||'').toUpperCase().replace(/\s+/g,''); }
+function myAmt(t){ return t.qty*t.px*(t.cur==='USD'?t.fx:1); }
+function myBarKey(code){                       // 입력한 코드 → 월봉 자료 키(국내 6자리는 .KS/.KQ 순서로 찾음)
+  if(!code) return null; var c=code.toUpperCase();
+  if(/^\d{6}$/.test(c)){ if(barsOf(c+'.KS')) return c+'.KS'; if(barsOf(c+'.KQ')) return c+'.KQ'; return null; }
+  return barsOf(c)?c:null;
+}
+function myCalc(){                              // 날짜 순으로 이동평균 단가 계산 → {pos[], realized, buyTotal, sellTotal}
+  var T=MY.slice().sort(function(a,b){ return a.d<b.d?-1:a.d>b.d?1:a.id-b.id; }), P={}, real=0, rlist=[];
+  T.forEach(function(t){
+    var k=myKey(t); if(!k) return; var p=P[k]||(P[k]={key:k,name:t.name,code:t.code,qty:0,cost:0,cur:t.cur,fx:t.fx}), a=myAmt(t);
+    if(t.name) p.name=t.name; if(t.code) p.code=t.code; p.cur=t.cur; p.fx=t.fx;
+    if(t.side==='B'){ p.qty+=t.qty; p.cost+=a+(t.fee||0); }
+    else { var q=Math.min(t.qty,p.qty), avg=p.qty>0?p.cost/p.qty:0, costPart=avg*q, net=a-(t.fee||0)-(t.tax||0); real+=net-costPart; rlist.push({name:p.name,d:t.d,pl:net-costPart,ret:costPart>0?net/costPart-1:0}); p.qty-=q; p.cost-=costPart; if(p.qty<1e-9){ p.qty=0; p.cost=0; } }
+  });
+  return {pos:Object.keys(P).map(function(k){ return P[k]; }),realized:real,rlist:rlist};
+}
+function myFxNow(){ var ks=LED0?Object.keys(LED0.months).sort():[]; return ks.length?LED0.months[ks[ks.length-1]].fx:1334; }
+function renderMy(){
+  var card=document.getElementById('my-card'); if(!card) return;
+  if(!XMODE){ card.style.display='none'; return; }
+  card.style.display='block';
+  var fx=myFxNow(), R=myCalc(), open=R.pos.filter(function(p){ return p.qty>0; }), cost=0, val=0, unk=0, rows='';
+  open.forEach(function(p){
+    var bk=myBarKey(p.code), u=bk&&barsOf(bk), px=u?u.cs[u.cs.length-1]:null, isUS=bk?!/\.(KS|KQ)$/.test(bk):(p.cur==='USD');
+    var v=px!=null?p.qty*px*(isUS?fx:1):null; cost+=p.cost; if(v!=null) val+=v; else { val+=p.cost; unk++; }
+    var pl=v!=null?v-p.cost:null, avg=p.cost/p.qty;
+    rows+='<tr><td>'+esc(p.name||p.code)+'</td><td>'+(+p.qty.toFixed(4)).toLocaleString()+'</td><td>'+Math.round(avg).toLocaleString()+'</td><td>'+(v!=null?Math.round(v).toLocaleString():'-')+'</td><td class="'+(pl==null?'':pl>=0?'p':'n')+'">'+(pl==null?'-':(pl>=0?'+':'−')+Math.abs(Math.round(pl)).toLocaleString()+' ('+(pl>=0?'+':'')+(pl/p.cost*100).toFixed(1)+'%)')+'</td></tr>';
+  });
+  var unrl=val-cost, tot=unrl+R.realized, cls=function(x){ return x>=0?'p':'n'; };
+  document.getElementById('my-cnt').textContent=MY.length+'건';
+  document.getElementById('my-sum').innerHTML=MY.length?'<div class="my-sum"><div>보유 원가<b>'+won(cost)+'</b></div><div>보유 평가금<b>'+won(val)+'</b></div><div>평가손익<b class="'+cls(unrl)+'">'+signWon(unrl)+'</b></div><div>실현손익<b class="'+cls(R.realized)+'">'+signWon(R.realized)+'</b></div><div style="grid-column:1/-1">합계 손익<b class="'+cls(tot)+'">'+signWon(tot)+'</b></div></div>':'';
+  document.getElementById('my-hold').innerHTML=open.length?'<table class="my-tb"><tr><th>보유 종목</th><th>수량</th><th>평균단가(원)</th><th>평가금(원)</th><th>평가손익</th></tr>'+rows+'</table>'+(unk?'<p class="amt-note" style="margin:0 0 8px">코드를 비웠거나 월봉에 없는 종목('+unk+')은 평가금을 매입 원가로 보여요.</p>':''):'';
+  var T=MY.slice().sort(function(a,b){ return a.d<b.d?1:a.d>b.d?-1:b.id-a.id; });
+  document.getElementById('my-list').innerHTML=T.map(function(t){
+    var a=myAmt(t), px=t.cur==='USD'?'$'+(+t.px).toLocaleString():(+t.px).toLocaleString()+'원';
+    return '<div class="my-l"><span class="tag '+(t.side==='B'?'b':'s')+'">'+(t.side==='B'?'매수':'매도')+'</span><div class="tx">'+esc(t.name||t.code)+' <small>'+esc(t.d)+' · '+(+t.qty.toFixed(4)).toLocaleString()+'주 × '+px+(t.cur==='USD'?' (환율 '+Math.round(t.fx).toLocaleString()+')':'')+' = '+won(a)+(t.fee||t.tax?' · 수수료 '+Math.round(t.fee||0).toLocaleString()+(t.tax?' · 세금 '+Math.round(t.tax).toLocaleString():''):'')+'</small></div><button class="x" data-del="'+t.id+'" aria-label="삭제">×</button></div>';
+  }).join('');
+  card.querySelectorAll('[data-del]').forEach(function(b){ b.onclick=function(){ if(!confirm('이 체결을 지울까요?')) return; MY=MY.filter(function(t){ return String(t.id)!==b.dataset.del; }); mySave(); renderMy(); }; });
+}
+function wireMy(){
+  var card=document.getElementById('my-card'); if(!card||card._w||!XMODE) return; card._w=1;
+  var $=function(id){ return document.getElementById(id); }, today=new Date(), z=function(n){ return (n<10?'0':'')+n; };
+  $('my-d').value=today.getFullYear()+'-'+z(today.getMonth()+1)+'-'+z(today.getDate());
+  card.querySelectorAll('.my-seg button').forEach(function(b){ b.onclick=function(){ MY_SIDE=b.dataset.side; card.querySelectorAll('.my-seg button').forEach(function(x){ x.classList.toggle('on',x===b); }); }; });
+  $('my-c2').onchange=function(){ var us=$('my-c2').value==='USD'; $('my-fxl').style.display=us?'flex':'none'; if(us&&!$('my-fx').value) $('my-fx').value=Math.round(myFxNow()); };
+  $('my-add').onclick=function(){
+    var t={id:Date.now(),d:$('my-d').value,side:MY_SIDE,name:$('my-n').value.trim(),code:$('my-k').value.trim().toUpperCase(),qty:+$('my-q').value,px:+$('my-p').value,cur:$('my-c2').value,fx:+$('my-fx').value||1,fee:+$('my-f').value||0,tax:+$('my-t2').value||0}, m=$('my-msg');
+    if(!t.d){ m.textContent='날짜를 넣어 주세요.'; return; }
+    if(!t.name&&!t.code){ m.textContent='종목명이나 코드를 넣어 주세요.'; return; }
+    if(!(t.qty>0)||!(t.px>0)){ m.textContent='수량과 가격은 0보다 커야 해요.'; return; }
+    if(t.cur==='USD'&&!(t.fx>0)){ m.textContent='달러 체결은 환율을 넣어 주세요.'; return; }
+    if(t.side==='S'){ var h=myCalc().pos.filter(function(p){ return p.key===myKey(t); })[0]; if(!h||h.qty+1e-9<t.qty){ m.textContent='보유 수량보다 많이 팔 수 없어요(보유 '+(h?+h.qty.toFixed(4):0)+'주).'; return; } }
+    m.textContent=''; MY.push(t); mySave();
+    ['my-q','my-p','my-f','my-t2'].forEach(function(id){ $(id).value=''; }); renderMy();
+  };
+  $('my-exp').onclick=function(){ var tx=JSON.stringify(MY); $('my-bk-t').value=tx; try{ navigator.clipboard.writeText(tx); }catch(e){} $('my-bk-t').select(); };
+  $('my-imp').onclick=function(){ try{ var a=JSON.parse($('my-bk-t').value); if(!Array.isArray(a)) throw 0; if(!confirm('지금 저장된 내 체결 '+MY.length+'건을 지우고 '+a.length+'건으로 바꿀까요?')) return; MY=a; mySave(); renderMy(); }catch(e){ alert('불러올 수 없는 글이에요. 내보내기로 만든 글을 그대로 붙여 넣어 주세요.'); } };
+}
 function renderAll(){
   try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) sl.textContent=DATA.meta.firstDay?'10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매) · tp2x트레일+국채10년 금리 유예2달':DATA.meta.strategy; }catch(e){}
-  wireAmtInputs(); syncAmtInputs(); renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
+  wireMy(); if(XMODE&&!window._myb){ window._myb=1; loadBars(renderMy); } renderMy(); wireAmtInputs(); syncAmtInputs(); renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
     if(PLAN){ var hD=decPlanOf(PLAN), hh=planHoldings(PLAN); if(hD) hD.p2.buys.forEach(function(x){ hh.push({y:x.y,name:x.name,buyYm:+hD.dnx,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:typeof x.score==='number'?x.score/100:null,row:hD.rowOf[x.y],apiScore:x.score,raw:chartRaw(hD.rowOf[x.y])}); }); renderHoldings({holds:hh,fx:PLAN.fx,nx:hD?hD.dnx:null}); }
