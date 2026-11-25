@@ -20,7 +20,7 @@ h1{font-size:20px;margin:0}
 .seg{display:flex;margin:8px 16px;background:var(--seg);border-radius:10px;padding:3px}
 .seg button{flex:1;padding:8px;border:0;background:none;border-radius:8px;font:inherit;font-weight:600;color:var(--mut);cursor:pointer}
 .seg button.on{background:var(--card)}
-.seg button.on.b{color:var(--buy)}.seg button.on.s{color:var(--sell)}
+.seg button.on.b{color:var(--buy)}.seg button.on.s{color:var(--sell)}.seg button.on.t{color:#7c3aed}
 .list{margin:8px 16px 16px;background:var(--card);border-radius:12px;overflow:hidden;border:1px solid var(--line)}
 .row{display:grid;grid-template-columns:28px 1fr auto;gap:8px;padding:11px 12px;border-top:1px solid var(--line);align-items:center}
 .score{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;font-size:12px;font-weight:700;background:var(--chip);color:var(--mut)}
@@ -141,6 +141,7 @@ a{color:inherit}
   <div class="seg">
     <button class="on b" data-s="매수" id="sb">매수 대상</button>
     <button data-s="매도" id="ss">매도 대상</button>
+    <button data-s="익절" id="st">익절 2배</button>
   </div>
   <div class="hint" id="hint"></div>
   <div class="chartbox"><div class="chart">
@@ -202,23 +203,29 @@ function px(r, kr) { return kr ? Math.round(r['최근종가']).toLocaleString() 
 
 function render() {
   document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.m === M); });
-  var sb = document.getElementById('sb'), ss = document.getElementById('ss');
-  sb.className = S === '매수' ? 'on b' : ''; ss.className = S === '매도' ? 'on s' : '';
+  var sb = document.getElementById('sb'), ss = document.getElementById('ss'), st = document.getElementById('st');
+  sb.className = S === '매수' ? 'on b' : ''; ss.className = S === '매도' ? 'on s' : ''; st.className = S === '익절' ? 'on t' : '';
   if (!DATA) return;
   var kr = M === 'KR';
   var rows = DATA.rows.filter(function (r) { return kr ? r['시장'] !== 'US' : r['시장'] === 'US'; });
-  var nb = 0, ns = 0, ny = 0;
-  rows.forEach(function (r) { if (r['신호'] === '확인') nb++; else if (r['신호'] === '매도') ns++; else if (r['신호'] === '유예') ny++; });
+  var nb = 0, ns = 0, ny = 0, nt = 0;
+  rows.forEach(function (r) { if (r['신호'] === '확인') nb++; else if (r['신호'] === '매도') ns++; else if (r['신호'] === '유예') ny++; else if (r['신호'] === '익절') nt++; });
   document.getElementById('hint').textContent = S === '매수'
     ? '월봉 10이평을 돌파한 뒤, 돌파 다음 달 시가보다 +10% 이상 올랐고 5>10>20 이평 정배열인 종목(이번 달 처음 조건을 채운 종목, 점수 높은 순). 이번 달 말에 확정되면 다음 달 첫날 종가에 삽니다.'
+    : S === '익절'
+    ? '월봉 종가가 10이평의 2배 이상까지 오른 종목(도달)과, 직전 달 2배 선 위에 있다가 이번 달 그 아래로 내려온 종목(하락). 산 종목이 2배 선에 한 번 닿은 뒤 처음 그 선 아래로 내려오면 월말에 익절 매도합니다(보유 기준 규칙을 시장 전체에 적용한 목록).'
     : '10이평 아래로 내려온 뒤 2개월째에도 아래면 매도(국채 10년 금리가 오르는 중이면 내려온 즉시 매도). 첫 달은 유예.';
-  sb.textContent = '매수 대상 ' + nb; ss.textContent = '매도 대상 ' + ns + (ny ? ' · 유예 ' + ny : '');
+  sb.textContent = '매수 대상 ' + nb; ss.textContent = '매도 대상 ' + ns + (ny ? ' · 유예 ' + ny : ''); st.textContent = '익절 2배 ' + nt;
   var day = '';
   rows.forEach(function (r) { if (String(r['기준일']) > day) day = String(r['기준일']); });
   document.getElementById('upd').textContent =
     (day ? '기준: ' + day + ' 종가' + (kr ? '' : ' (미국)') + ' · ' : '') + '매일 자동 갱신';
-  var sel = rows.filter(function (r) { return (S === '매수' && r['신호'] === '확인') || (S === '매도' && (r['신호'] === '매도' || r['신호'] === '유예')); })
+  var sel = rows.filter(function (r) { return (S === '매수' && r['신호'] === '확인') || (S === '매도' && (r['신호'] === '매도' || r['신호'] === '유예')) || (S === '익절' && r['신호'] === '익절'); })
                 .sort(function (a, b) {
+                  if (S === '익절') {                                                          // 하락(이번 달 말 익절 매도) 먼저, 그다음 10이평 대비 배율 큰 순
+                    var ta = a['익절상태'] === '하락' ? 0 : 1, tb = b['익절상태'] === '하락' ? 0 : 1;
+                    return ta !== tb ? ta - tb : (+b['배율']) - (+a['배율']);
+                  }
                   if (S === '매수') {
                     var sa = a['점수'] != null && a['점수'] !== '' ? +a['점수'] : -1;
                     var sb = b['점수'] != null && b['점수'] !== '' ? +b['점수'] : -1;
@@ -227,12 +234,13 @@ function render() {
                   var ya = a['신호'] === '유예' ? 1 : 0, yb = b['신호'] === '유예' ? 1 : 0;
                   return ya !== yb ? ya - yb : b['시총'] - a['시총'];
                 });
-  var cls = S === '매수' ? 'b' : 's';
+  var cls = S === '매수' ? 'b' : S === '익절' ? 'b' : 's';
   var h = sel.map(function (r, i) {
     var g = (r['최근종가'] / r['10이평'] - 1) * 100;
     var mk = r['시장'] === 'KOSPI' ? '코스피 · ' : r['시장'] === 'KOSDAQ' ? '코스닥 · ' : '';
     var tag = (r['종류'] && r['종류'] !== 'stock' ? '<span class="tag">' + esc(String(r['종류']).toUpperCase()) + '</span>' : '') +
               (r['신호'] === '유예' ? '<span class="tag yu">유예 1개월째</span>' : '') +
+              (r['신호'] === '익절' ? (r['익절상태'] === '하락' ? '<span class="tag yu">2배 선 아래로 하락 · 이번 달 말 익절 매도</span>' : '<span class="tag">2배 도달 · 트레일 중</span>') : '') +
               (r['신호'] === '확인' && r['돌파월'] ? '<span class="tag">' + String(r['돌파월']).slice(0, 4) + '-' + String(r['돌파월']).slice(4) + ' 돌파</span>' : '');
     var sc = r['점수'] != null && r['점수'] !== '' ? +r['점수'] : null;
     var scHtml = S === '매수' && sc != null ? '<span class="score ' + (sc >= 70 ? 'hi' : sc >= 40 ? 'md' : '') + '">' + sc + '</span>' : '';
@@ -240,14 +248,14 @@ function render() {
       '<div class="nm">' + esc(r['이름']) + '<span class="cd">' + esc(r['코드']) + '</span>' + tag + '</div>' +
       '<div class="meta">' + mk + '시총 ' + cap(r) + '</div></div>' +
       '<div class="r">' + scHtml + '<div class="px">' + px(r, kr) + '</div>' +
-      '<div class="meta gap ' + cls + '">10이평 ' + (g > 0 ? '+' : '') + g.toFixed(1) + '%</div></div></div>';
+      '<div class="meta gap ' + cls + '">' + (S === '익절' ? '10이평의 ×' + (+r['배율']).toFixed(2) + (r['익절상태'] === '하락' ? ' (직전 달)' : '') : '10이평 ' + (g > 0 ? '+' : '') + g.toFixed(1) + '%') + '</div></div></div>';
   }).join('');
   LIST = sel;
   if (!SEL || !sel.some(function (r) { return r['코드'] === SEL['코드'] && r['시장'] === SEL['시장']; })) {
     SEL = sel[0] || null;
     h = h.replace('class="row" data-i="0"', 'class="row sel" data-i="0"');
   }
-  document.getElementById('L').innerHTML = h || '<div class="msg">' + (S === '매수' ? '지금은 매수 조건(돌파 후 +10% · 정배열)을 채운 종목이 없어요.' : '오늘은 ' + S + ' 대상이 없어요.') + '</div>';
+  document.getElementById('L').innerHTML = h || '<div class="msg">' + (S === '매수' ? '지금은 매수 조건(돌파 후 +10% · 정배열)을 채운 종목이 없어요.' : S === '익절' ? '지금은 10이평의 2배에 닿은 종목이 없어요. (시트(Apps Script)를 새 버전으로 배포하고 updateAll을 한 번 실행하면 이 탭이 채워져요.)' : '오늘은 ' + S + ' 대상이 없어요.') + '</div>';
   drawChart();
 }
 
@@ -298,7 +306,7 @@ function drawChart() {
   var lo = Infinity, hi = -Infinity, vmax = 0;
   bars.forEach(function (x, i) {
     lo = Math.min(lo, x[3]); hi = Math.max(hi, x[2]); vmax = Math.max(vmax, x[5] * x[4]);      // 거래대금 ≈ 월 거래량 × 종가
-    if (mas[i] != null) { lo = Math.min(lo, mas[i]); hi = Math.max(hi, mas[i]); }
+    if (mas[i] != null) { lo = Math.min(lo, mas[i]); hi = Math.max(hi, mas[i]); if (S === '익절') hi = Math.max(hi, mas[i] * 2); }
   });
   var padR = 48, plotW = W - padR, pH = H * 0.72, vTop = pH + 14, vH = H - vTop - 14;
   var pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
@@ -342,6 +350,12 @@ function drawChart() {
     if (!started) { g.moveTo(xx, y(m)); started = true; } else g.lineTo(xx, y(m));
   });
   g.stroke();
+  if (S === '익절') {                                                             // 익절 탭: 10이평의 2배 선(점선) — 종가가 이 선 위에 있다가 아래로 내려오면 익절 매도
+    g.strokeStyle = '#7c3aed'; g.lineWidth = 1.5; g.setLineDash([5, 4]); g.beginPath(); started = false;
+    mas.forEach(function (m, i) { if (m == null) return; var xx = i * step + step / 2; if (!started) { g.moveTo(xx, y(m * 2)); started = true; } else g.lineTo(xx, y(m * 2)); });
+    g.stroke(); g.setLineDash([]);
+    var lastM = mas[mas.length - 1]; if (lastM != null) { g.fillStyle = '#7c3aed'; g.font = '10px -apple-system,sans-serif'; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillText('2배 선', plotW + 4, y(lastM * 2) - 2); }
+  }
   cv._g = { bars: bars, mas: mas, N: N, step: step, plotW: plotW, kr: kr };
   bindChart(cv);
 }

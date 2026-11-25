@@ -27,7 +27,7 @@ var CFG = {
 };
 
 var HEAD = ['시장', '코드', '이름', '종류', '시총', '시총단위', '최근종가', '10이평',
-            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수', '확인'];
+            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수', '확인', '익절'];
 
 /* ───────── 처음 한 번 실행 ───────── */
 function setup() {
@@ -437,6 +437,17 @@ function confirmInfo_(s, mon, liq) {
   return best ? best.ym + '|' + best.sc : '';
 }
 
+/* 익절(2배) 상태: 월 종가가 10이평의 2배 이상이면 '도달'(트레일 중), 직전 달에 2배 이상이었는데 이번 달 2배 선 아래로 내려오면 '하락'(이번 달 말 익절 매도 신호).
+ * 보유 여부와 무관한 시장 기준 목록 — 규칙: 매수 뒤 종가 ≥ 2×10이평에 한 번이라도 닿았다가 처음 그 선 아래로 내려오면 매도 */
+function tpInfo_(mon) {
+  var n = mon.length, M = CFG.MONTHS, c = mon.map(function (x) { return x.close; });
+  var ma = function (k) { return k >= M - 1 ? avg_(c.slice(k - M + 1, k + 1)) : null; };
+  var m1 = ma(n - 1), m0 = ma(n - 2);
+  if (m1 && c[n - 1] >= 2 * m1) return '도달|' + round_(c[n - 1] / m1) + '|' + mon[n - 1].ym;
+  if (m0 && m1 && c[n - 2] >= 2 * m0 && c[n - 1] < 2 * m1) return '하락|' + round_(c[n - 2] / m0) + '|' + mon[n - 2].ym;
+  return '';
+}
+
 function makeRow_(s, mon, liq) {
   if (liq && !liq.has(mon, mon.length - 1)) return null;                    // 이번 달 거래대금 상위가 아니면 목록에서 뺌
   var n = mon.length, M = CFG.MONTHS, c = mon.map(function (x) { return x.close; });
@@ -456,9 +467,10 @@ function makeRow_(s, mon, liq) {
   }
   // 매수·매도·유예 종목만 차트용 월봉 저장: [[YYYYMM, 시가, 고가, 저가, 종가, 거래량], ...]
   // 점수 계산에 쓴 월봉 전체를 보내야 사이트의 "점수 설명"이 시트 점수와 똑같이 계산됨
+  var tp = n >= M + 1 ? tpInfo_(mon) : '';                                           // 익절(2배) 상태 — '도달|배율|YYYYMM' / '하락|배율|YYYYMM'
   var conf = n >= 25 ? confirmInfo_(s, mon, liq) : '';                              // 확인 매수 후보('돌파월|점수') — 다음 달 첫날 사는 후보
   var chart = '';
-  if (sig === '매수' || sig === '매도' || sig === '유예' || conf) {
+  if (sig === '매수' || sig === '매도' || sig === '유예' || conf || tp) {
     chart = JSON.stringify(mon.map(function (x) {
       return [+x.ym, round_(x.open), round_(x.high), round_(x.low), round_(x.close), Math.round(x.vol || 0)];
     }));
@@ -466,7 +478,7 @@ function makeRow_(s, mon, liq) {
   // 매수 신호 종목만 점수 계산
   var scoreVal = sig === '매수' ? scoreMonthly_(mon, s) : '';
   return [s.market, s.code, s.name, s.type, s.cap, s.capUnit, round_(cur), round_(ma), n > 1 ? round_(prev) : '',
-          round_(pma), sig, mon[n - 1].date, n, chart, scoreVal, conf];
+          round_(pma), sig, mon[n - 1].date, n, chart, scoreVal, conf, tp];
 }
 
 /* ───────── 사이트용 ───────── */
@@ -531,16 +543,21 @@ function doGet(e) {
   ['한국', '미국'].forEach(function (n) {
     var sh = ss.getSheetByName(n);
     if (!sh || sh.getLastRow() < 2) return;
-    out.updated[n] = sh.getRange('R1').getValue();
+    out.updated[n] = sh.getRange('S1').getValue();
     var v = sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues();
     v.forEach(function (r) {
-      var isSig = r[10] === '매수' || r[10] === '매도' || r[10] === '유예', cf = String(r[15] || '');
-      if (!all && !isSig && !cf) return;
+      var isSig = r[10] === '매수' || r[10] === '매도' || r[10] === '유예', cf = String(r[15] || ''), tpv = String(r[16] || '');
+      if (!all && !isSig && !cf && !tpv) return;
       var o = {};
       HEAD.forEach(function (h, i) { o[h] = r[i] instanceof Date ? fmtDate_(r[i]) : r[i]; });
       if (o['차트']) { try { o['차트'] = JSON.parse(o['차트']); } catch (err) { o['차트'] = null; } }
-      delete o['확인'];
+      delete o['확인']; delete o['익절'];
       if (all || isSig) out.rows.push(o);
+      if (tpv) {                                  // 익절(2배) 종목은 '익절' 신호 행으로 따로 내려줌(상태·배율·기준월 포함)
+        var qt = JSON.parse(JSON.stringify(o)), pt = tpv.split('|');
+        qt['신호'] = '익절'; qt['익절상태'] = pt[0]; qt['배율'] = +pt[1]; qt['익절월'] = pt[2];
+        out.rows.push(qt);
+      }
       if (cf) {                                   // 확인 매수 후보는 '확인' 신호 행으로 따로 내려줌(점수 = 돌파 달 점수, 돌파월 포함)
         var q = JSON.parse(JSON.stringify(o)), pr = cf.split('|');
         q['신호'] = '확인'; q['돌파월'] = pr[0]; q['점수'] = +pr[1];
@@ -577,7 +594,7 @@ function writeRows_(name, rows) {
   if (fresh) {
     t = new Date();
     // 코드(005930)·기준일·갱신 시각이 숫자·날짜로 바뀌지 않게 텍스트로
-    ['B:D', 'F:F', 'K:L', 'N:N', 'Q1:R1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
+    ['B:D', 'F:F', 'K:L', 'N:N', 'Q:Q', 'R1:S1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
     sh.setFrozenRows(1);
     tm.push('서식 ' + sec(t));
   }
@@ -591,7 +608,7 @@ function writeRows_(name, rows) {
     Sheets.Spreadsheets.Values.batchUpdate({
       valueInputOption: 'RAW',                   // 코드 '005930'이 숫자로 바뀌지 않게 입력 그대로
       data: [{ range: q + '!A1', majorDimension: 'ROWS', values: values },
-             { range: q + '!Q1:R1', majorDimension: 'ROWS', values: [['갱신', stamp]] }]
+             { range: q + '!R1:S1', majorDimension: 'ROWS', values: [['갱신', stamp]] }]
     }, id);
     tm.push('API쓰기 ' + sec(t));
     done = true;
@@ -599,7 +616,7 @@ function writeRows_(name, rows) {
   if (!done) {
     t = new Date(); sh.clearContents(); tm.push('지우기 ' + sec(t));
     t = new Date(); sh.getRange(1, 1, values.length, HEAD.length).setValues(values); tm.push('쓰기 ' + sec(t));
-    t = new Date(); sh.getRange('Q1:R1').setValues([['갱신', stamp]]); tm.push('갱신시각 ' + sec(t));
+    t = new Date(); sh.getRange('R1:S1').setValues([['갱신', stamp]]); tm.push('갱신시각 ' + sec(t));
   }
   t = new Date(); cacheClear_(); tm.push('캐시 ' + sec(t));   // 새 데이터가 들어왔으니 저장해 둔 응답을 지움
   return '(' + tm.join(', ') + ')';
