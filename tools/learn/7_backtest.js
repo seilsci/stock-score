@@ -1540,6 +1540,18 @@ if (process.env.STAGE14 !== '0') {
     V.push({ sec: '배당 반영', name: 'D3 배당 세전(위쪽 한계), 구매 달 포함', cand: conf, rule: rule10, o: { divFn: divOf } });
     AD8.div = true;
   }
+  if (process.env.AD8_MIX === '1' && RT14) {                            // 한·미 비율 시험: 매달 4종목을 미국 n개 + 한국 4−n개로 정해서 삼(각 시장에서 점수 높은 순) — 후보·판매 규칙은 현재 그대로
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
+    const isKR = e => /\.(KS|KQ)$/.test(e.r.y);
+    const mix = (nUS, nKR, fill) => ym => {                             // 미국 상위 nUS + 한국 상위 nKR(점수 순). fill=true면 한쪽이 모자랄 때 나머지 후보를 점수 순으로 이어 붙임
+      const all = conf(ym), us = all.filter(e => !isKR(e)).slice(0, nUS), kr = all.filter(isKR).slice(0, nKR), pick = [...us, ...kr].sort((a, b) => b.s - a.s);
+      return fill ? [...pick, ...all.filter(e => !pick.includes(e))] : pick;
+    };
+    V.push({ sec: '한·미 비율', name: 'A 지금: 시장 구분 없이 점수 상위 4', cand: conf, rule: rule10 });
+    [[4, 0], [3, 1], [2, 2], [1, 3], [0, 4]].forEach(([u, k]) => V.push({ sec: '한·미 비율', name: `M 미국 ${u} · 한국 ${k} (모자라면 있는 만큼만)`, cand: mix(u, k, false), rule: rule10 }));
+    [[4, 0], [3, 1], [2, 2], [1, 3], [0, 4]].forEach(([u, k]) => V.push({ sec: '한·미 비율', name: `F 미국 ${u} · 한국 ${k} (모자라면 점수 순으로 채움)`, cand: mix(u, k, true), rule: rule10 }));
+    AD8.mix = true;
+  }
   if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' });
     const mk = f => ym => (mC.get(ym) || []).filter(f);
@@ -1650,6 +1662,15 @@ if (process.env.STAGE14 !== '0') {
     V.forEach(v => {
       const o = simOpt(v.rule, v.o || {}), sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand, log: true });
       log(`${v.name.slice(0, 44).padEnd(44)} | 받은 배당 ${man(sm.divTotal || 0).padStart(9)} | 최종 평가액 ${man(sm.val).padStart(11)}`);
+    });
+  }
+  if (AD8.mix) {                                                          // 변형별 실제 산 한국·미국 종목 수와 평균 수익
+    log(''); log('## 한·미 비율 시험 — 변형별 실제 구매 거래 수 · 평균 수익(한국·미국) · 최종 평가액 (전체 기간, 월 100만원)');
+    const man = x => Math.round(x / 10000).toLocaleString() + '만원', isKR2 = y => /\.(KS|KQ)$/.test(y);
+    V.forEach(v => {
+      const o = simOpt(v.rule, v.o || {}), N = v.N || 4, cand = v.cand, sm = simulate(ym => cand(ym).slice(0, N), N, C1, { ...o, cand, log: true });
+      const tr = (sm.trades || []).filter(t => t.ret != null), k = tr.filter(t => isKR2(t.y)), u = tr.filter(t => !isKR2(t.y)), av = a => a.length ? (a.reduce((x, t) => x + t.ret, 0) / a.length * 100).toFixed(1) + '%' : '-';
+      log(`${v.name.slice(0, 44).padEnd(44)} | 한국 ${String(k.length).padStart(3)}건 ${av(k).padStart(7)} | 미국 ${String(u.length).padStart(3)}건 ${av(u).padStart(7)} | 최종 ${man(sm.val).padStart(11)}`);
     });
   }
   if (AD8.co) {                                                           // 같은 회사라서 건너뛴 후보 수
