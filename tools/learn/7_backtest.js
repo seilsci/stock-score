@@ -247,7 +247,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         }
         const bScore = list[li].s ?? ((scored[kA].get(ymOf(sigK)) || []).find(e => e.r.y === r.y)?.s ?? 0);        // 후보 자신의 점수(확인 매수는 돌파 시점 점수)
         holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
-          buyYm: ymOf(k), buyPx: p, buyScore: bScore,
+          buyYm: ymOf(k), buyK: k, buyPx: p, buyScore: bScore,
           buyFeats: r.x });
         if (cur) { cur.buys.push({ y: r.y, us, sh, px: p, fx: us ? fx(k) : null, amt: a, gross: a * (1 - fee), fee: a * fee, feeRate: fee, score: bScore }); cur.order.push(r.y); }
         cash -= a; slots--;
@@ -271,6 +271,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     const keep = [];
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
+      if (opt.skipBuyMonth && h.buyK === k) { keep.push(h); continue; }      // 산 달 말에는 판매 판단을 하지 않음(첫날 구매 방식에서 사자마자 파는 것을 막는 변형)
       if (!opt.grace && h.sellK !== null && h.sellK <= k) { cash += sellCash(h, k, 'ma10'); continue; }
       // 손절: 종가가 매수가 대비 opt.sl 비율 이하로 하락 시 즉시 매도
       if (opt.sl && h.buyPx) {
@@ -1409,6 +1410,11 @@ if (process.env.STAGE14 !== '0') {
       log(`${(sn + ' · ' + cn).padEnd(58)} ${pc1(Math.pow(prod, 1 / oosYears.length) - 1).padStart(8)}   ${String(chg_).padStart(6)}   ${String(new Set(hist.map(h => h.c.name)).size).padStart(6)}   (확인 매수를 고른 해 ${nconf}/${hist.length})`);
       if (sn.startsWith('전체') && cn.startsWith('확장')) hist.forEach(h => log(`    ${h.Y}: ${h.c.name}  → 그해 ${pc1(h.r)}  (지금 전략 ${pc1(fixed.yearly[h.Y] ?? 0)}, 예전 전략 ${pc1(old.yearly[h.Y] ?? 0)})`));
     }));
+  }
+  if (process.env.AD8_SKIP === '1' && RT14) {                           // 산 달 말 판매 판단 건너뛰기 비교(현재 규칙 = 금리 국채10년6m, 확인 +10%)
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, m = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), cand = ym => m.get(ym) || [];
+    V.push({ sec: '기준', name: '현재: 산 달 말에도 판매 판단', cand, rule: rule10 });
+    V.push({ sec: '산 달 말 판매 건너뛰기', name: '산 달 말에는 판매 안 함(다음 달 말부터 판단)', cand, rule: rule10, o: { skipBuyMonth: true } });
   }
   const base = V[0];
   V.forEach((v, i) => { progress('후속 시험', i / V.length); v.full = run14(v); v.halves = []; });
