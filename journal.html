@@ -2087,7 +2087,8 @@ function wireMy(){
   card.querySelectorAll('.my-seg button').forEach(function(b){ b.onclick=function(){ MY_SIDE=b.dataset.side; myAutoFee(); card.querySelectorAll('.my-seg button').forEach(function(x){ x.classList.toggle('on',x===b); }); }; });
   $('my-c2').onchange=function(){ var us=$('my-c2').value==='USD'; $('my-fxl').style.display=us?'flex':'none'; if(us&&!$('my-fx').value) $('my-fx').value=Math.round(myFxNow()); };
   $('my-sync-k').onclick=syncSetKey;
-  $('my-cash-s').onclick=function(ev){ ev.stopPropagation(); CASHSIGN=-CASHSIGN; cashSignSave(); var raw=Math.abs(Math.round(+$('my-cash').value||0)); MYCASH=CASHSIGN*raw*10000; try{ localStorage.setItem('jmycash',String(MYCASH)); }catch(e){} stampSettings(); syncSoon(); renderMy(); };
+  $('my-cash-s').onclick=function(ev){ ev.stopPropagation(); var rc=this.getBoundingClientRect(); if(ev.detail>0&&(ev.clientX<rc.left||ev.clientX>rc.right||ev.clientY<rc.top||ev.clientY>rc.bottom)) return;     // 버튼 위를 누른 경우에만 부호를 바꿈(다른 곳을 눌러 대신 눌린 클릭은 무시)
+    CASHSIGN=-CASHSIGN; cashSignSave(); var raw=Math.abs(Math.round(+$('my-cash').value||0)); MYCASH=CASHSIGN*raw*10000; try{ localStorage.setItem('jmycash',String(MYCASH)); }catch(e){} stampSettings(); syncSoon(); renderMy(); };
   $('my-cash').addEventListener('input',function(){ var m=Math.abs(Math.round(+$('my-cash').value||0)), sg=(+$('my-cash').value<0)?-1:CASHSIGN, v=sg*m*10000; $('my-cash-k').textContent=v!==0?korSigned(v/10000):''; });
   $('my-cash').addEventListener('change',function(){ var raw=+$('my-cash').value||0; if(raw<0){ CASHSIGN=-1; cashSignSave(); } MYCASH=CASHSIGN*Math.abs(Math.round(raw))*10000; try{ localStorage.setItem('jmycash',String(MYCASH)); }catch(e){} stampSettings(); syncSoon(); renderMy(); });
   loadCosts(function(){ myAutoFee(); });
