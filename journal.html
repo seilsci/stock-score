@@ -943,9 +943,9 @@ function showScoreTree(y,buyYm,name,oldPred,live){
     });
     h+='</div></details></div>';
   });
-  h+='</div><div class="sc-note">각 항목의 점수는 "그 항목을 더하는 순서를 모두 평균낸 몫"이라 어떤 순서로 더해도 합이 같습니다(소수점 반올림으로 ±1점 차이 가능).<br>'
-    +'이 점수는 매수 당시의 지표를 <b>최신 모델</b>로 다시 계산한 값입니다. 최신 모델은 이 거래의 결과까지 학습했기 때문에 과거 거래에는 점수가 후하게 나오는 경향이 있어요(성과를 증명하는 숫자가 아니라 "어떤 지표가 어떻게 반영되는지" 보는 용도).'
-    +(oldPred!=null?'<br>매수한 해에 종목을 실제로 고른 모델의 예측 수익은 '+(oldPred>=0?'+':'')+(oldPred*100).toFixed(1)+'%였습니다.':'')+'</div>';
+  h+='</div><div class="sc-note">각 항목의 점수는 "그 항목을 더하는 순서를 모두 평균낸 몫"이라<br>어떤 순서로 더해도 합이 같습니다<br>(소수점 반올림으로 ±1점 차이 가능).<br>'
+    +'이 점수는 매수 당시의 지표를<br><b>최신 모델</b>로 다시 계산한 값입니다.<br>최신 모델은 이 거래의 결과까지<br>학습했기 때문에 과거 거래에는<br>점수가 후하게 나오는 경향이 있어요<br>(성과를 증명하는 숫자가 아니라<br>"어떤 지표가 어떻게 반영되는지" 보는 용도).'
+    +(oldPred!=null?'<br>매수한 해에 종목을 실제로 고른 모델의<br>예측 수익은 '+(oldPred>=0?'+':'')+(oldPred*100).toFixed(1)+'%였습니다.':'')+'</div>';
   if(live&&live.note){ h=h.replace(/<div class="sc-note">이 점수는 매수 당시[\s\S]*$/,'')+'<div class="sc-note">'+live.note+'</div>'; }
   else if(live){ h=h.replace(/<div class="sc-note">이 점수는 매수 당시[\s\S]*$/,'')+'<div class="sc-note">이 점수는 <b>지금(현재 가격 기준)</b> 지표를 최신 모델로 계산한 값으로, 사이트 점수와 같은 방식입니다. 시장 지수 관련 3개 항목은 현재 계산에서 0으로 처리됩니다.'+(live.apiScore!=null&&+live.apiScore!==e.score?'<br>※ 시트 점수는 '+live.apiScore+'점입니다(시트 갱신 시점 차이).':'')+'</div>'; }
   box.innerHTML=h; modal.classList.add('open');
