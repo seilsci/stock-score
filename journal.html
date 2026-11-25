@@ -943,7 +943,7 @@ function showScoreTree(y,buyYm,name,oldPred,live){
     });
     h+='</div></details></div>';
   });
-  h+='</div><div class="sc-note">각 항목의 점수는 "그 항목을 더하는 순서를 모두 평균낸 몫"이라<br>어떤 순서로 더해도 합이 같습니다<br>(소수점 반올림으로 ±1점 차이 가능).<br>'
+  h+='</div><div class="sc-note">각 항목의 점수는 "그 항목을 더하는 순서를 모두 평균낸 몫"이라<br><span style="white-space:nowrap;font-size:.88em">어떤 순서로 더해도 합이 같습니다 (소수점 반올림으로 ±1점 차이 가능).</span><br>'
     +'이 점수는 매수 당시의 지표를 <b>최신 모델</b>로 다시 계산한 값입니다.<br>최신 모델은 이 거래의 결과까지 학습했기 때문에<br>과거 거래에는 점수가 후하게 나오는 경향이 있어요<br>(성과를 증명하는 숫자가 아니라<br>"어떤 지표가 어떻게 반영되는지" 보는 용도).'
     +(oldPred!=null?'<br>매수한 해에 종목을 실제로 고른 모델의 예측 수익은 '+(oldPred>=0?'+':'')+(oldPred*100).toFixed(1)+'%였습니다.':'')+'</div>';
   if(live&&live.note){ h=h.replace(/<div class="sc-note">이 점수는 매수 당시[\s\S]*$/,'')+'<div class="sc-note">'+live.note+'</div>'; }
