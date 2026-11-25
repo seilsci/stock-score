@@ -1482,7 +1482,14 @@ function renderPlanView(){
    매달 무엇을 사는지(점수 상위 4)와 언제 파는지는 현금과 무관하게 정해지므로, 현금·수량·세금만 다시 계산한다. */
 var LED0=null, SNAP0=null, START_YM=null, START_Y=null, FIRST_YM=null, EXIT_C=null;
 var AMT={dep:null,init:0};                  // 사용자가 입력한 월 불입금·초기 자금(원). dep=null이면 장부 기본값(100만원)
-try{ var _d=localStorage.getItem('jdep'), _i=localStorage.getItem('jinit'); if(_d!==null&&_d!=='') AMT.dep=+_d; if(_i!==null&&_i!=='') AMT.init=+_i; }catch(e){}
+var ME=false;                                // 내 금액 입력 칸은 ?me=1 로 한 번 열어 둔 이 브라우저에서만 보임(?me=0 이면 숨기고 저장해 둔 금액도 지움). 입력한 금액은 이 브라우저에만 저장되고 어디로도 보내지 않음
+try{
+  var _q=new URLSearchParams(location.search).get('me');
+  if(_q==='1') localStorage.setItem('jme','1');
+  if(_q==='0'){ ['jme','jdep','jinit'].forEach(function(k){ localStorage.removeItem(k); }); }
+  ME=localStorage.getItem('jme')==='1';
+  if(ME){ var _d=localStorage.getItem('jdep'), _i=localStorage.getItem('jinit'); if(_d!==null&&_d!=='') AMT.dep=+_d; if(_i!==null&&_i!=='') AMT.init=+_i; }
+}catch(e){}
 function curDep(){ return AMT.dep!=null&&AMT.dep>=0?AMT.dep:(LED0?LED0.meta.dep:1000000); }
 function curInit(){ return AMT.init>0?AMT.init:0; }
 function isDefaultAmt(){ return curInit()===0 && LED0 && curDep()===LED0.meta.dep; }
@@ -1582,7 +1589,8 @@ function syncAmtInputs(){
   var jd=document.getElementById('jf-dep'); if(jd) jd.textContent=manText(curDep());
 }
 function wireAmtInputs(){
-  var a=document.getElementById('in-init'), b=document.getElementById('in-dep'); if(!a||!b||a._w) return; a._w=1;
+  var card=document.getElementById('amt-card'); if(card) card.style.display=ME?'':'none';
+  var a=document.getElementById('in-init'), b=document.getElementById('in-dep'); if(!ME||!a||!b||a._w) return; a._w=1;
   var apply=function(){
     var ni=Math.max(0,Math.min(1000000,Math.round(+a.value||0))), nd=Math.max(0,Math.min(1000000,Math.round(+b.value||0)));
     a.value=ni; b.value=nd;
