@@ -322,9 +322,10 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
             // opt.graceRate: 금리 조건부 유예 — 금리 인상 중(ff_chg12>0)이면 유예 없이 바로 매도
             let ff = opt.graceRate ? ((opt.rateKR && !h.us) ? krChg12(k) : ffChg12(k)) : null;   // rateKR: 한국 종목은 한국 금리로 판단(미국 종목은 미국 금리)
             if (opt.rateFn) { const v = opt.rateFn(k); ff = v === true ? 1 : v === false ? 0 : null; }   // rateFn(k): 금리가 오르는 중이면 true (모르면 null = 규칙 안 씀)
-            const graceN = (ff != null && ff > 0) ? 1 : opt.grace;  // 금리 인상 중→ 1달(=즉시), 아니면 N달
+            const revNow = !!(opt.revFn && opt.revFn(h.px, k));     // 역배열 시험: 10이평 아래인데 역배열이면 유예 없이 즉시
+            const graceN = ((ff != null && ff > 0) || revNow) ? 1 : opt.grace;  // 금리 인상 중·역배열→ 1달(=즉시), 아니면 N달
             h.graceCnt = (h.graceCnt || 0) + 1;
-            if (h.graceCnt >= graceN) { cash += sellCash(h, k, ff != null && ff > 0 ? 'ma10-금리인상' : 'ma10-유예만료'); continue; }
+            if (h.graceCnt >= graceN) { cash += sellCash(h, k, ff != null && ff > 0 ? 'ma10-금리인상' : revNow ? 'ma10-역배열' : 'ma10-유예만료'); continue; }
           } else h.graceCnt = 0;
         }
       }
@@ -1357,7 +1358,7 @@ if (process.env.STAGE14 !== '0') {
         const ma = ma10(o, j);
         if (ma) {
           if (rule.tp) { if (p >= rule.tp * ma) tp = true; else if (tp) return; }
-          if (p < ma) { if (!rule.grace) return; cnt++; const up = rateVirt && rateVirt(j) === true; if (cnt >= (up ? 1 : rule.grace)) return; } else cnt = 0;
+          if (p < ma) { if (!rule.grace) return; cnt++; const up = rateVirt && rateVirt(j) === true, rv = !!(rule.revFn && rule.revFn(o, j)); if (cnt >= ((up || rv) ? 1 : rule.grace)) return; } else cnt = 0;
         }
         if (p > hi) hi = p;
         if (p / p0 - 1 >= thr && alignMode(q.align || 'full', o, j) === true) {
@@ -1368,7 +1369,7 @@ if (process.env.STAGE14 !== '0') {
     }));
     m.forEach(a => a.sort((x, y) => y.s - x.s)); poolCache.set(key, m); return m;
   };
-  const simOpt = (rule, extra) => ({ lotSize: true, lotAll: true, fill: true, firstDay: true, ...(rule.tp ? { tpTrail: rule.tp } : {}), ...(rule.grace ? { grace: rule.grace, graceRate: !!rule.rate } : {}), ...(rule.rateFn ? { rateFn: rule.rateFn, graceRate: true } : {}), ...extra });
+  const simOpt = (rule, extra) => ({ lotSize: true, lotAll: true, fill: true, firstDay: true, ...(rule.tp ? { tpTrail: rule.tp } : {}), ...(rule.grace ? { grace: rule.grace, graceRate: !!rule.rate } : {}), ...(rule.rateFn ? { rateFn: rule.rateFn, graceRate: true } : {}), ...(rule.revFn ? { revFn: rule.revFn } : {}), ...extra });
   const run14 = (v, filt) => {
     let cand = v.cand; if (filt) cand = ym => v.cand(ym).filter(filt);
     const o = simOpt(v.rule || RULE0, v.o || {}), N = v.N || 4;
@@ -1498,6 +1499,19 @@ if (process.env.STAGE14 !== '0') {
     V.push({ sec: '같은 회사', name: 'C1 지금(기본): 같은 회사는 하나만(보유 중이어도 같은 회사는 안 삼)', cand: conf, rule: rule10 });
     AD8.co = true;
   }
+  if (process.env.AD8_REV === '1' && RT14) {                            // 역배열 즉시 판매 시험: 10이평 아래로 내려왔는데 역배열이면 유예(2달) 없이 바로 판매 — 후보·익절·금리는 현재 규칙 그대로
+    V.length = 0;
+    const rv = {
+      R1: (o, k) => { const a = maAt(o, k, 5), b = maAt(o, k, 10), d = maAt(o, k, 20); return a != null && b != null && d != null && a < b && b < d; },     // 5<10<20 완전 역배열
+      R2: (o, k) => { const a = maAt(o, k, 5), b = maAt(o, k, 10); return a != null && b != null && a < b; },                                             // 5이평 < 10이평
+      R3: (o, k) => { const d = maAt(o, k, 20), c = o.m.get(k); return d != null && c !== undefined && c < d; },                                         // 종가 < 20이평(20이평도 깨짐)
+      R4: (o, k) => { const b = maAt(o, k, 10), d = maAt(o, k, 20); return b != null && d != null && b < d; }                                            // 10이평 < 20이평
+    }, nm = { R1: 'R1 5<10<20 완전 역배열이면 즉시', R2: 'R2 5이평<10이평이면 즉시', R3: 'R3 종가<20이평이면 즉시', R4: 'R4 10이평<20이평이면 즉시' };
+    const mk = (name, tag) => { const rule = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6), ...(tag ? { rev: tag, revFn: rv[tag] } : {}) }, m = pool({ thr: 0.1, rule, rateName: '국채10년 6개월' }); V.push({ sec: '역배열 즉시 판매', name, cand: ym => m.get(ym) || [], rule }); };
+    mk('A 지금: 10이평 아래 유예 2달(금리 상승이면 즉시)', null);
+    ['R1', 'R2', 'R3', 'R4'].forEach(t => mk(nm[t], t));
+    AD8.rev = true;
+  }
   if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' });
     const mk = f => ym => (mC.get(ym) || []).filter(f);
@@ -1592,6 +1606,15 @@ if (process.env.STAGE14 !== '0') {
     const base0 = A.full.cagr, base1 = T1.full.cagr; log(`(뺀 것 없음)                ${pc1(base0).padStart(8)} → ${pc1(base1).padStart(8)}   ${pp(base1 - base0)}`);
     top.slice(0, 6).forEach(y => { const f = e => e.r.y !== y, a = run14(A, f).cagr, b = run14(T1, f).cagr; log(`${String(y).padEnd(24)} ${pc1(a).padStart(8)} → ${pc1(b).padStart(8)}   ${pp(b - a)}`); });
     const f6 = e => !top.slice(0, 3).includes(e.r.y), a3 = run14(A, f6).cagr, b3 = run14(T1, f6).cagr; log(`위 3종목 모두 뺌             ${pc1(a3).padStart(8)} → ${pc1(b3).padStart(8)}   ${pp(b3 - a3)}`);
+  }
+  if (AD8.rev) {                                                          // 변형별 판매 사유 건수·평균 수익(역배열 즉시 판매가 얼마나 일어났는지)
+    log(''); log('## 역배열 즉시 판매 시험 — 변형별 판매 사유: 건수 · 평균 수익 (전체 기간, 월 100만원)');
+    V.forEach(v => {
+      const o = simOpt(v.rule, v.o || {}), sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand, log: true }), by = {};
+      (sm.trades || []).forEach(t => { if (t.ret == null) return; const k = t.reason || 'ma10'; (by[k] = by[k] || []).push(t.ret); });
+      const f = k => by[k] ? `${by[k].length}건 ${(by[k].reduce((a, b) => a + b, 0) / by[k].length * 100 >= 0 ? '+' : '') + (by[k].reduce((a, b) => a + b, 0) / by[k].length * 100).toFixed(1)}%` : '0건';
+      log(`${v.name.slice(0, 40).padEnd(40)} | 역배열 ${f('ma10-역배열')} | 유예만료 ${f('ma10-유예만료')} | 금리인상 ${f('ma10-금리인상')} | 익절 ${f('tpTrail')}`);
+    });
   }
   if (AD8.co) {                                                           // 같은 회사라서 건너뛴 후보 수
     const o = simOpt(V[1].rule, V[1].o), sm = simulate(ym => V[1].cand(ym).slice(0, 4), 4, C1, { ...o, cand: V[1].cand, log: true });
