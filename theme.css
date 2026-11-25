@@ -29,3 +29,7 @@ h1.one{display:table;margin-left:auto;margin-right:auto;text-align:center}
 .subtabs button{white-space:nowrap;font-size:13px !important;padding-left:0;padding-right:0}
 .sub>div{white-space:nowrap;font-size:clamp(9.5px,2.85vw,12px)}
 .sub>div{text-align:center}
+/* 설명 글: 가운데 정렬 */
+.amt-note,.st-note,.mt-note,.jf-foot,.inf-foot,.inf-note p,.hint,.sd-l1,.sd-l2,.my-sync span{text-align:center}
+.sd-sum{align-items:center}
+.sd-s .c2{text-align:right}.sd-s .c3{white-space:nowrap}.sd-s .c4{overflow:hidden;text-overflow:ellipsis}

@@ -126,6 +126,7 @@ a{color:inherit}
 .inf-note summary{cursor:pointer;font-weight:600;color:var(--fg)}.inf-note p{margin:8px 0 0;line-height:1.6}
 .inf-foot{text-align:center;font-size:11.5px;color:var(--mut);margin:14px 0 0}
 @media(min-width:560px){.inf-sell{grid-template-columns:repeat(3,minmax(0,1fr))}.inf-sell .inf-sc{padding-bottom:12px}.inf-sell .inf-ic{position:static;margin-bottom:2px;display:block}.inf-sell p{margin-right:0}}
+#hint{white-space:pre-line}
 </style>
 <link rel="stylesheet" href="theme.css">
 </head>
@@ -214,10 +215,10 @@ function render() {
   var nb = 0, ns = 0, ny = 0, nt = 0;
   rows.forEach(function (r) { if (r['신호'] === '확인') nb++; else if (r['신호'] === '매도') ns++; else if (r['신호'] === '유예') ny++; else if (r['신호'] === '익절') nt++; });
   document.getElementById('hint').textContent = S === '매수'
-    ? '월봉 10이평을 돌파한 뒤, 돌파 다음 달 시가보다 +10% 이상 올랐고 5>10>20 이평 정배열인 종목(이번 달 처음 조건을 채운 종목, 점수 높은 순). 이번 달 말에 확정되면 다음 달 첫날 종가에 삽니다.'
+    ? '월봉 10이평을 돌파한 뒤\n돌파 다음 달 시가보다 +10% 이상 올랐고\n5>10>20 이평 정배열인 종목\n(이번 달 처음 조건을 채운 종목, 점수 높은 순)\n이번 달 말에 확정되면 다음 달 첫날 종가에 삽니다.'
     : S === '익절'
-    ? '월봉 종가가 10이평의 2배 이상까지 오른 종목(도달)과, 직전 달 2배 선 위에 있다가 이번 달 그 아래로 내려온 종목(하락). 산 종목이 2배 선에 한 번 닿은 뒤 처음 그 선 아래로 내려오면 월말에 익절 매도합니다(보유 기준 규칙을 시장 전체에 적용한 목록).'
-    : '10이평 아래로 내려온 뒤 2개월째에도 아래면 매도(국채 10년 금리가 오르는 중이면 내려온 즉시 매도). 첫 달은 유예.';
+    ? '월봉 종가가 10이평의 2배 이상까지 오른 종목(도달)과\n직전 달 2배 선 위에 있다가 이번 달 그 아래로 내려온 종목(하락)\n산 종목이 2배 선에 한 번 닿은 뒤 처음 그 선 아래로 내려오면\n월말에 익절 매도합니다\n(보유 기준 규칙을 시장 전체에 적용한 목록)'
+    : '10이평 아래로 내려온 뒤 2개월째에도 아래면 매도\n(국채 10년 금리가 오르는 중이면 내려온 즉시 매도)\n첫 달은 유예';
   sb.textContent = '매수 대상 ' + nb; ss.textContent = '매도 대상 ' + ns + (ny ? ' · 유예 ' + ny : ''); st.textContent = '익절 2배 ' + nt;
   var day = '';
   rows.forEach(function (r) { if (String(r['기준일']) > day) day = String(r['기준일']); });
