@@ -1186,7 +1186,7 @@ function barsOf(y){
   u.cs=u.c; return u;                          // yms·cs·pos(월 → 위치) + o·h·l
 }
 function ma10At(cs,i){ if(i<9) return null; var t=0; for(var k=i-9;k<=i;k++) t+=cs[k]; return t/10; }
-function krTaxY(Y){ var t=COSTS.kr.sell_tax, v=0; Object.keys(t).map(Number).sort().forEach(function(y){ if(y<=Y) v=t[y]; }); return v; }
+function krTaxY(Y){ var t=COSTS.kr.sell_tax, v=0, nm=function(x){ return x<10000?x*100+1:x; }, yy=Y<10000?Y*100+12:Y; Object.keys(t).map(Number).sort(function(a,b){ return nm(a)-nm(b); }).forEach(function(y){ if(nm(y)<=yy) v=t[y]; }); return v; }          // 키: 연도(YYYY) 또는 연월(YYYYMM, 그 달 말 매도부터). Y: 연도 또는 연월
 function isEtfHold(h){ var t=findFeats({y:h.y,buyYm:h.buyYm}); var f=t&&t.feats.filter(function(x){ return x[0]==='etf'; })[0]; return !!(f&&f[1]===1); }
 
 // 시뮬레이션(7_backtest.js)과 같은 규칙: 매도(익절 트레일 → 10이평 아래 유예 2달, 금리 인상 중이면 즉시) → 입금 → 정수 주 매수(종목당 현금÷4)
@@ -1226,7 +1226,7 @@ function planCore(o){
     }
     var us=isUSy(h.y);
     if(reason){
-      var fxv=us?o.fx:1, val=h.sh*price*fxv, feeR=us?usFee:krFee, taxR=us?0:(isEtfHold(h)?0:krTaxY(year)), got=val*(1-feeR-taxR);
+      var fxv=us?o.fx:1, val=h.sh*price*fxv, feeR=us?usFee:krFee, taxR=us?0:(isEtfHold(h)?0:krTaxY(+o.nowYm)), got=val*(1-feeR-taxR);
       sells.push({y:h.y,name:h.name||h.y,us:us,sh:h.sh,px:price,fxUsed:us?o.fx:null,gross:val,fee:val*feeR,feeRate:feeR,tax:val*taxR,taxRate:taxR,amt:got,basis:h.basis,ret:got/h.basis-1,reason:reason,buyYm:h.buyYm,buyPx:h.buyPx});
       cash+=got;
     } else if(status) watch.push({y:h.y,name:h.name||h.y,us:us,buyYm:h.buyYm});
@@ -1480,7 +1480,7 @@ function simulateFrom(S){
     if(fd && pend) buyStep(pend, true);                                          // 첫날 구매: 지난달 말에 확정된 후보를 이달 첫날(지난달 말 현금으로) 삼
     holds.forEach(function(h){
       if(h.exit && h.exit<=ym){                                              // 판매
-        var px=closeAt(h.y,ym,h.last), val=h.sh*px*(h.us?fx:1), feeR=h.us?usFee:krFee, taxR=h.us?0:(h.etf?0:krTaxY(Y)), got=val*(1-feeR-taxR);
+        var px=closeAt(h.y,ym,h.last), val=h.sh*px*(h.us?fx:1), feeR=h.us?usFee:krFee, taxR=h.us?0:(h.etf?0:krTaxY(+ym)), got=val*(1-feeR-taxR);
         if(h.us) usGain[Y]=(usGain[Y]||0)+got-h.basis;
         sells.push({y:h.y,name:h.name,us:h.us,sh:h.sh,px:px,fxUsed:h.us?fx:null,gross:val,fee:val*feeR,feeRate:feeR,tax:val*taxR,taxRate:taxR,amt:got,basis:h.basis,ret:got/h.basis-1,reason:h.exitReason,buyYm:h.buyYm});
         cash+=got;

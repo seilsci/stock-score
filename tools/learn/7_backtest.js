@@ -168,7 +168,7 @@ const pickKrA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 
 const pickUsA = N => ym => (scored[kA].get(ym) || []).filter(x => x.r.x[US] === 1).slice(0, N);
 
 // ── 시뮬레이션
-function krTax(C, Y) { const t = C.kr.sell_tax; let v = 0; Object.keys(t).map(Number).sort().forEach(y => { if (y <= Y) v = t[y]; }); return v; }
+function krTax(C, Y) { const t = C.kr.sell_tax, nm = x => x < 10000 ? x * 100 + 1 : x, yy = Y < 10000 ? Y * 100 + 12 : Y; let v = 0; Object.keys(t).map(Number).sort((a, b) => nm(a) - nm(b)).forEach(y => { if (nm(y) <= yy) v = t[y]; }); return v; }     // 키: 연도(YYYY, 그 해 1월부터) 또는 연월(YYYYMM, 그 달 말 매도부터). Y: 연도 또는 연월
 function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   // opt.tp: 익절 배수 (종가 ≥ 매수가 × tp 이면 다음달 매도). opt.tpSame: true면 당월 즉시 매도.
   let cash = 0, holds = [], prevAfter = 0, deposits = 0; const rets = [], usGain = {};
@@ -181,7 +181,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     const v = val(h, k);
     let got, taxR = 0;
     if (h.us) { const pr = v * (1 - usFee), Y = yOfK(k); usGain[Y] = (usGain[Y] || 0) + pr - h.basis; got = pr; }
-    else { taxR = (h.etf && C.kr.etf_exempt ? 0 : krTax(C, yOfK(k))); got = v * (1 - C.kr.commission - taxR); }
+    else { taxR = (h.etf && C.kr.etf_exempt ? 0 : krTax(C, ymOf(k))); got = v * (1 - C.kr.commission - taxR); }
     if (cur) cur.sells.push({ y: h.y, buyYm: h.buyYm, us: h.us, sh: h.sh, px: h.last, fx: h.us ? fx(k) : null, gross: v,
       feeRate: h.us ? usFee : C.kr.commission, fee: v * (h.us ? usFee : C.kr.commission), taxRate: taxR, tax: v * taxR,
       amt: got, basis: h.basis, ret: got / h.basis - 1, reason: reason || 'ma10' });
