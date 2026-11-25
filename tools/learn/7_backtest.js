@@ -265,7 +265,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       }
     }
   };
-  let pend = null, fdMiss = 0;
+  let pend = null, fdMiss = 0, tlhN = 0, taxTotal = 0;
   for (let k = START; k <= END; k++) {
     cur = led ? { k, dep, sells: [], buys: [], skipped: [], order: [], tax: 0 } : null;
     if (opt.cashRateFn && k > START) cash += cash * Math.max(0, opt.cashRateFn(k) || 0) / 12;          // 현금 이자(월 단위, 세금 제외): 놀고 있는 현금에 연 이율/12를 더함
@@ -338,9 +338,16 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       keep.push(h);
     }
     holds = keep;
+    if (opt.tlh && opt.tlh.months.includes((k - 1) % 12 + 1)) {                // 손실 난 미국 종목 미리 팔기(세금 줄이기): 그해 미국 이익이 공제를 넘으면 세금이 0이 될 때까지 손실 큰 순으로 판매(always면 이익과 상관없이 손실 종목 전부)
+      const Yt = yOfK(k), L = holds.filter(h => h.us && val(h, k) * (1 - usFee) - h.basis < 0).sort((a, b) => (val(a, k) * (1 - usFee) - a.basis) - (val(b, k) * (1 - usFee) - b.basis));
+      for (const h of L) {
+        if (!opt.tlh.always && (usGain[Yt] || 0) <= C.us.cg_exemption_krw) break;
+        cash += sellCash(h, k, 'tlh'); holds = holds.filter(x => x !== h); tlhN++;
+      }
+    }
     cash += dep; deposits++;                            // 입금을 먼저 받는다: 12월에는 이 돈으로 양도세를 먼저 내고 남은 돈으로 산다
     if ((k - 1) % 12 === 11) {                          // 12월 말: 그해 미국 주식 실현 손익에 양도세(기본공제 후)를 냄
-      const Y = yOfK(k), tax = usTax(Y); usGain[Y] = 0;
+      const Y = yOfK(k), tax = usTax(Y); usGain[Y] = 0; taxTotal += tax;
       if (cur) cur.tax = tax;
       if (tax > 0) {
         if (cash >= tax) cash -= tax;
@@ -372,7 +379,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   }
   liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss };
+  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal };
 }
 function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };
@@ -1472,6 +1479,18 @@ if (process.env.STAGE14 !== '0') {
     });
     AD8.tune = true;
   }
+  if (process.env.AD8_TLH === '1' && RT14) {                            // 세금 줄이려고 손실 난 미국 종목 미리 팔기 시험(11월·12월 말) — 판매 규칙·후보는 현재 규칙 그대로
+    V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' }), conf = ym => mC.get(ym) || [];
+    const add = (sec, name, tlh) => V.push({ sec, name, cand: conf, rule: rule10, o: tlh ? { tlh } : {} });
+    add('기준', 'A 지금: 손실 종목 미리 팔지 않음', null);
+    add('세금 줄이기(이익이 공제 넘을 때만)', 'T1 11월 말: 손실 난 미국 종목을 세금이 0이 될 때까지 판매', { months: [11] });
+    add('세금 줄이기(이익이 공제 넘을 때만)', 'T2 12월 말(세금 계산 직전)', { months: [12] });
+    add('세금 줄이기(이익이 공제 넘을 때만)', 'T3 11월 말 + 12월 말', { months: [11, 12] });
+    add('세금 줄이기(이익이 공제 넘을 때만)', 'T4 10월 말', { months: [10] });
+    add('대조(이익과 상관없이 손실 종목 전부)', 'C1 11월 말 손실 난 미국 종목 모두 판매', { months: [11], always: true });
+    add('대조(이익과 상관없이 손실 종목 전부)', 'C2 12월 말 손실 난 미국 종목 모두 판매', { months: [12], always: true });
+    AD8.tlh = true;
+  }
   if (process.env.AD8_TUNE === '1' && RT14) {                           // 궁금증 시험: 삼성전자·SK하이닉스(2025)를 잡도록 정배열 완화·순위 기준·보유 수를 바꿔 보고 성과와 두 종목 매수 여부를 봄
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) };
     const P = al => pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월', align: al });
@@ -1532,6 +1551,10 @@ if (process.env.STAGE14 !== '0') {
     const base0 = A.full.cagr, base1 = T1.full.cagr; log(`(뺀 것 없음)                ${pc1(base0).padStart(8)} → ${pc1(base1).padStart(8)}   ${pp(base1 - base0)}`);
     top.slice(0, 6).forEach(y => { const f = e => e.r.y !== y, a = run14(A, f).cagr, b = run14(T1, f).cagr; log(`${String(y).padEnd(24)} ${pc1(a).padStart(8)} → ${pc1(b).padStart(8)}   ${pp(b - a)}`); });
     const f6 = e => !top.slice(0, 3).includes(e.r.y), a3 = run14(A, f6).cagr, b3 = run14(T1, f6).cagr; log(`위 3종목 모두 뺌             ${pc1(a3).padStart(8)} → ${pc1(b3).padStart(8)}   ${pp(b3 - a3)}`);
+  }
+  if (AD8.tlh) {                                                          // 변형별 세금 합계·손절 판매 건수
+    log(''); log('## 세금 줄이기 시험 — 변형별 낸 양도세 합계 · 손실 종목 미리 판 건수 (전체 기간, 월 100만원)');
+    V.forEach(v => { const o = simOpt(v.rule, v.o || {}), sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand }); log(`${v.name.slice(0, 44).padEnd(44)} | 양도세 합계 ${Math.round(sm.taxTotal).toLocaleString().padStart(12)}원 | 손실 종목 판매 ${String(sm.tlhN).padStart(3)}건`); });
   }
   AD8.sec = { V, base };
 }
