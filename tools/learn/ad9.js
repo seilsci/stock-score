@@ -679,6 +679,61 @@ function build(c, which) {
     }
   }
 
+
+  // ═════ 묶음 19: 점수 오답 분석 · 손실 걸러내기 — "점수가 높았는데 크게 잃은 거래"와 "점수가 낮았는데 크게 번 거래"가 어떤 지표 구조였는지 보고(분석 표), 손실 위험·큰 이익을 따로 예측하는 점수로 후보를 걸러내거나 순위를 섞어 봄(해마다 그 전 자료만으로 학습)
+  //   분석 표는 같은 자료에서 고르는 것이라 과장될 수 있어 앞쪽(~2019)·뒤쪽(2020~)이 모두 같은 방향인 것만 믿을 것. 시험 변형(걸러내기·순위 섞기)은 걸어가며 학습이라 그런 편향이 없음.
+  if (on(19)) {
+    const S = n => `19-${n}`;
+    const r5 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6), rateName: '국채10년 6개월', exitMaN: 5 };
+    const m5 = mk({ ck: 'h5' }, r5);
+    const A5 = (sec, name, cand) => add(S(sec), name, { cand, rule: r5, o: { exitMaN: 5 } });
+    const A10 = (sec, name, cand) => add(S(sec), name, { cand, rule: rule10 });
+    A10('기준', '10이평(지금) 기준', candOf(mBase)); A5('기준', '5이평 기준', candOf(m5));
+    const indModel = (name, f) => {                                           // 정답을 0/1(손실이었나·크게 올랐나)로 바꿔 해마다 학습 → (종목|신호월) → 예측 값
+      const m2 = rescore({ trainFn: Y => trainFiltered(null)(Y).map(r => ({ ...r, t: f(r.t) ? 1 : 0 })) }), mp = new Map();
+      m2.forEach(a => a.forEach(x => mp.set(x.r.y + '|' + x.r.ym, x.s))); return mp;
+    };
+    const LOSS10 = indModel('loss10', t => t < Math.log(0.9)), LOSS20 = indModel('loss20', t => t < Math.log(0.8)), GAIN50 = indModel('gain50', t => t > Math.log(1.5));
+    const key = e => e.r.y + '|' + e.sym;
+    const vetoBy = (m, MP, q) => wrap(m, a => { if (a.length < 5) return a; const sc = a.map(e => MP.get(key(e)) ?? 0), idx = a.map((e, i) => i).sort((i, j) => sc[j] - sc[i]), drop = new Set(idx.slice(0, Math.floor(a.length * q))); return a.filter((e, i) => !drop.has(i)); });
+    const rk = (a, f) => { const r = new Map(), s2 = [...a].sort((x, y) => f(y) - f(x)); s2.forEach((e, i) => r.set(e, i)); return r; };
+    const blend = (m, wl, wg, lossMp) => wrap(m, a => { if (a.length < 2) return a; const r0 = rk(a, e => e.s), rl = rk(a, e => -(lossMp.get(key(e)) ?? 0)), rg = rk(a, e => GAIN50.get(key(e)) ?? 0); return [...a].sort((x, y) => (r0.get(x) + wl * rl.get(x) + wg * rg.get(x)) - (r0.get(y) + wl * rl.get(y) + wg * rg.get(y))); });
+    [[mBase, A10, '10이평'], [m5, A5, '5이평']].forEach(([m, A, nm]) => {
+      [0.1, 0.2, 0.3].forEach(q => A('A 손실 위험 높은 후보 제외', `${nm} · 손실(−10% 이하) 위험 예측 상위 ${q * 100}% 제외`, vetoBy(m, LOSS10, q)));
+      A('A 손실 위험 높은 후보 제외', `${nm} · 큰 손실(−20% 이하) 위험 예측 상위 20% 제외`, vetoBy(m, LOSS20, 0.2));
+      A('B 점수 + 손실 위험', `${nm} · 점수 순위 + 0.5 × 손실 위험 낮은 순위`, blend(m, 0.5, 0, LOSS10)); A('B 점수 + 손실 위험', `${nm} · 점수 순위 + 1 × 손실 위험 낮은 순위`, blend(m, 1, 0, LOSS10));
+      A('C 점수 + 큰 이익', `${nm} · 점수 순위 + 0.5 × 큰 이익(+50%↑) 예측 순위`, blend(m, 0, 0.5, LOSS10));
+      A('D 세 가지 섞기', `${nm} · 점수 + 0.5 × 큰 이익 + 0.5 × 손실 위험 낮은 순위`, blend(m, 0.5, 0.5, LOSS10));
+      A('E 대조', `${nm} · 손실 위험 낮은 순만`, wrap(m, a => [...a].sort((x, y) => (LOSS10.get(key(x)) ?? 0) - (LOSS10.get(key(y)) ?? 0))));
+    });
+    posts.push(() => { post12('19-', '19 점수 오답 분석·손실 걸러내기'); post19(); });
+    function post19() {
+      const FN = c.F || []; const vArr = V.filter(v => String(v.sec).startsWith('19-기준'));
+      vArr.forEach(v => safe('19 분석', () => {
+        const sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...simOpt(v.rule, v.o || {}), cand: v.cand, log: true }, DEP);
+        const T = (sm.trades || []).filter(t => t.ret != null && t.buyYm && t.score != null && Array.isArray(t.feats));
+        if (T.length < 50) { log(`(19 분석: 거래 ${T.length}건뿐이라 건너뜀)`); return; }
+        const byS = [...T].sort((a, b) => b.score - a.score), n = T.length;
+        log(''); log(`## 19 점수 구간별 성과 — ${v.name} (실제 거래 ${n}건, 구매 때 점수 순위 5구간)`);
+        log('구간          거래 수   이긴 거래   평균 수익   중앙값    큰 손실(−15% 이하)   큰 이익(+50% 이상)');
+        for (let q = 0; q < 5; q++) { const a = byS.slice(Math.floor(n * q / 5), Math.floor(n * (q + 1) / 5)).map(t => t.ret); log(`${['상위 20%', '중상 20%', '가운데 20%', '중하 20%', '하위 20%'][q].padEnd(10)} ${String(a.length).padStart(7)}   ${(a.filter(x => x > 0).length / a.length * 100).toFixed(0).padStart(5)}%   ${pc(mean(a)).padStart(8)}  ${pc(pctl(a, 0.5)).padStart(7)}   ${(a.filter(x => x <= -0.15).length / a.length * 100).toFixed(0).padStart(10)}%   ${(a.filter(x => x >= 0.5).length / a.length * 100).toFixed(0).padStart(14)}%`); }
+        const cut40 = byS[Math.floor(n * 0.4)].score, cutL = byS[Math.floor(n * 0.6)].score;
+        const HL = T.filter(t => t.score >= cut40 && t.ret <= -0.15), LW = T.filter(t => t.score <= cutL && t.ret >= 0.5);
+        const zdiff = G => { const out = []; FN.forEach((nm, j) => { const all = T.map(t => t.feats[j]).filter(Number.isFinite), g = G.map(t => t.feats[j]).filter(Number.isFinite); if (all.length < 30 || g.length < 5) return; const mu = mean(all), sd = sdOf(all) || 1; out.push([nm, (mean(g) - mu) / sd, g.length]); }); return out.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 8); };
+        log(''); log(`## 19 오답 분석 — ${v.name}: 점수 상위 60%인데 −15% 이하로 잃은 거래 ${HL.length}건 vs 점수 하위 60%인데 +50% 이상 번 거래 ${LW.length}건, 그 거래들의 지표 평균이 전체 거래 평균과 얼마나 달랐나(표준편차 단위, 큰 순 8개)`);
+        log('점수 높았는데 크게 잃음: ' + zdiff(HL).map(([nm, d]) => `${nm} ${d >= 0 ? '+' : ''}${d.toFixed(2)}`).join(' · '));
+        log('점수 낮았는데 크게 번 : ' + zdiff(LW).map(([nm, d]) => `${nm} ${d >= 0 ? '+' : ''}${d.toFixed(2)}`).join(' · '));
+        // 지표 하나로 손실 걸러내기: 그 지표가 가장 나쁜 10% 거래를 뺐을 때 거래 평균 수익이 어떻게 바뀌나 — 앞쪽(~2019)·뒤쪽(2020~) 모두 좋아지는 지표만 (같은 자료에서 고른 것이라 과장됨)
+        const E1 = T.filter(t => t.buyYm <= 201912), E2 = T.filter(t => t.buyYm > 201912), res = [];
+        FN.forEach((nm, j) => { if (nm.startsWith('m_') || nm === 'us' || nm === 'etf') return; [1, -1].forEach(dir => {
+          const effect = A => { const vals = A.map(t => t.feats[j]).filter(Number.isFinite); if (vals.length < 30) return null; const th = pctl(vals, dir > 0 ? 0.9 : 0.1); const kept = A.filter(t => !(Number.isFinite(t.feats[j]) && (dir > 0 ? t.feats[j] >= th : t.feats[j] <= th))); return kept.length ? mean(kept.map(t => t.ret)) - mean(A.map(t => t.ret)) : null; };
+          const a = effect(E1), b = effect(E2); if (a != null && b != null) res.push([nm + (dir > 0 ? ' 큰 값 10% 제외' : ' 작은 값 10% 제외'), a, b]); }); });
+        log(''); log(`## 19 지표 하나로 손실 걸러내기(${v.name}) — 그 지표가 가장 나쁜 10% 거래를 빼면 거래 평균 수익이 얼마나 오르나 (앞쪽 ${E1.length}건 / 뒤쪽 ${E2.length}건, 둘 다 오르는 것만, 같은 자료에서 고른 것이라 과장됨)`);
+        res.filter(x => x[1] > 0 && x[2] > 0).sort((x, y) => Math.min(y[1], y[2]) - Math.min(x[1], x[2])).slice(0, 8).forEach(([nm, a, b]) => log(`${nm.padEnd(30)} 앞쪽 ${pc(a).padStart(7)} · 뒤쪽 ${pc(b).padStart(7)}`));
+      }));
+    }
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 

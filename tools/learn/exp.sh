@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 시험 실행기: run_exp.bat(바탕화면 stock_exp.bat)이 git pull 뒤 이 파일을 실행. 새 시험을 할 때는 이 파일의 시험 이름만 바꿔 올리면 됨.
-# 지금 시험: 시험 목록 전체 묶음(AD9, ad9.js) — 묶음 1~18을 차례로 돌려 결과를 data/exp_result.txt에 이어 붙이고 클립보드에 복사
+# 지금 시험: 시험 목록 전체 묶음(AD9, ad9.js) — 묶음 1~19를 차례로 돌려 결과를 data/exp_result.txt에 이어 붙이고 클립보드에 복사
 #   묶음: 1 매수 신호 · 2 순위 · 3 점수 모델 · 4 비중·구성 · 5 매도 · 6 자금·비용·세금 · 7 체결·시점 · 8 종목 범위 · 9 검증 · 10 다른 전략과 비교
 #   일부만: tools/learn/exp.sh 1 5   (묶음 1과 5만)   /   절반 되풀이 횟수: AD8_HALVES=4 tools/learn/exp.sh   (기본 6, 줄이면 빨라짐)
 # (이전 시험 이름: AD8_MIX 한·미 비율, AD8_DIV 배당, AD8_REV 역배열 즉시 판매, AD8_ETF ETF 제외, AD8_TLH2·AD8_TLH 세금 줄이기, AD8_TP 익절 기준, AD8_TUNE 삼성전자·SK하이닉스, AD8_CASH, AD8_RISK, AD8_UNION, AD8_SKIP)
@@ -11,8 +11,8 @@ export STAGE3=0 STAGE4=0 STAGE5=0 STAGE6=0 STAGE7=0 STAGE8=0 STAGE9=0 STAGE10=0 
 export AD8_HALVES="${AD8_HALVES:-6}"
 # 돌릴 묶음: 인자가 있으면 그것, 없으면 exp_batches.txt(Claude가 그때그때 바꿔 올림 → 사용자는 stock_exp.bat만 켜면 됨), 그것도 없으면 전부
 BATCHES="${*:-$(tr '\r\n' '  ' < exp_batches.txt 2>/dev/null)}"
-[ -z "${BATCHES// /}" ] && BATCHES="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18"
-declare -A NAME=([1]="매수 신호" [2]="순위" [3]="점수 모델" [4]="비중·구성" [5]="매도" [6]="자금·비용·세금" [7]="체결·시점" [8]="종목 범위" [9]="검증" [10]="다른 전략과 비교" [11]="조합·일관성 점검" [12]="판매 기준 이평 파고들기" [13]="판매 규칙 2(5이평 흔들어 보기)" [14]="점수 학습 바꾸기" [15]="신호 쪽 이평 길이(events 다시 만듦)" [16]="일봉 판단(일봉 받기 포함)" [17]="미국 공매도(공매도 받기 포함)" [18]="남은 시험 모음(지수·EMA·쌍별 학습·확인 시점 지표·업종·S&P500)")
+[ -z "${BATCHES// /}" ] && BATCHES="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19"
+declare -A NAME=([1]="매수 신호" [2]="순위" [3]="점수 모델" [4]="비중·구성" [5]="매도" [6]="자금·비용·세금" [7]="체결·시점" [8]="종목 범위" [9]="검증" [10]="다른 전략과 비교" [11]="조합·일관성 점검" [12]="판매 기준 이평 파고들기" [13]="판매 규칙 2(5이평 흔들어 보기)" [14]="점수 학습 바꾸기" [15]="신호 쪽 이평 길이(events 다시 만듦)" [16]="일봉 판단(일봉 받기 포함)" [17]="미국 공매도(공매도 받기 포함)" [18]="남은 시험 모음(지수·EMA·쌍별 학습·확인 시점 지표·업종·S&P500)" [19]="점수 오답 분석·손실 걸러내기")
 # 묶음 15: 신호·정답·지표를 n이평으로 다시 만든 events(3_build.js MA_N=n)로 시험 → 끝나면 원래 events.csv로 되돌림(중간에 멈춰도 다음 실행 때 events_keep.csv가 남아 있으면 자동 복구)
 run15(){
   [ -f data/events_keep.csv ] && cp data/events_keep.csv data/events.csv   # 지난번에 중간에 멈췄다면 복구
@@ -22,7 +22,7 @@ run15(){
   for n in ${MA15:-5 7 15 20}; do
     echo "   · 신호 ${n}이평 events 다시 만드는 중 $(date '+%H:%M')"
     if MA_N=$n node 3_build.js >> data/exp_run_15.log 2>&1 && MA_N=$n AD9=15 node 7_backtest.js >> data/exp_run_15.log 2>&1; then
-      { echo "---- 신호 ${n}이평 ----"; awk '/^## (확인 매수 후속|1[2-8] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; } >> data/bt15.txt
+      { echo "---- 신호 ${n}이평 ----"; awk '/^## (확인 매수 후속|1[2-9] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; } >> data/bt15.txt
     else rc=1; echo "---- 신호 ${n}이평 실행 오류 ----" >> data/bt15.txt; tr '\r' '\n' < data/exp_run_15.log | tail -5 >> data/bt15.txt; fi
   done
   cp data/events_keep.csv data/events.csv && rm -f data/events_keep.csv; trap - EXIT
@@ -44,7 +44,7 @@ for B in $BATCHES; do
   if [ "$B" = 18 ]; then echo "── 업종·S&P500 자료 받기(키 불필요, 이미 받은 것은 건너뜀) $(date '+%H:%M')"; node 2j_sp500.js 2>&1; node 2i_sic.js 2>&1; fi
   echo "── 묶음 $B ${NAME[$B]} 시작 $(date '+%H:%M')"
   if { [ "$B" = 15 ] && run15; } || { [ "$B" != 15 ] && AD9="$B" node 7_backtest.js > "data/exp_run_$B.log" 2>&1; }; then
-    { echo; echo "================ 묶음 $B · ${NAME[$B]} ================"; if [ "$B" = 15 ]; then cat data/bt15.txt; else awk '/^## (확인 매수 후속|9 검증|10 다른 전략|11 일관성|1[2-8] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; fi; } >> "$OUT"
+    { echo; echo "================ 묶음 $B · ${NAME[$B]} ================"; if [ "$B" = 15 ]; then cat data/bt15.txt; else awk '/^## (확인 매수 후속|9 검증|10 다른 전략|11 일관성|1[2-9] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; fi; } >> "$OUT"
     echo "── 묶음 $B 끝"
   else
     { echo; echo "================ 묶음 $B · ${NAME[$B]} — 실행 오류 ================"; tr '\r' '\n' < "data/exp_run_$B.log" | tail -8; [ "$B" = 15 ] && cat data/bt15.txt; } >> "$OUT"
