@@ -6,3 +6,8 @@
 2026-11-26 13:44 exp@pc total=388 b17=343 b21=45
 2026-11-26 13:48 exp@pc total=40 b17=39
 2026-11-26 14:06 learn@pc total=935 build=11 train=8 explore=131 check=8 backtest=757 download=927 limit=0
+2026-11-26 14:10 exp@pc total=87 b12=40 b13=47
+2026-11-26 15:15 exp@pc total=1258 b22=48 b23=63 b24=310 b25=41 b26=65 b27=63 b15=232 b28=432
+2026-11-26 15:23 exp@pc total=88 b13=45 b29=43
+2026-11-26 15:29 exp@pc total=46 b30=45
+2026-11-26 15:51 learn@pc total=892 build=9 train=8 explore=115 check=8 backtest=731 download=884 limit=0
