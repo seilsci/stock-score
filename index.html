@@ -281,6 +281,7 @@ document.getElementById('L').onclick = function (e) {
   if (!row) return;
   if (e.target.closest('.score')) { showScore(LIST[+row.dataset.i]); return; }
   SEL = LIST[+row.dataset.i];
+  if (IFOLD) { IFOLD = false; foldApply(); }                                      // 품목을 누르면 접혀 있던 그래프도 다시 펼쳐서 보여 줌
   document.querySelectorAll('.row.sel').forEach(function (x) { x.classList.remove('sel'); });
   row.classList.add('sel');
   drawChart();
@@ -412,12 +413,12 @@ function chartTip(cv, ev, i) {
   if (px0 < 8) px0 = 8; if (py0 < 8) py0 = Math.min(ev.clientY + 22, window.innerHeight - h - 8);
   t.style.left = px0 + 'px'; t.style.top = py0 + 'px';
 }
-/* 그래프 접기/열기: 오른쪽 위 버튼으로만 접고 열어요(그래프를 눌러도 접히지 않음). 상태는 이 기기에 저장 */
-var IFOLD = false; try { IFOLD = localStorage.getItem('ifold') === '1'; } catch (e) {}
+/* 그래프 접기/열기: 오른쪽 위 버튼으로만 접고 열어요(그래프를 눌러도 접히지 않음). 접은 상태는 기억하지 않고 새로 열면 항상 펼쳐진 상태 */
+var IFOLD = false;
 function foldApply() { var c = document.querySelector('.chart'), b = document.getElementById('fold-b'); if (c) c.classList.toggle('folded', IFOLD); if (b) b.textContent = IFOLD ? '열기' : '접기'; }
 document.addEventListener('click', function (e) {
   var b = e.target.closest && e.target.closest('#fold-b'); if (!b) return;
-  e.stopPropagation(); IFOLD = !IFOLD; try { localStorage.setItem('ifold', IFOLD ? '1' : '0'); } catch (x) {}
+  e.stopPropagation(); IFOLD = !IFOLD;
   foldApply(); if (!IFOLD && typeof drawChart === 'function') drawChart();       // 펼칠 때 폭에 맞게 다시 그림
 }, true);
 foldApply();

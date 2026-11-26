@@ -748,7 +748,7 @@ function drawHoldChart(h){
   if(!h){ box.style.display='none'; return; }
   nameEl.innerHTML = esc(h.name||h.y);
   priceEl.textContent = '매수 '+px(h.buyPx)+'  →  현재 '+px(h.curPx)+'  '+pc(h.ret);
-  box.style.display='block';
+  box.style.display='block'; if(FOLD.box){ FOLD.box=false; foldApply(box,'box',box.querySelector('.fold-b')); }          // 품목을 누르면 접혀 있던 그래프도 다시 펼침
   var cv = document.getElementById('cv');
   drawChart(cv, h.y, SEL_YM, h.buyYm, null, h.raw||undefined);
   cv._redraw=function(){ drawChart(cv, h.y, SEL_YM, h.buyYm, null, h.raw||undefined); };
@@ -760,9 +760,9 @@ window.addEventListener('resize',function(){
   document.querySelectorAll('#hold-list .h-cv.open canvas').forEach(function(c){ if(c._redraw) c._redraw(); });
 });
 
-/* ── 그래프 접기/열기: 카드 오른쪽 위 버튼으로만 접고 열어요(그래프를 눌러도 접히지 않음). 상태는 이 기기에 저장 ── */
-var FOLD={}; try{ FOLD=JSON.parse(localStorage.getItem('jfold')||'{}')||{}; }catch(e){ FOLD={}; }
-function foldSave(){ try{ localStorage.setItem('jfold',JSON.stringify(FOLD)); }catch(e){} }
+/* ── 그래프 접기/열기: 카드 오른쪽 위 버튼으로만 접고 열어요(그래프를 눌러도 접히지 않음). 접은 상태는 저장하지 않음 ── */
+var FOLD={};                                                                    // 접은 상태는 기억하지 않음(새로 열면 항상 이전처럼 그래프가 펼쳐진 상태)
+function foldSave(){}
 var FOLD_REDRAW={cum:function(){ renderCumChart(); }, yr:function(){ renderYearChart(); }, ret:function(){ renderRetChart(); }, box:function(){ var cv=document.getElementById('cv'); if(cv&&cv._redraw) cv._redraw(); }};
 function foldApply(card,key,btn){ var f=!!FOLD[key]; card.classList.toggle('folded',f); if(btn) btn.textContent=f?'열기':'접기'; }
 function foldInit(card,key){                                                   // 카드 머리줄(.rc-h / .ch-h) 오른쪽 끝에 접기/열기 버튼을 달고 저장된 상태를 적용
