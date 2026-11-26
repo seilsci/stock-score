@@ -6,7 +6,7 @@
 //   한 시험이 오류여도 나머지는 계속 돌고 이름 끝에 [오류: ...]가 붙음. 일봉·새 자료가 필요한 것은 여기에 없음(README-PC.md 참고).
 
 function build(c, which) {
-  const { V, AD8, pool, simulate, simOpt, summ, C1, DEP, mi, ymOf, px, fx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, chg, rtk,
+  const { V, AD8, pool, simulate, simOpt, summ, C1, DEP, mi, ymOf, px, fx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, coKey, chg, rtk,
     YEARS_ALL, log, cagrOver, END, rescore, ALL, dailyOf, score, z, prep, fitRidge, MK, divOf, fs, path, DATA, RAW } = c;
   const want = String(which).split(',').map(s => s.trim());
   const on = n => want.includes('all') || want.includes(String(n));
@@ -1341,6 +1341,21 @@ function build(c, which) {
     X('E 대조', '양봉 · 몸통이 고저폭의 40% 미만(꼬리 긴 양봉, 대조)', { ck: 'c7', ...cc(x => x.body < 0.4) });
     X('E 대조', '양봉 · 윗꼬리가 고저폭의 40% 이상(대조)', { ck: 'c8', ...cc(x => x.upw >= 0.4) });
     posts.push(() => post12('33-', '33 꼬리 없는 짧은 양봉'));
+  }
+
+  // ═════ 묶음 34: 같은 지수를 따라가는 ETF는 하나만 사기 — 코스피 대형주(200·200TR·코스피·코스피100·MSCI Korea)·코스닥150·미국 S&P500·나스닥100 ETF를 같은 묶음으로 보고 한 번에 하나만(보유 중인 묶음도 또 안 삼)
+  if (on(34)) {
+    const S = n => `34-${n}`;
+    const BR = '(?:KODEX|TIGER|RISE|ACE|SOL|HANARO|KOSEF|ARIRANG|KBSTAR|PLUS|KIWOOM|1Q|TIMEFOLIO)';
+    const reKR = new RegExp('^' + BR + '\\s*(200|200TR|코스피|코스피100|MSCI Korea( TR)?)\\s*$', 'i'), reKQ = new RegExp('^' + BR + '\\s*코스닥150\\s*$', 'i'), reSP = new RegExp('^' + BR + '\\s*미국S&P500(\\(H\\))?\\s*$', 'i'), reNQ = new RegExp('^' + BR + '\\s*미국나스닥100(\\(H\\))?\\s*$', 'i');
+    const grp = (names) => y => { const n = CO_NAME.get(y); if (n) for (const [re, k] of names) if (re.test(n)) return 'IDX:' + k; return null; };
+    const gAll = grp([[reKR, '코스피대형'], [reKQ, '코스닥150'], [reSP, 'S&P500'], [reNQ, '나스닥100']]), gKR = grp([[reKR, '코스피대형']]);
+    const mkFn = g => y => g(y) || coKey(y);
+    const Z = (name, extra) => { add(S('A 같은 지수 ETF'), '10이평 · ' + name, { cand: candOf(mBase), rule: rule10, o: { ...extra } }); add(S('A 같은 지수 ETF'), '한국6·미국10 · ' + name, { cand: candOf(mBase), rule: rule10, o: { exitMaFn: KR6, ...extra } }); };
+    Z('기준(같은 회사만 하나)', {});
+    Z('코스피 대형주 지수 ETF(200·200TR·코스피·코스피100·MSCI Korea)는 하나만', { coKeyFn: mkFn(gKR) });
+    Z('코스피 대형주·코스닥150·S&P500·나스닥100 ETF는 지수마다 하나만', { coKeyFn: mkFn(gAll) });
+    posts.push(() => post12('34-', '34 같은 지수 ETF 하나만'));
   }
 
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());

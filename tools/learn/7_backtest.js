@@ -289,7 +289,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         if (holds.some(h => h.y === r.y)) continue;           // 이미 가진 종목은 또 사지 않음(매수 후보에서 뺌)
         if (opt.banMonths && (banUntil.get(r.y) || 0) > k) continue;      // 판 뒤 banMonths달은 다시 안 삼
         if (opt.failP && hash01(r.y + '|' + k + '|' + (opt.failSeed || 1)) < opt.failP) continue;      // 주문 실패 시험: 확률로 이 종목은 못 사고 다음 순위로
-        if (opt.oneCo !== false) { const ck = coKey(r.y); if (pickedCo.has(ck) || holds.some(h => coKey(h.y) === ck)) { coSkipN++; continue; } }      // 같은 회사(우선주·Class A/B 등)는 하나만
+        if (opt.oneCo !== false) { const ckf = opt.coKeyFn || coKey, ck = ckf(r.y); if (pickedCo.has(ck) || holds.some(h => ckf(h.y) === ck)) { coSkipN++; continue; } }      // 같은 회사(우선주·Class A/B 등)는 하나만
         let per = fill ? cash / Math.min(slots, opt.minDiv ? Math.max(list.length - li, opt.minDiv) : list.length - li) : per0;      // minDiv: 남은 후보가 적어도 최소 minDiv개 몫으로 나눔(나머지는 현금으로 둠)      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
         if (fill && opt.wRank) { const nn = Math.min(slots, list.length - li); if (nn > 1) per = opt.wRank > 0 ? cash * 2 / (nn + 1) : cash * 2 / (nn * (nn + 1)); }   // wRank: 순위 비례 비중(+1: 앞순위에 더, −1: 뒷순위에 더(대조)). 남은 nn자리에 nn, nn−1, … 1 (또는 반대) 몫
         if (fill && opt.wFn) { const nn = Math.min(slots, list.length - li); if (nn > 1) { let sw = 0, w0 = 0; for (let q = li, c = 0; q < list.length && c < nn; q++, c++) { const ww = opt.wFn(list[q].r, k) || 1; sw += ww; if (q === li) w0 = ww; } per = cash * w0 / sw; } }      // wFn: 종목별 비중 가중치(남은 후보 몫에서 나눔)
@@ -320,7 +320,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         } else { sh = a * (1 - fee) / pKrw; }
         }
         const bScore = list[li].s ?? ((scored[kA].get(ymOf(sigK)) || []).find(e => e.r.y === r.y)?.s ?? 0);        // 후보 자신의 점수(확인 매수는 돌파 시점 점수)
-        if (opt.oneCo !== false) pickedCo.add(coKey(r.y));
+        if (opt.oneCo !== false) pickedCo.add((opt.coKeyFn || coKey)(r.y));
         holds.push({ px: o, y: r.y, us, etf: r.x[ETF] === 1, last: p, basis: a, sh, sellK: r.exoff === null ? null : mi(r.ym) + r.exoff,
           buyYm: ymOf(k), buyK: k, buyPx: p, buyScore: bScore, t2pend: !!opt.firstFrac,
           deadK: (opt.delistP && hash01(r.y + '|' + (opt.delistSeed || 1) + '|' + k) < opt.delistP) ? k + 1 + Math.floor(hash01(r.y + '#' + k) * 36) : 0,
@@ -1678,7 +1678,7 @@ if (process.env.STAGE14 !== '0') {
       out.forEach(a => a.sort((x, y) => y.s - x.s));
       return out;
     };
-    require('./ad9').build({ V, AD8, pool, simulate, simOpt, run14, summ, C1, DEP, mi, ymOf, px, fx, fdPx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, chg, rtk, RT14,
+    require('./ad9').build({ V, AD8, pool, simulate, simOpt, run14, summ, C1, DEP, mi, ymOf, px, fx, fdPx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, coKey, chg, rtk, RT14,
       YEARS_ALL, log, cagrOver, START_Y, END, CUR, rescore, ALL, dailyOf, score, z, prep, fitRidge, MK: require('./data').MK, divOf, fs, path, DATA, RAW, START }, process.env.AD9);
   }
   if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만
