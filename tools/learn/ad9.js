@@ -1207,6 +1207,35 @@ function build(c, which) {
     posts.push(() => post12('28-', '28 종목 범위 ' + lab));
   }
 
+  // ═════ 묶음 29: 5번 후보 확인 — (A) 지수 아래+금리 상승이면 보유 전부 판매(위험 회피)와 (B) 불타기를 강도별로 흔들고, 합치고, 지수 이평·금리 기간·절반 판매·매수 쉼으로 분해 (10이평 · 한국6·미국10 각각)
+  if (on(29)) {
+    const S = n => `29-${n}`;
+    const Z = (sec, name, extra) => { const cand = candOf(mBase); add(S(sec), '10이평 · ' + name, { cand, rule: rule10, o: { ...extra } }); add(S(sec), '한국6·미국10 · ' + name, { cand, rule: rule10, o: { exitMaFn: KR6, ...extra } }); };
+    const below = (key, k, n) => { const a = idxAt(key, k), m = idxMa(key, k, n); return a && m ? a < m : null; };
+    const rj = mo => (mo === 6 ? rateJ : chg('dgs10', mo));
+    const off = (n, mo, which) => (h, k) => { const b = below(IDXKEY(h.y), k, n), r = rj(mo)(k); const ok = which === 'idx' ? b === true : which === 'rate' ? r === true : (b === true && r === true); return ok ? 'riskoff' : null; };
+    const add1 = (g, f) => ({ addFn: (h, k) => { if (h.added) return 0; if (h.last >= h.buyPx * (1 + g)) { h.added = true; return f; } return 0; } });
+    Z('기준', '기준', {});
+    Z('기준', '지수(10이평 아래)+금리(6개월) 전부 판매 · 5번 후보 그대로', { exitFn: off(10, 6) });
+    // A 강도·분해
+    [6, 8, 12].forEach(n => Z('A 지수 이평 길이', `지수 ${n}이평 아래 + 금리 6개월 상승 → 보유 전부 판매`, { exitFn: off(n, 6) }));
+    [3, 9, 12].forEach(mo => Z('A 금리 기간', `지수 10이평 아래 + 금리 ${mo}개월 상승 → 보유 전부 판매`, { exitFn: off(10, mo) }));
+    Z('A 분해', '지수 10이평 아래이기만 하면 전부 판매(금리 무시)', { exitFn: off(10, 6, 'idx') });
+    Z('A 분해', '금리 6개월 상승이기만 하면 전부 판매(지수 무시)', { exitFn: off(10, 6, 'rate') });
+    Z('A 분해', '지수 아래+금리 상승이면 보유의 절반만 판매(1회)', { exitFn: (h, k, hp) => { const hit = off(10, 6)(h, k); if (!hit) { h.halfOff = false; return null; } if (!h.halfOff && h.buyK !== k) { h.halfOff = true; hp.part(0.5, 'riskoff'); } return null; } });
+    Z('A 분해', '지수 아래+금리 상승이면 전부 판매 + 코스피·S&P500 둘 다 아래인 달은 신규 매수도 쉼', { exitFn: off(10, 6), buyBlock: (k) => (below('sp', k, 10) === true && below('ks', k, 10) === true && rateJ(k) === true) });
+    Z('A 분해', '미국 종목만 위험 회피 판매(한국은 기존 규칙)', { exitFn: (h, k) => (isKR(h.y) ? null : off(10, 6)(h, k)) });
+    Z('A 분해', '한국 종목만 위험 회피 판매(미국은 기존 규칙)', { exitFn: (h, k) => (isKR(h.y) ? off(10, 6)(h, k) : null) });
+    Z('A 분해', '이번 달에 처음 산 종목은 건너뛰고 판매(산 달 말 즉시 판매 방지)', { exitFn: (h, k) => (h.buyK === k ? null : off(10, 6)(h, k)) });
+    // B 불타기 강도
+    [0.1, 0.2, 0.3, 0.5].forEach(g => [0.5, 1, 1.5].forEach(f => Z('B 불타기', `보유 종목이 +${g * 100}%가 되면 처음 산 금액의 ${f}배 추가(1회)`, add1(g, f))));
+    // C 합치기
+    Z('C 합치기', '위험 회피 판매 + 불타기(+20%에 1배)', { exitFn: off(10, 6), ...add1(0.2, 1) });
+    Z('C 합치기', '위험 회피 판매 + 불타기(+20%에 0.5배)', { exitFn: off(10, 6), ...add1(0.2, 0.5) });
+    Z('C 합치기', '위험 회피 판매(지수 8이평) + 불타기(+20%에 1배)', { exitFn: off(8, 6), ...add1(0.2, 1) });
+    posts.push(() => post12('29-', '29 5번 후보 확인'));
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 
