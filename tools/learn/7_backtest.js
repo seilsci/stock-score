@@ -27,6 +27,21 @@ const avg = (a, s, e) => { let t = 0; for (let k = s; k <= e; k++) t += a[k]; re
 const mi = ym => Math.floor(ym / 100) * 12 + ym % 100, ymOf = k => Math.floor((k - 1) / 12) * 100 + (k - 1) % 12 + 1;
 // 배당(백테스트 전용, 사이트에는 안 씀): data/div/<종목>.json [[배당락일(초), 주당 배당금], ...](2f_div.js) → 종목별 월(k)별 주당 배당 합계
 const DIVC = new Map();
+// 일봉(백테스트 전용): data/daily/<종목>.json.gz {d,l,c}(2g_daily.js) → {d,l,c,cs(종가 누적합),month:Map(k→[시작,끝) 인덱스)}. 없으면 null
+const DAYC = new Map();
+function dailyOf(y) {
+  if (DAYC.has(y)) return DAYC.get(y);
+  let D = null;
+  try {
+    D = JSON.parse(require('zlib').gunzipSync(fs.readFileSync(path.join(DATA, 'daily', y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json.gz'))).toString());
+    if (!D.d.length) D = null;
+    else {
+      D.cs = new Float64Array(D.c.length + 1); D.c.forEach((v, i) => { D.cs[i + 1] = D.cs[i] + v; });
+      D.month = new Map(); D.d.forEach((dd, i) => { const kk = mi(Math.floor(dd / 100)), m = D.month.get(kk); if (m) m[1] = i + 1; else D.month.set(kk, [i, i + 1]); });
+    }
+  } catch (e) { D = null; }
+  DAYC.set(y, D); return D;
+}
 function divOf(y, k) {
   let m = DIVC.get(y);
   if (!m) {
@@ -351,6 +366,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       }
       h.peak = Math.max(h.peak || h.buyPx || 0, h.last || 0);
       if (h.pendK != null) { if (h.pendK <= k && !opt.sellFd) { cash += sellCash(h, k, h.pendReason); continue; } keep.push(h); continue; }
+      if (opt.dailyFn) { const dr = opt.dailyFn(h, k); if (dr) { h.last = dr.px; if (dl(h, k, dr.rs)) { keep.push(h); continue; } cash += sellCash(h, k, dr.rs); continue; } }   // 일봉 판단(시험): 그달 안에서 일 단위 조건이 걸리면 그날 값으로 판매
       if (opt.skipBuyMonth && h.buyK === k) { keep.push(h); continue; }      // 산 달 말에는 판매 판단을 하지 않음(첫날 구매 방식에서 사자마자 파는 것을 막는 변형)
       if (!opt.grace && h.sellK !== null && h.sellK <= k) { if (dl(h, k, 'ma10')) { keep.push(h); continue; } cash += sellCash(h, k, 'ma10'); continue; }
       // 손절: 종가가 매수가 대비 opt.sl 비율 이하로 하락 시 즉시 매도
@@ -1633,7 +1649,7 @@ if (process.env.STAGE14 !== '0') {
       return out;
     };
     require('./ad9').build({ V, AD8, pool, simulate, simOpt, run14, summ, C1, DEP, mi, ymOf, px, fx, fdPx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, chg, rtk, RT14,
-      YEARS_ALL, log, cagrOver, START_Y, END, CUR, rescore, ALL, MK: require('./data').MK, divOf, fs, path, DATA, RAW, START }, process.env.AD9);
+      YEARS_ALL, log, cagrOver, START_Y, END, CUR, rescore, ALL, dailyOf, MK: require('./data').MK, divOf, fs, path, DATA, RAW, START }, process.env.AD9);
   }
   if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' });
