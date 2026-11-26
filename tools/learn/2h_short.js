@@ -2,7 +2,8 @@
 //   자료: FINRA 일별 공매도 거래량(Reg SHO) https://cdn.finra.org/equity/regsho/daily/CNMSshvol<YYYYMMDD>.txt — 열쇠(API 키) 필요 없음, 공개 파일.
 //   하루 파일 하나(약 수천 종목)를 받아 월별로 합쳐 저장함 → 월 공매도 거래량 비율 = 합계 ÷ 전체 거래량. (공매도 '잔고'가 아니라 그날 공매도로 체결된 거래량이라 시장조성자 거래가 섞여 비율이 평균 40~50%로 높음 → 시험에서는 그 달 전 종목 중 순위(백분위)로 씀.)
 //   한국은 공매도 자료가 없어(KRX 키·금지 기간 공백) 이 도구는 미국만. 지난 달은 한 번 완성되면 건너뜀(이어받기), 이번 달은 매번 다시 받음.
-//   실행: node 2h_short.js   (SHORT_FROM=201101 처음 달, SHORT_MAX=숫자 앞에서 몇 달만, CONC=4 동시 요청 수)
+//   속도: FINRA 파일 하나가 느려서(20초 안팎) 하루 건너 하루가 아니라 기본 3영업일에 하루만 받아 월 비율을 어림함(SHORT_STEP=1이면 매일, 기본 3). 최근 달부터 거꾸로 받아서 중간에 멈춰도 최근 연도는 이미 받아져 있음.
+//   실행: node 2h_short.js   (SHORT_FROM=201101 처음 달, SHORT_MAX=숫자 앞에서 몇 달만, CONC=12 동시 요청 수, SHORT_STEP=3)
 const { fs, path, DATA, sleep } = require('./common');
 const DIR = path.join(DATA, 'short'); fs.mkdirSync(DIR, { recursive: true });
 const URL = d => `https://cdn.finra.org/equity/regsho/daily/CNMSshvol${d}.txt`;
@@ -31,16 +32,16 @@ async function getText(url) {                              // 없는 날(휴일�
 }
 module.exports = { parseDay };
 if (require.main === module) (async () => {
-  const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1, FROM = +process.env.SHORT_FROM || 201101, CONC = +process.env.CONC || 4, MAXM = +process.env.SHORT_MAX || Infinity;
+  const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1, FROM = +process.env.SHORT_FROM || 201101, CONC = +process.env.CONC || 12, STEP = Math.max(1, +process.env.SHORT_STEP || 3), MAXM = +process.env.SHORT_MAX || Infinity;
   const months = []; for (let ym = FROM; ym <= CUR; ym = (ym % 100 === 12 ? ym + 89 : ym + 1)) months.push(ym);
   const today = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
   let doneM = 0, newM = 0, skipM = 0, failM = 0, totalDays = 0;
-  for (const ym of months) {
+  for (const ym of months.reverse()) {                    // 최근 달부터
     const f = path.join(DIR, ym + '.json');
     if (ym < CUR && fs.existsSync(f)) { try { if (JSON.parse(fs.readFileSync(f, 'utf8'))._done) { skipM++; continue; } } catch (e) {} }
     if (newM >= MAXM) break;
     const days = []; const y = Math.floor(ym / 100), m = ym % 100, dim = new Date(y, m, 0).getDate();
-    for (let d = 1; d <= dim; d++) { const wd = new Date(y, m - 1, d).getDay(); const key = ym * 100 + d; if (wd !== 0 && wd !== 6 && key <= today) days.push(key); }
+    let wi = 0; for (let d = 1; d <= dim; d++) { const wd = new Date(y, m - 1, d).getDay(); const key = ym * 100 + d; if (wd !== 0 && wd !== 6 && key <= today) { if (wi++ % STEP === 0) days.push(key); } }
     const agg = {}; let idx = 0, errs = 0, got = 0;
     const worker = async () => { while (idx < days.length) { const d = days[idx++]; try { const t = await getText(URL(d)); if (t && parseDay(t, agg) > 0) got++; } catch (e) { errs++; } await sleep(50); } };
     await Promise.all(Array.from({ length: CONC }, worker));

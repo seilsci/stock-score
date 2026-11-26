@@ -40,7 +40,7 @@ echo "시험 시작: $(date '+%H:%M') — 묶음 ${BATCHES} · 지난 $WHERE 실
 for B in $BATCHES; do
   TB=$(date +%s)
   if [ "$B" = 16 ]; then echo "── 일봉 받기(이미 받은 종목은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; node 2g_daily.js 2>&1; fi
-  if [ "$B" = 17 ]; then echo "── 공매도 받기(FINRA 공개 파일, 이미 받은 달은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; CONC=${SHORT_CONC:-8} node 2h_short.js 2>&1; fi
+  if [ "$B" = 17 ]; then echo "── 공매도 받기(FINRA 공개 파일, 이미 받은 달은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; CONC=${SHORT_CONC:-12} node 2h_short.js 2>&1; fi
   if [ "$B" = 18 ]; then echo "── 업종·S&P500 자료 받기(키 불필요, 이미 받은 것은 건너뜀) $(date '+%H:%M')"; node 2j_sp500.js 2>&1; node 2i_sic.js 2>&1; fi
   echo "── 묶음 $B ${NAME[$B]} 시작 $(date '+%H:%M')"
   if { [ "$B" = 15 ] && run15; } || { [ "$B" != 15 ] && AD9="$B" node 7_backtest.js > "data/exp_run_$B.log" 2>&1; }; then
