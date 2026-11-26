@@ -1322,6 +1322,27 @@ function build(c, which) {
     posts.push(() => post12('32-', '32 양봉만 사기'));
   }
 
+  // ═════ 묶음 33: 꼬리 없는 짧은 양봉 — 확인 달 월봉의 몸통 비율(몸통÷고저폭)·봉 길이(고저폭÷시가)·위아래 꼬리 길이로 후보를 거름 (10이평 · 한국6·미국10 각각)
+  if (on(33)) {
+    const S = n => `33-${n}`;
+    const X = (sec, name, q, extra = {}) => {
+      const ck = 'z33' + sec + name, m = q && Object.keys(q).length ? mk({ ck, ...q }) : mBase, cand = candOf(m);
+      add(S(sec), '10이평 · ' + name, { cand, rule: rule10, o: { ...extra } }); add(S(sec), '한국6·미국10 · ' + name, { cand, rule: rule10, o: { exitMaFn: KR6, ...extra } });
+    };
+    const cn = (o, k) => { const op = o.op.get(k), c = o.m.get(k), h = o.hi.get(k), l = o.lo.get(k); if (!(op > 0 && c > 0 && h > 0 && l > 0 && h > l)) return null; const rg = h - l; return { up: c > op, body: Math.abs(c - op) / rg, upw: (h - Math.max(c, op)) / rg, loww: (Math.min(c, op) - l) / rg, len: rg / op, bodyP: c / op - 1 }; };
+    const cc = (f) => ({ cond: ({ o, j }) => { const x = cn(o, j); return !!(x && x.up && f(x)); } });
+    X('기준', '기준', {});
+    [0.6, 0.7, 0.8].forEach(t => X('A 몸통 비율', `양봉 · 몸통이 고저폭의 ${t * 100}% 이상(꼬리 짧음)`, { ck: 'c1' + t, ...cc(x => x.body >= t) }));
+    [0.1, 0.2].forEach(t => X('B 위아래 꼬리', `양봉 · 윗꼬리·아래꼬리 모두 고저폭의 ${t * 100}% 이하`, { ck: 'c2' + t, ...cc(x => x.upw <= t && x.loww <= t) }));
+    [0.1, 0.15, 0.2].forEach(t => X('C 짧은 양봉', `양봉 · 고저폭이 시가의 ${t * 100}% 이하(짧은 봉) · 몸통 비율 60% 이상`, { ck: 'c3' + t, ...cc(x => x.len <= t && x.body >= 0.6) }));
+    [0.1, 0.15].forEach(t => X('C 짧은 양봉', `양봉 · 고저폭이 시가의 ${t * 100}% 이하(꼬리 무관)`, { ck: 'c4' + t, ...cc(x => x.len <= t) }));
+    X('D 작은 몸통', '양봉 · 몸통 +10% 이하 · 몸통 비율 60% 이상', { ck: 'c5', ...cc(x => x.bodyP <= 0.1 && x.body >= 0.6) });
+    X('D 작은 몸통', '양봉 · 몸통 +3~10% · 윗꼬리·아래꼬리 각각 20% 이하', { ck: 'c6', ...cc(x => x.bodyP >= 0.03 && x.bodyP <= 0.1 && x.upw <= 0.2 && x.loww <= 0.2) });
+    X('E 대조', '양봉 · 몸통이 고저폭의 40% 미만(꼬리 긴 양봉, 대조)', { ck: 'c7', ...cc(x => x.body < 0.4) });
+    X('E 대조', '양봉 · 윗꼬리가 고저폭의 40% 이상(대조)', { ck: 'c8', ...cc(x => x.upw >= 0.4) });
+    posts.push(() => post12('33-', '33 꼬리 없는 짧은 양봉'));
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 
