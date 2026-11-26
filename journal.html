@@ -385,7 +385,7 @@ canvas{display:block;width:100%;height:230px}
   <div id="chart-box">
     <div class="ch-h"><div class="ch-n" id="ch-name">&nbsp;</div><div class="ch-p" id="ch-price"></div></div>
     <canvas id="cv"></canvas>
-    <div class="ch-l"><span><i style="background:var(--ma)"></i><span id="ma-lg">월 10이평</span></span><span>월봉 캔들 (올림 <b style="color:var(--buy)">■</b> 내림 <b style="color:var(--sell)">■</b>) · 아래는 거래대금(월 거래량×종가) ·<br>옆으로 끌면 이전·이후 달</span><span style="color:var(--buy)">▲ 매수</span><span style="color:var(--sell)">▼ 매도</span></div>
+    <div class="ch-l"><span><i style="background:var(--ma)"></i><span id="ma-lg">월 10이평</span></span><span id="ma-lg6" hidden><i style="background:#0ea5a4"></i>월 6이평(한국 판매 기준)</span><span>월봉 캔들 (올림 <b style="color:var(--buy)">■</b> 내림 <b style="color:var(--sell)">■</b>) · 아래는 거래대금(월 거래량×종가) ·<br>옆으로 끌면 이전·이후 달</span><span style="color:var(--buy)">▲ 매수</span><span style="color:var(--sell)">▼ 매도</span></div>
   </div>
   <div id="hold-panel">
     <div id="hold-title">연도·월을 선택하면 그달 말 보유 종목이 표시됩니다.</div>
@@ -584,7 +584,7 @@ function chartTip(cv, ev, i){                // i = 월 위치
     '<table><tr><td>시가</td><td>'+fm(u.o[i])+'</td></tr><tr><td>고가</td><td>'+fm(u.h[i])+'</td></tr><tr><td>저가</td><td>'+fm(u.l[i])+'</td></tr><tr><td>종가</td><td><b>'+fm(u.c[i])+'</b></td></tr>'+
     (chg!=null?'<tr><td>전월 대비</td><td>'+cc(chg)+'</td></tr>':'')+
     (u.v[i]>0?'<tr><td>거래대금</td><td>≈ '+bigNum(u.v[i]*u.c[i],us)+'</td></tr><tr><td>거래량</td><td>'+Math.round(u.v[i]).toLocaleString()+'주</td></tr>':'')+
-    (m!=null?'<tr><td>'+G.nMa+'이평</td><td>'+fm(m)+' ('+cc(u.c[i]/m-1)+')</td></tr>':'')+'</table>';
+    (m!=null?'<tr><td>10이평</td><td>'+fm(m)+' ('+cc(u.c[i]/m-1)+')</td></tr>':'')+(G.ma6&&G.ma6[i]!=null?'<tr><td>6이평</td><td>'+fm(G.ma6[i])+' ('+cc(u.c[i]/G.ma6[i]-1)+')</td></tr>':'')+'</table>';
   t.style.display='block';
   var w=t.offsetWidth, h=t.offsetHeight, x=ev.clientX+14, yy=ev.clientY-h-14;
   if(x+w>window.innerWidth-8) x=ev.clientX-w-14;
@@ -638,12 +638,11 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
     cv._g=null; return;
   }
   var yms=u.yms, cs=u.c;
-  var nMa=/\.(KS|KQ)$/.test(y)?6:10;                                              // 차트 이동평균선: 한국 6이평(판매 기준) · 미국 10이평
-  var ma=cs.map(function(x,i){
-    if(i<nMa-1) return null;
-    var t=0; for(var k=i-nMa+1;k<=i;k++) t+=cs[k]; return t/nMa;
-  });
-  var lgE=document.getElementById('ma-lg'); if(lgE) lgE.textContent=nMa===6?'월 6이평(한국 판매 기준)':'월 10이평';
+  var krY=/\.(KS|KQ)$/.test(y);                                                   // 차트 이동평균선: 10이평(매수·익절 기준)은 항상, 한국은 6이평(판매 기준)도 같이
+  var avgM=function(n){ return cs.map(function(x,i){ if(i<n-1) return null; var t=0; for(var k=i-n+1;k<=i;k++) t+=cs[k]; return t/n; }); };
+  var ma=avgM(10), ma6=krY?avgM(6):null;
+  var lgE=document.getElementById('ma-lg'); if(lgE) lgE.textContent=krY?'월 10이평(매수·익절)':'월 10이평';
+  var lg6=document.getElementById('ma-lg6'); if(lg6) lg6.hidden=!krY;
   // 끝 = 기준 월(없으면 가장 가까운 이전 달), 시작 = 36개월 전 또는 매수 3개월 전(최대 84개월)
   var e=yms.length-1; while(e>0 && yms[e]>+endYm) e--;
   var s0=Math.max(0,e-35);
@@ -656,7 +655,7 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
   var lastI=yms.length-1, pan=Math.max(-s0,Math.min(lastI-e,cv._pan||0)); cv._pan=pan; var canPan=(s0>0)||(e<lastI);
   s0+=pan; e+=pan;
   var lo=Infinity, hi=-Infinity;
-  for(var i=s0;i<=e;i++){ lo=Math.min(lo,u.l[i]); hi=Math.max(hi,u.h[i]); if(ma[i]!=null){ lo=Math.min(lo,ma[i]); hi=Math.max(hi,ma[i]); } }
+  for(var i=s0;i<=e;i++){ lo=Math.min(lo,u.l[i]); hi=Math.max(hi,u.h[i]); if(ma[i]!=null){ lo=Math.min(lo,ma[i]); hi=Math.max(hi,ma[i]); } if(ma6&&ma6[i]!=null){ lo=Math.min(lo,ma6[i]); hi=Math.max(hi,ma6[i]); } }
   var useLog = lo>0 && hi/lo>4;                                   // 가격이 4배 넘게 달라진 종목은 로그 눈금(초반이 납작해지지 않게)
   var F=useLog?Math.log:function(v){ return v; }, G=useLog?Math.exp:function(v){ return v; };
   var flo=F(lo), fhi=F(hi), fpad=(fhi-flo)*0.08||fhi*0.05; flo=useLog||flo-fpad>=0?flo-fpad:0; fhi+=fpad; lo=G(flo); hi=G(fhi);
@@ -702,6 +701,11 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
   g.strokeStyle=maC; g.lineWidth=1.6; g.lineJoin='round'; g.beginPath(); var st=false;
   for(var i=s0;i<=e;i++){ if(ma[i]==null) continue; var mx=X(i), my=Y(ma[i]); if(!st){ g.moveTo(mx,my); st=true; } else g.lineTo(mx,my); }
   g.stroke();
+  if(ma6){                                                                     // 한국: 판매 기준 6이평(청록)
+    g.strokeStyle='#0ea5a4'; g.lineWidth=1.7; g.beginPath(); var st6=false;
+    for(var i=s0;i<=e;i++){ if(ma6[i]==null) continue; var mx6=X(i), my6=Y(ma6[i]); if(!st6){ g.moveTo(mx6,my6); st6=true; } else g.lineTo(mx6,my6); }
+    g.stroke();
+  }
   // 이 종목의 매수·매도 표시 (구매 ▲는 캔들 아래, 판매 ▼는 캔들 위). 같은 달에 여러 번이면 겹치지 않게 쌓아서 그림
   var evB={}, evS={};
   if(LED && LED.months){                                                        // 지금 보고 있는 계산(시작 시점·금액을 바꿨으면 그 계산)의 구매·판매
@@ -727,7 +731,7 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
     g.strokeStyle=line; g.lineWidth=3; g.lineCap='round'; g.beginPath(); g.moveTo(tl,ty); g.lineTo(tl+tw,ty); g.stroke();
     g.strokeStyle=mut; g.beginPath(); g.moveTo(tl+tw*s0/tot,ty); g.lineTo(tl+tw*(e+1)/tot,ty); g.stroke(); g.lineCap='butt';
   }
-  cv._g={y:y,u:u,ma:ma,nMa:nMa,s0:s0,e:e,L:L,pw:pw,step:step,evB:evB,evS:evS};
+  cv._g={y:y,u:u,ma:ma,ma6:ma6,s0:s0,e:e,L:L,pw:pw,step:step,evB:evB,evS:evS};
   bindChart(cv);
 }
 

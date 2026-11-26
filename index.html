@@ -158,7 +158,7 @@ a{color:inherit}
   <div class="chartbox"><div class="chart">
     <div class="ch-h"><div class="ch-n" id="cn">&nbsp;</div><div class="ch-p" id="cp"></div></div>
     <canvas id="cv"></canvas>
-    <div class="ch-l"><span><i style="background:var(--ma)"></i><span id="ma-lg">월 10이평</span></span><span>월봉 3년 · 아래는 거래대금(≈월 거래량×종가)</span></div>
+    <div class="ch-l"><span><i style="background:var(--ma)"></i><span id="ma-lg">월 10이평</span></span><span id="ma-lg6" hidden><i style="background:#0ea5a4"></i>월 6이평(한국 판매 기준)</span><span>월봉 3년 · 아래는 거래대금(≈월 거래량×종가)</span></div>
   </div></div>
   <div class="list" id="L"><div class="msg">불러오는 중…</div></div>
   <section class="inf">
@@ -313,14 +313,15 @@ function drawChart() {
     return [x[0], o, Math.max(+x[2] || 0, o, c), Math.min(+x[3] || Infinity, o, c), c, +x[5] || 0];
   });
   // 차트의 이동평균선: 한국은 6이평(판매 기준), 미국은 10이평. 익절 2배 선은 어디서나 10이평 기준
-  var nMa = kr ? 6 : 10, avgN = function (n) { return d.map(function (x, i) { if (i < n - 1) return null; var t = 0; for (var k = i - n + 1; k <= i; k++) t += d[k][4]; return t / n; }); };
-  var ma = avgN(nMa), ma10a = avgN(10);
-  var lg = document.getElementById('ma-lg'); if (lg) lg.textContent = kr ? '월 6이평(한국 판매 기준)' + (S === '익절' ? ' · 점선 = 10이평의 2배' : '') : '월 10이평';
-  var N = Math.min(36, d.length), st = d.length - N, bars = d.slice(st), mas = ma.slice(st), mas10 = ma10a.slice(st);
+  var avgN = function (n) { return d.map(function (x, i) { if (i < n - 1) return null; var t = 0; for (var k = i - n + 1; k <= i; k++) t += d[k][4]; return t / n; }); };
+  var ma10a = avgN(10), ma6a = kr ? avgN(6) : null;                                  // 10이평은 항상(매수 돌파·익절 기준), 한국은 6이평(판매 기준)도 같이
+  var lg = document.getElementById('ma-lg'); if (lg) lg.textContent = kr ? '월 10이평(매수·익절)' + (S === '익절' ? ' · 점선 = 10이평의 2배' : '') : '월 10이평';
+  var lg6 = document.getElementById('ma-lg6'); if (lg6) lg6.hidden = !kr;
+  var N = Math.min(36, d.length), st = d.length - N, bars = d.slice(st), mas = ma10a.slice(st), mas10 = mas, mas6 = ma6a ? ma6a.slice(st) : null;
   var lo = Infinity, hi = -Infinity, vmax = 0;
   bars.forEach(function (x, i) {
     lo = Math.min(lo, x[3]); hi = Math.max(hi, x[2]); vmax = Math.max(vmax, x[5] * x[4]);      // 거래대금 ≈ 월 거래량 × 종가
-    if (mas[i] != null) { lo = Math.min(lo, mas[i]); hi = Math.max(hi, mas[i]); } if (S === '익절' && mas10[i] != null) hi = Math.max(hi, mas10[i] * 2);
+    if (mas[i] != null) { lo = Math.min(lo, mas[i]); hi = Math.max(hi, mas[i]); } if (mas6 && mas6[i] != null) { lo = Math.min(lo, mas6[i]); hi = Math.max(hi, mas6[i]); } if (S === '익절' && mas10[i] != null) hi = Math.max(hi, mas10[i] * 2);
   });
   var padR = 48, plotW = W - padR, pH = H * 0.72, vTop = pH + 14, vH = H - vTop - 14;
   var pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
@@ -364,13 +365,18 @@ function drawChart() {
     if (!started) { g.moveTo(xx, y(m)); started = true; } else g.lineTo(xx, y(m));
   });
   g.stroke();
+  if (mas6) {                                                                     // 한국: 판매 기준 6이평(청록)
+    g.strokeStyle = '#0ea5a4'; g.lineWidth = 1.8; g.beginPath(); var st6 = false;
+    mas6.forEach(function (m, i) { if (m == null) return; var xx = i * step + step / 2; if (!st6) { g.moveTo(xx, y(m)); st6 = true; } else g.lineTo(xx, y(m)); });
+    g.stroke();
+  }
   if (S === '익절') {                                                             // 익절 탭: 10이평의 2배 선(점선) — 종가가 이 선 위에 있다가 아래로 내려오면 익절 매도
     g.strokeStyle = '#7c3aed'; g.lineWidth = 1.5; g.setLineDash([5, 4]); g.beginPath(); started = false;
     mas10.forEach(function (m, i) { if (m == null) return; var xx = i * step + step / 2; if (!started) { g.moveTo(xx, y(m * 2)); started = true; } else g.lineTo(xx, y(m * 2)); });
     g.stroke(); g.setLineDash([]);
     var lastM = mas10[mas10.length - 1]; if (lastM != null) { g.fillStyle = '#7c3aed'; g.font = '10px -apple-system,sans-serif'; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillText('2배 선', plotW + 4, y(lastM * 2) - 2); }
   }
-  cv._g = { bars: bars, mas: mas, N: N, step: step, plotW: plotW, kr: kr, nMa: nMa };
+  cv._g = { bars: bars, mas: mas, mas6: mas6, N: N, step: step, plotW: plotW, kr: kr };
   bindChart(cv);
 }
 
@@ -394,7 +400,8 @@ function chartTip(cv, ev, i) {
     '<tr><td>시가</td><td>' + fm(x[1]) + '</td></tr><tr><td>고가</td><td>' + fm(x[2]) + '</td></tr><tr><td>저가</td><td>' + fm(x[3]) + '</td></tr><tr><td>종가</td><td><b>' + fm(x[4]) + '</b></td></tr>' +
     (prev ? '<tr><td>전월 대비</td><td>' + cc(x[4] / prev[4] - 1) + '</td></tr>' : '') +
     (x[5] > 0 ? '<tr><td>거래대금</td><td>≈ ' + bigNum(x[5] * x[4], !kr) + '</td></tr><tr><td>거래량</td><td>' + Math.round(x[5]).toLocaleString() + '주</td></tr>' : '') +
-    (m != null ? '<tr><td>' + G.nMa + '이평</td><td>' + fm(m) + ' (' + cc(x[4] / m - 1) + ')</td></tr>' : '') + '</table>';
+    (m != null ? '<tr><td>10이평</td><td>' + fm(m) + ' (' + cc(x[4] / m - 1) + ')</td></tr>' : '') +
+    (G.mas6 && G.mas6[i] != null ? '<tr><td>6이평</td><td>' + fm(G.mas6[i]) + ' (' + cc(x[4] / G.mas6[i] - 1) + ')</td></tr>' : '') + '</table>';
   t.style.display = 'block';
   var w = t.offsetWidth, h = t.offsetHeight, px0 = ev.clientX + 14, py0 = ev.clientY - h - 14;
   if (px0 + w > window.innerWidth - 8) px0 = ev.clientX - w - 14;
