@@ -1622,10 +1622,10 @@ if (process.env.STAGE14 !== '0') {
         if (o.subsample) tr0 = tr0.filter((r, i) => hash01(o.subsample.seed + '|' + i) < o.subsample.frac);
         if (o.recentDup) { const lo = (Y - o.recentDup) * 100; tr0 = tr0.concat(tr0.filter(r => r.ym > lo)); }
         const tr = tr0.map(r => ({ x: r.x, t: clipT(r.t) }));
-        let P = prep(tr, M.cols), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), M.lam);
+        let P = prep(tr, M.cols), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), M.lam * (o.lamMul || 1));
         if (o.topCols) {
           const idx = P.map((p, i) => [Math.abs(w[i + 1]), i]).sort((a, b) => b[0] - a[0]).slice(0, o.topCols).map(a => P[a[1]].j);
-          P = prep(tr, idx); w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), M.lam);
+          P = prep(tr, idx); w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), M.lam * (o.lamMul || 1));
         }
         te.forEach(r => { const a = out.get(r.ym) || []; a.push({ r, s: score(w, z(r, P)) }); out.set(r.ym, a); });
       });
