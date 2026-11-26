@@ -1236,6 +1236,29 @@ function build(c, which) {
     posts.push(() => post12('29-', '29 5번 후보 확인'));
   }
 
+  // ═════ 묶음 30: 29 후속 — (A) 판매 없이 "신규 매수만 쉼"(지수 둘 다 이평 아래 + 금리 상승)의 지수 이평 × 금리 기간 민감도·분해, (B) 한국6·미국10 불타기 강도 곡선·합치기 (3·5년 창·절반 되풀이는 post12가 같이 냄)
+  if (on(30)) {
+    const S = n => `30-${n}`;
+    const Z = (sec, name, extra) => { const cand = candOf(mBase); add(S(sec), '10이평 · ' + name, { cand, rule: rule10, o: { ...extra } }); add(S(sec), '한국6·미국10 · ' + name, { cand, rule: rule10, o: { exitMaFn: KR6, ...extra } }); };
+    const below = (key, k, n) => { const a = idxAt(key, k), m = idxMa(key, k, n); return a && m ? a < m : null; };
+    const rj = mo => (mo === 6 ? rateJ : chg('dgs10', mo));
+    const blk = (n, mo, mode) => (k) => { const s1 = below('sp', k, n) === true, s2 = below('ks', k, n) === true, r = rj(mo)(k) === true; return mode === 'any' ? ((s1 || s2) && r) : mode === 'idx' ? (s1 && s2) : mode === 'rate' ? r : (s1 && s2 && r); };
+    const add1 = (g, f) => ({ addFn: (h, k) => { if (h.added) return 0; if (h.last >= h.buyPx * (1 + g)) { h.added = true; return f; } return 0; } });
+    Z('기준', '기준', {});
+    // A 신규 매수 쉼만(판매 규칙은 그대로)
+    [8, 10, 12].forEach(n => [3, 6, 9].forEach(mo => Z('A 매수 쉼 민감도', `코스피·S&P500 둘 다 ${n}이평 아래 + 금리 ${mo}개월 상승이면 신규 매수만 쉼`, { buyBlock: blk(n, mo) })));
+    Z('A 매수 쉼 분해', '지수 둘 다 10이평 아래이기만 하면 신규 매수 쉼(금리 무시)', { buyBlock: blk(10, 6, 'idx') });
+    Z('A 매수 쉼 분해', '금리 6개월 상승이기만 하면 신규 매수 쉼(지수 무시)', { buyBlock: blk(10, 6, 'rate') });
+    Z('A 매수 쉼 분해', '지수 하나라도 10이평 아래 + 금리 6개월 상승이면 신규 매수 쉼', { buyBlock: blk(10, 6, 'any') });
+    // B 불타기 곡선(한국6·미국10에서 고원이었는지)
+    [0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.7, 1].forEach(g => Z('B 불타기 기준 곡선', `보유 종목이 +${Math.round(g * 100)}%가 되면 처음 산 금액의 1배 추가(1회)`, add1(g, 1)));
+    [0.25, 0.5, 0.75, 1.5, 2].forEach(f => Z('B 불타기 추가 비율 곡선', `보유 종목이 +30%가 되면 처음 산 금액의 ${f}배 추가(1회)`, add1(0.3, f)));
+    // C 합치기
+    Z('C 합치기', '신규 매수 쉼(10이평·6개월) + 불타기(+30%에 1배)', { buyBlock: blk(10, 6), ...add1(0.3, 1) });
+    Z('C 합치기', '신규 매수 쉼(10이평·6개월) + 불타기(+20%에 1배)', { buyBlock: blk(10, 6), ...add1(0.2, 1) });
+    posts.push(() => post12('30-', '30 매수 쉼·불타기 곡선'));
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 
