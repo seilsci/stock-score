@@ -27,7 +27,7 @@ var CFG = {
 };
 
 var HEAD = ['시장', '코드', '이름', '종류', '시총', '시총단위', '최근종가', '10이평',
-            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수', '확인', '익절', '판매이평'];   // 판매이평: 매도·유예 판단에 쓰는 이평(한국 6이평 · 미국 10이평)
+            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수', '확인', '익절', '판매이평'];   // 판매이평: 매도·유예 판단에 쓰는 이평(한국 6이평 · 미국 10이평). 갱신 시각은 S1:T1(R열은 판매이평이라 한 칸 띄움)
 
 /* ───────── 처음 한 번 실행 ───────── */
 function setup() {
@@ -547,7 +547,7 @@ function doGet(e) {
   ['한국', '미국'].forEach(function (n) {
     var sh = ss.getSheetByName(n);
     if (!sh || sh.getLastRow() < 2) return;
-    out.updated[n] = sh.getRange('S1').getValue();
+    out.updated[n] = sh.getRange('T1').getValue();
     var v = sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues();
     v.forEach(function (r) {
       var isSig = r[10] === '매수' || r[10] === '매도' || r[10] === '유예', cf = String(r[15] || ''), tpv = String(r[16] || '');
@@ -598,7 +598,7 @@ function writeRows_(name, rows) {
   if (fresh) {
     t = new Date();
     // 코드(005930)·기준일·갱신 시각이 숫자·날짜로 바뀌지 않게 텍스트로
-    ['B:D', 'F:F', 'K:L', 'N:N', 'Q:Q', 'R1:S1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
+    ['B:D', 'F:F', 'K:L', 'N:N', 'Q:Q', 'S1:T1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
     sh.setFrozenRows(1);
     tm.push('서식 ' + sec(t));
   }
@@ -612,7 +612,7 @@ function writeRows_(name, rows) {
     Sheets.Spreadsheets.Values.batchUpdate({
       valueInputOption: 'RAW',                   // 코드 '005930'이 숫자로 바뀌지 않게 입력 그대로
       data: [{ range: q + '!A1', majorDimension: 'ROWS', values: values },
-             { range: q + '!R1:S1', majorDimension: 'ROWS', values: [['갱신', stamp]] }]
+             { range: q + '!S1:T1', majorDimension: 'ROWS', values: [['갱신', stamp]] }]
     }, id);
     tm.push('API쓰기 ' + sec(t));
     done = true;
@@ -620,7 +620,7 @@ function writeRows_(name, rows) {
   if (!done) {
     t = new Date(); sh.clearContents(); tm.push('지우기 ' + sec(t));
     t = new Date(); sh.getRange(1, 1, values.length, HEAD.length).setValues(values); tm.push('쓰기 ' + sec(t));
-    t = new Date(); sh.getRange('R1:S1').setValues([['갱신', stamp]]); tm.push('갱신시각 ' + sec(t));
+    t = new Date(); sh.getRange('S1:T1').setValues([['갱신', stamp]]); tm.push('갱신시각 ' + sec(t));
   }
   t = new Date(); cacheClear_(); tm.push('캐시 ' + sec(t));   // 새 데이터가 들어왔으니 저장해 둔 응답을 지움
   return '(' + tm.join(', ') + ')';
