@@ -507,6 +507,57 @@ function build(c, which) {
     }
   }
 
+
+  // ═════ 묶음 17: 미국 공매도 거래량 — FINRA 일별 공매도 거래량(2h_short.js로 받음)에서 월 공매도 비율(공매도 거래량 ÷ 전체 거래량)을 만들어, 그 달 미국 종목 중 순위(백분위)로 후보를 거르거나 순서를 바꿈.
+  //   확인(구매 결정) 달 말까지의 값만 씀(미래 정보 없음). 한국 종목·자료 없는 종목은 '중립'(거르지 않음, 순위 0.5). 자료가 없으면 이 묶음은 기준과 똑같이 나옴.
+  if (on(17)) {
+    const S = n => `17-${n}`;
+    const r5 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6), rateName: '국채10년 6개월', exitMaN: 5 };
+    const m5 = mk({ ck: 's5' }, r5);
+    const normSym = y => String(y).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const SH = new Map();
+    const shMonth = k => {                                                       // 그 달(k) 종목별 공매도 비율. 거래량이 너무 적은 종목(월 10만 주 미만·10일 미만)은 뺌
+      if (SH.has(k)) return SH.get(k);
+      let v = null;
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(DATA, 'short', ymOf(k) + '.json'), 'utf8')), m = new Map(), arr = [];
+        for (const [sym, a] of Object.entries(j.d || {})) if (a[1] >= 1e5 && a[2] >= 10) { const r = a[0] / a[1]; m.set(normSym(sym), r); arr.push(r); }
+        arr.sort((x, y) => x - y); if (arr.length > 200) v = { m, arr };
+      } catch (e) {}
+      SH.set(k, v); return v;
+    };
+    const shRatio = (y, k) => { if (isKR(y)) return null; const v = shMonth(k); const r = v && v.m.get(normSym(y)); return r == null ? null : r; };
+    const shPct = (y, k) => { const r = shRatio(y, k); if (r == null) return null; const a = shMonth(k).arr; let lo = 0, hi = a.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (a[mid] < r) lo = mid + 1; else hi = mid; } return lo / a.length; };
+    const shChg = (y, k) => { const a = shPct(y, k); if (a == null) return null; let t = 0, n = 0; for (let i = 1; i <= 3; i++) { const b = shPct(y, k - i); if (b != null) { t += b; n++; } } return n ? a - t / n : null; };
+    let have = 0, total = 0; mBase.forEach(a => a.forEach(e => { if (!isKR(e.r.y)) { total++; if (shPct(e.r.y, e.cj) != null) have++; } }));
+    const keep = (m, f) => wrap(m, a => a.filter(e => { const p = shPct(e.r.y, e.cj); return p == null || f(p, e); }));       // 자료 없는 종목은 거르지 않음
+    const rankBy = (m, f, dir) => wrap(m, a => { const rows = a.map(e => { const p = shPct(e.r.y, e.cj); return [e, p == null ? 0.5 : p]; }); rows.sort((x, y) => dir * (x[1] - y[1])); return rows.map(x => x[0]); });
+    const both = (sec, name, mk10, mk5) => { add(S(sec), '10이평 · ' + name, { cand: mk10, rule: rule10 }); add(S(sec), '5이평 · ' + name, { cand: mk5, rule: r5, o: { exitMaN: 5 } }); };
+    add(S('기준'), '10이평(지금) 기준', { cand: candOf(mBase), rule: rule10 });
+    add(S('기준'), '5이평 기준', { cand: candOf(m5), rule: r5, o: { exitMaN: 5 } });
+    [0.1, 0.2, 0.3].forEach(q => both('A 공매도 비율 높은 종목 제외', `그 달 미국 종목 중 공매도 비율 상위 ${q * 100}% 제외`, keep(mBase, p => p < 1 - q), keep(m5, p => p < 1 - q)));
+    [0.5, 0.7].forEach(q => both('B 공매도 비율 낮은 종목만', `공매도 비율 하위 ${q * 100}% 안인 미국 종목만(한국·자료 없음은 그대로)`, keep(mBase, p => p <= q), keep(m5, p => p <= q)));
+    both('C 대조', '공매도 비율 상위 20%인 미국 종목만(나머지 미국은 제외)', keep(mBase, p => p >= 0.8), keep(m5, p => p >= 0.8));
+    [0.3, 0.2].forEach(t => both('D 공매도 증가', `공매도 비율 순위가 최근 3개월 평균보다 ${t} 넘게 올라간 종목 제외`, wrap(mBase, a => a.filter(e => { const c = shChg(e.r.y, e.cj); return c == null || c < t; })), wrap(m5, a => a.filter(e => { const c = shChg(e.r.y, e.cj); return c == null || c < t; }))));
+    both('E 공매도 감소', '공매도 비율 순위가 최근 3개월 평균보다 0.2 넘게 내려간 종목만(미국, 한국·자료 없음은 그대로)', wrap(mBase, a => a.filter(e => { const c = shChg(e.r.y, e.cj); return c == null || c <= -0.2; })), wrap(m5, a => a.filter(e => { const c = shChg(e.r.y, e.cj); return c == null || c <= -0.2; })));
+    both('F 순위', '공매도 비율 낮은 순(자료 없음은 가운데)', rankBy(mBase, 0, 1), rankBy(m5, 0, 1));
+    both('F 순위', '공매도 비율 높은 순(대조)', rankBy(mBase, 0, -1), rankBy(m5, 0, -1));
+    const mix = m => wrap(m, a => { const rk = f => { const r = new Map(), s2 = [...a].sort((x, y) => f(y) - f(x)); s2.forEach((e, i) => r.set(e, i)); return r; }; const r1 = rk(e => e.s), r2 = rk(e => -(shPct(e.r.y, e.cj) ?? 0.5)); return [...a].sort((x, y) => (r1.get(x) + r2.get(x)) - (r1.get(y) + r2.get(y))); });
+    both('G 점수와 섞기', '점수 순위와 공매도 낮은 순위의 평균', mix(mBase), mix(m5));
+    [0.5, 0.6].forEach(t => both('H 절대 비율', `월 공매도 비율이 ${t * 100}% 넘는 미국 종목 제외`, wrap(mBase, a => a.filter(e => { const r = shRatio(e.r.y, e.cj); return r == null || r <= t; })), wrap(m5, a => a.filter(e => { const r = shRatio(e.r.y, e.cj); return r == null || r <= t; }))));
+    posts.push(() => { post12('17-', '17 공매도'); post17(); });
+    function post17() {                                                       // 실제 거래를 공매도 비율 순위 구간별로 나눠 봄(신호 달 = 구매 전달 말)
+      log(''); log(`## 17 공매도 — 자료 연결: 미국 후보 ${total}건 중 공매도 값이 있는 것 ${have}건(${total ? (have / total * 100).toFixed(0) : 0}%)` + (have === 0 ? ' → 공매도 자료가 없음: node 2h_short.js 먼저 실행' : ''));
+      log('## 17 공매도 — 실제 거래를 구매 전달 말의 공매도 비율 순위(미국 종목 중 백분위)로 나눈 성과(전체 기간)');
+      log('방식                       구간                    거래 수   이긴 거래   평균 수익   중앙값');
+      V.filter(v => String(v.sec).startsWith('17-기준')).forEach(v => safe('17 구간', () => {
+        const sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...simOpt(v.rule, v.o || {}), cand: v.cand, log: true }, DEP), by = { '없음(한국·자료 없음)': [], '상위 20%': [], '중상(50~80%)': [], '중하(20~50%)': [], '하위 20%': [] };
+        (sm.trades || []).filter(t => t.ret != null && t.buyYm).forEach(t => { const p = shPct(t.y, mi(t.buyYm) - 1); (p == null ? by['없음(한국·자료 없음)'] : p >= 0.8 ? by['상위 20%'] : p >= 0.5 ? by['중상(50~80%)'] : p >= 0.2 ? by['중하(20~50%)'] : by['하위 20%']).push(t.ret); });
+        Object.entries(by).forEach(([nm, a]) => log(`${v.name.slice(0, 22).padEnd(22)} ${nm.padEnd(22)} ${String(a.length).padStart(6)}   ${a.length ? (a.filter(x => x > 0).length / a.length * 100).toFixed(0).padStart(5) + '%' : '    -'}   ${a.length ? pc(mean(a)).padStart(8) : '       -'}   ${a.length ? pc(pctl(a, 0.5)).padStart(7) : '      -'}`));
+      }));
+    }
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 
