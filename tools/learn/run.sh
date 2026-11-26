@@ -12,6 +12,8 @@ command -v node >/dev/null || { echo "node가 없어요. https://nodejs.org 에�
 #   예전 방식: 거래대금 상위 → UNIVERSE=turnover LIQ_KR=500 LIQ_US=500 tools/learn/run.sh   /   현재 시총 목록 → WIDE=0 UNIVERSE= LIQ_KR=0 LIQ_US=0 tools/learn/run.sh
 export WIDE=${WIDE-1} UNIVERSE=${UNIVERSE-cap} LIQ_KR=${LIQ_KR-0} LIQ_US=${LIQ_US-0}
 export SCORE_MODEL=${SCORE_MODEL:-ridge}    # 점수 모델: ridge(옛 선형, 기본) 또는 gbm(트리: 보유 제외 적용 뒤 이득이 사라져 채택 보류). 매매일지·장부 점수도 이것을 씀
+# 실행한 곳 표시: PC(Windows Git Bash)와 클라우드는 속도가 달라 실행 시간 기록·예상을 따로 관리(RUN_WHERE=pc|cloud로 바꿀 수 있음)
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) WHERE=${RUN_WHERE:-pc};; *) WHERE=${RUN_WHERE:-cloud};; esac
 D=${DATA:-data}; mkdir -p "$D"
 export T0=$(date +%s)
 LOG=$D/run.log; : > $LOG
@@ -20,11 +22,14 @@ done_(){ echo; say "■ $1 끝 · 지금 $(date '+%H:%M') · 시작 후 $(( ($(d
 LAST=$(date +%s); : > $D/steptimes.new
 mark(){ local n=$(date +%s); echo "$1 $((n-LAST))" >> $D/steptimes.new; LAST=$n; }
 say "===== 학습 시작 $(date '+%Y-%m-%d %H:%M') ====="
+RT=$D/runtimes.txt; touch "$RT"
+PREV=$(grep " learn@$WHERE " "$RT" | tail -1 | sed -n 's/.*total=\([0-9]*\).*/\1/p')      # 지난 PC 실행의 실제 소요 시간(초) — 같은 PC에서 월봉이 이미 있을 때가 비교 기준
+[ -n "$PREV" ] && say "지난 $WHERE 실행 실측: $((PREV/60))분 → 이번 100% 예상 $(date -d @$((T0+PREV)) '+%H:%M') (월봉을 새로 받는 양에 따라 달라짐, 진행 중에는 실측으로 계속 고침)" || say "($WHERE 실행 시간 기록이 아직 없어요. 이번 실행 시간을 기록해 다음부터 예상에 씁니다)"
 
 PFROM=0 PTO=1 node 1_lists.js | tee -a $LOG
 done_ "종목 목록 (1/8)"
 eval "$(node plan.js)"      # 진행률 구간 B1~B7 (이미 받은 월봉은 거의 0%, 지난 실행의 단계별 실측 시간 반영)
-LAST=$(date +%s)
+LAST=$(date +%s); TDL=$LAST
 [ -d "$D/raw" ] && { say "옛 월봉(3개월 간격 오류) 삭제"; rm -rf "$D/raw"; }
 for k in 1 2 3; do
   PFROM=$B1 PTO=$B2 node 2_download.js | tee $D/dl.log || true; cat $D/dl.log >> $LOG
@@ -51,6 +56,7 @@ done_ "월 100만원 적립 시뮬레이션 (7/8)"; mark backtest
 node 8b_bench.js > /dev/null 2>&1 || echo "지수 비교 자료(8b_bench.js)는 건너뜀"      # → data/bench.json (코스피·S&P500·나스닥100 월봉, 매매일지 비교용)
 node 10_traits.js > /dev/null 2>&1 || echo "이긴·진 종목 공통점 분석(10_traits.js)은 건너뜀"      # → data/traits.txt (가격 지표 + 미국 재무 지표)
 mv $D/steptimes.new $D/steptimes.txt      # 다음 실행의 진행률 계산에 씀
+echo "$(date '+%Y-%m-%d %H:%M') learn@$WHERE total=$(( $(date +%s)-T0 )) $(tr '\n' ' ' < $D/steptimes.txt | sed 's/ *$//; s/ \([0-9]\)/=\1/g') download=$(( ${TDL:-0} > 0 ? $(date +%s)-TDL : 0 )) limit=${LIMIT:-0}" >> "$RT"; tail -40 "$RT" > "$RT.tmp" && mv "$RT.tmp" "$RT"      # 실행 시간 기록(다음 예상에 씀)
 echo; cat $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt; cat $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt >> $LOG
 echo; say "100% 완료 · 보고서: tools/learn/data/report.txt"
 
@@ -58,7 +64,7 @@ echo; say "100% 완료 · 보고서: tools/learn/data/report.txt"
 if [ -n "$LIMIT" ]; then say "시험 실행(LIMIT)이라 올리지 않아요."; exit 0; fi
 if [ $YES = 0 ]; then A=n; else A=y; fi        # 묻지 않음: 기본은 올림(--no-push면 안 올림)
 if [ "$A" = "y" ] || [ "$A" = "Y" ]; then
-  mkdir -p result; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; [ "$SCORE_MODEL" = gbm ] && [ -f $D/gbm.json ] && cp $D/gbm.json result/; for f in trades.json bars.json ledger.json traits.txt bench.json; do [ -f $D/$f ] && cp $D/$f result/ || true; done
+  mkdir -p result; [ -f $D/runtimes.txt ] && cp $D/runtimes.txt result/; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; [ "$SCORE_MODEL" = gbm ] && [ -f $D/gbm.json ] && cp $D/gbm.json result/; for f in trades.json bars.json ledger.json traits.txt bench.json; do [ -f $D/$f ] && cp $D/$f result/ || true; done
   git -c core.safecrlf=false add result
   git commit -q -m "학습 결과: 월봉 10이평 매수 신호 가중치 ($(date '+%Y-%m-%d'))" && git pull --rebase --autostash -q && git push -q && say "■ 올림 끝 (8/8). Claude에게 '올렸어'라고 알려 주세요."
 else
