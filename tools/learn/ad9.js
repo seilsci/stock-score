@@ -572,7 +572,15 @@ function build(c, which) {
     const mix = m => wrap(m, a => { const rk = f => { const r = new Map(), s2 = [...a].sort((x, y) => f(y) - f(x)); s2.forEach((e, i) => r.set(e, i)); return r; }; const r1 = rk(e => e.s), r2 = rk(e => -(shPct(e.r.y, e.cj) ?? 0.5)); return [...a].sort((x, y) => (r1.get(x) + r2.get(x)) - (r1.get(y) + r2.get(y))); });
     both('G 점수와 섞기', '점수 순위와 공매도 낮은 순위의 평균', mix(mBase), mix(m5));
     [0.5, 0.6].forEach(t => both('H 절대 비율', `월 공매도 비율이 ${t * 100}% 넘는 미국 종목 제외`, wrap(mBase, a => a.filter(e => { const r = shRatio(e.r.y, e.cj); return r == null || r <= t; })), wrap(m5, a => a.filter(e => { const r = shRatio(e.r.y, e.cj); return r == null || r <= t; }))));
-    posts.push(() => { post12('17-', '17 공매도'); post17(); });
+    posts.push(() => { post12('17-', '17 공매도'); post17(); post17b(); });
+    function post17b() {                                                      // 공매도 자료가 있는 해(2019~)만 따로: 같은 규칙 기준 대비 연평균
+      const ys = YEARS_ALL.filter(y => y >= 2019); if (!ys.length) return;
+      log(''); log(`## 17 공매도 자료가 있는 ${ys[0]}~${ys[ys.length - 1]}만 본 연평균(자료는 2018-08부터) — 같은 규칙 기준 대비`);
+      const base = { '10이평': V.find(v => v.name === '10이평(지금) 기준'), '5이평': V.find(v => v.name === '5이평 기준') };
+      const b = Object.fromEntries(Object.entries(base).map(([k2, v]) => [k2, v && v.full && v.full.yearly ? cagrOver(v.full.yearly, ys) : null]));
+      log(`기준: 10이평 ${b['10이평'] == null ? '-' : pc(b['10이평'])} · 5이평 ${b['5이평'] == null ? '-' : pc(b['5이평'])}`);
+      V.filter(v => String(v.sec).startsWith('17-') && !String(v.sec).startsWith('17-기준')).forEach(v => { if (!v.full || !v.full.yearly) return; const k2 = v.name.startsWith('5이평') ? '5이평' : '10이평', c0 = cagrOver(v.full.yearly, ys); log(`${v.name.slice(0, 56).padEnd(56)} ${pc(c0).padStart(7)}  (기준 대비 ${b[k2] == null ? '-' : (c0 - b[k2] >= 0 ? '+' : '') + ((c0 - b[k2]) * 100).toFixed(1) + '%p'})`); });
+    }
     function post17() {                                                       // 실제 거래를 공매도 비율 순위 구간별로 나눠 봄(신호 달 = 구매 전달 말)
       safe('17 연결 진단', () => {                                              // 어디가 비었나: 연도별로 공매도 자료가 있는 달 수 / 그 해 미국 후보 중 값이 연결된 비율(달은 있는데 비율이 낮으면 종목 이름이 안 맞는 것, 달이 비면 받기가 덜 된 것)
         const byY = {}; mBase.forEach(arr => arr.forEach(e => { if (isKR(e.r.y)) return; const Y = Math.floor(e.r.ym / 100), o = byY[Y] || (byY[Y] = { n: 0, h: 0 }); o.n++; if (shPct(e.r.y, e.cj) != null) o.h++; }));
