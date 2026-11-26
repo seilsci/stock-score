@@ -1303,6 +1303,25 @@ function build(c, which) {
     }
   }
 
+  // ═════ 묶음 32: 양봉만 사기 — 구매 직전 월봉(확인 달·돌파 달)이 양봉(종가>시가)인 종목만 후보로 (10이평 · 한국6·미국10 각각)
+  if (on(32)) {
+    const S = n => `32-${n}`;
+    const X = (sec, name, q, extra = {}) => {
+      const ck = 'z32' + sec + name, m = q && Object.keys(q).length ? mk({ ck, ...q }) : mBase, cand = candOf(m);
+      add(S(sec), '10이평 · ' + name, { cand, rule: rule10, o: { ...extra } }); add(S(sec), '한국6·미국10 · ' + name, { cand, rule: rule10, o: { exitMaFn: KR6, ...extra } });
+    };
+    const body = (o, k) => { const a = o.op.get(k), c = o.m.get(k); return a > 0 && c > 0 ? c / a - 1 : null; };          // 월봉 몸통(종가÷시가−1)
+    X('기준', '기준', {});
+    X('A 확인 달 양봉', '확인 달 월봉이 양봉(종가>시가)', { ck: 'b1', cond: ({ o, j }) => { const b = body(o, j); return b != null && b > 0; } });
+    [0.03, 0.05, 0.1].forEach(x => X('A 확인 달 양봉', `확인 달 월봉이 몸통 +${x * 100}% 이상 양봉`, { ck: 'b2' + x, cond: ({ o, j }) => { const b = body(o, j); return b != null && b >= x; } }));
+    X('A 확인 달 양봉', '확인 달 월봉이 양봉이고 종가가 봉 안 위쪽 70% 이상(윗꼬리 짧음)', { ck: 'b3', cond: ({ o, j }) => { const b = body(o, j), h = o.hi.get(j), l = o.lo.get(j), c = o.m.get(j); return b != null && b > 0 && h > l && (c - l) / (h - l) >= 0.7; } });
+    X('B 돌파 달 양봉', '돌파 달 월봉이 양봉', { ck: 'b4', sig: (r, o, t0) => { const b = body(o, t0); return b != null && b > 0; } });
+    X('B 돌파 달 양봉', '돌파 달·확인 달 월봉이 모두 양봉', { ck: 'b5', sig: (r, o, t0) => { const b = body(o, t0); return b != null && b > 0; }, cond: ({ o, j }) => { const b = body(o, j); return b != null && b > 0; } });
+    X('C 연속 양봉', '확인 달과 그 전달 월봉이 모두 양봉(2개월 연속)', { ck: 'b6', cond: ({ o, j }) => { const b = body(o, j), b1 = body(o, j - 1); return b != null && b > 0 && b1 != null && b1 > 0; } });
+    X('D 대조', '확인 달 월봉이 음봉인 종목만(대조)', { ck: 'b7', cond: ({ o, j }) => { const b = body(o, j); return b != null && b <= 0; } });
+    posts.push(() => post12('32-', '32 양봉만 사기'));
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 
