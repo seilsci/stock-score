@@ -790,6 +790,44 @@ function build(c, which) {
     }
   }
 
+
+  // ═════ 묶음 21: 바벨 구성 — 점수는 손실을 피하는 일은 하지만 대박(변동성 크고 봉이 긴 종목)은 못 찾으므로, 4종목 중 일부 칸을 '대박 예측' 순으로 채움(나머지는 점수 순). 해마다 그 전 자료로만 학습한 '+50% 이상 오를 가능성' 점수 등을 씀.
+  //   g칸을 대박 칸으로: 점수 순 (4−g)종목 + 대박 순 g종목. 대조로 같은 칸을 무작위로 채운 것(분산 효과만 보려고)과 5종목(점수 4 + 대박 1)도 시험.
+  if (on(21)) {
+    const S = n => `21-${n}`;
+    const r5 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6), rateName: '국채10년 6개월', exitMaN: 5 };
+    const m5 = mk({ ck: 'bb5' }, r5);
+    const indModel = f => { const m2 = rescore({ trainFn: Y => trainFiltered(null)(Y).map(r => ({ ...r, t: f(r.t) ? 1 : 0 })) }), mp = new Map(); m2.forEach(a => a.forEach(x => mp.set(x.r.y + '|' + x.r.ym, x.s))); return mp; };
+    const GAIN50 = indModel(t => t > Math.log(1.5)), GAIN100 = indModel(t => t > Math.log(2)), LOSS10 = indModel(t => t < Math.log(0.9));
+    const key = e => e.r.y + '|' + e.sym, VOL = fi('volat12'), RNG = fi('range');
+    // 점수 순 (4−g)종목 + (남은 후보 중 rankFn이 큰 순) g종목 + 나머지(점수 순). pool: 점수 상위 몇 %의 후보 안에서만 대박 칸을 고름, veto: 손실 위험 상위 몇 %는 대박 칸에서도 뺌
+    const barbell = (m, g, rankFn, o = {}) => wrap(m, a0 => {
+      const a = [...a0].sort((x, y) => y.s - x.s); if (a.length < 2) return a;
+      const k = Math.max(0, 4 - g), first = a.slice(0, k), fs2 = new Set(first);
+      let pool = a.filter(e => !fs2.has(e));
+      if (o.pool) { const lim = Math.ceil(a.length * o.pool); pool = pool.filter(e => a.indexOf(e) < lim); }
+      if (o.veto && pool.length >= 4) { const sc = pool.map(e => LOSS10.get(key(e)) ?? 0), idx = pool.map((e, i) => i).sort((i, j) => sc[j] - sc[i]), drop = new Set(idx.slice(0, Math.floor(pool.length * o.veto))); pool = pool.filter((e, i) => !drop.has(i)); }
+      const big = [...pool].sort((x, y) => rankFn(y) - rankFn(x)).slice(0, g), chosen = new Set([...first, ...big]);
+      return [...first, ...big, ...a.filter(e => !chosen.has(e))];
+    });
+    const gainR = e => GAIN50.get(key(e)) ?? 0, gain100R = e => GAIN100.get(key(e)) ?? 0, volR = e => e.r.x[VOL] ?? 0, rngR = e => e.r.x[RNG] ?? 0, rndR = e => hash01('bb|' + e.r.y + '|' + e.sym);
+    [[mBase, rule10, {}, '10이평'], [m5, r5, { exitMaN: 5 }, '5이평']].forEach(([m, rule, o0, nm]) => {
+      const A = (sec, name, cand, extra = {}) => add(S(sec), `${nm} · ${name}`, { cand, rule, o: { ...o0, ...extra } });
+      A('기준', '점수 순 4종목(지금)', candOf(m));
+      A('A 대박 칸 1개', '점수 3 + 대박(+50%↑ 가능성) 1', barbell(m, 1, gainR));
+      A('A 대박 칸 1개', '점수 3 + 대박(+100%↑ 가능성) 1', barbell(m, 1, gain100R));
+      A('A 대박 칸 1개', '점수 3 + 변동성(12개월) 큰 순 1', barbell(m, 1, volR));
+      A('A 대박 칸 1개', '점수 3 + 봉 길이(range) 큰 순 1', barbell(m, 1, rngR));
+      A('B 대박 칸 조건', '점수 3 + 대박 1(점수 상위 50% 안에서만 고름)', barbell(m, 1, gainR, { pool: 0.5 }));
+      A('B 대박 칸 조건', '점수 3 + 대박 1(손실 위험 상위 30%는 뺌)', barbell(m, 1, gainR, { veto: 0.3 }));
+      A('C 대박 칸 2개', '점수 2 + 대박 2', barbell(m, 2, gainR));
+      A('D 대조', '점수 3 + 무작위 1(대박 효과가 아니라 분산 효과인지)', barbell(m, 1, rndR));
+      A('D 대조', '점수 2 + 무작위 2', barbell(m, 2, rndR));
+      A('E 5종목', '점수 4 + 대박 1 (5종목)', barbell(m, 1, gainR), { nFn: () => 5 });
+    });
+    posts.push(() => post12('21-', '21 바벨 구성'));
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 
