@@ -291,6 +291,39 @@ function build(c, which) {
     posts.push(() => post11());
   }
 
+  // ═════ 묶음 12: 판매 기준 이평 파고들기 — PC 결과에서 "판매 기준을 5이평으로"(③)가 크게 좋아져서 길이·유예·익절·비용·거래 횟수·해마다 일관성을 같이 봄
+  if (on(12)) {
+    const S = n => `12-${n}`;
+    const Cx = f => { const x = JSON.parse(JSON.stringify(C1)); f(x); return x; };
+    const dd20 = { exitFn: h => (h.last <= h.peak * 0.8 ? 'ddstop' : null) };
+    const spCash = { cashRetFn: k => { const a = idxAt('sp', k), b = idxAt('sp', k - 1); return a && b ? (a * fx(k)) / (b * fx(k - 1)) - 1 : 0; } };
+    const up2 = ({ o, j }) => o.m.get(j) > o.m.get(j - 1);
+    // 판매 기준 이평 N · 유예 g달 · 금리 판단 rt · 익절 tp(0=없음) · 이탈 완충 buf — 후보 풀의 가상 포지션도 같은 규칙(rule)으로 팔리게 함
+    const mkRule = (N, g, rt, tp, buf) => ({ tp, grace: g, rate: rt, ...(rt ? { rateFn: chg('dgs10', 6) } : {}), rateName: rt ? '국채10년 6개월' : '금리 없음', exitMaN: N, ...(buf ? { exitBuf: buf } : {}) });
+    const addM = (sec, name, N, g, rt, tp, buf, extra = {}, q = {}) => {
+      const rule = mkRule(N, g, rt, tp, buf), o = { exitMaN: N, ...(buf ? { exitBuf: buf } : {}), ...(extra.o || {}) };
+      const m = mk({ ck: `m${N}g${g}r${rt ? 1 : 0}t${tp}b${buf || 0}${q.ck || ''}`, ...q }, rule);
+      add(S(sec), name, { cand: candOf(m), rule, ...extra, o });
+    };
+    [3, 4, 5, 6, 7, 8, 9, 12, 15].forEach(N => addM('A 판매 기준 이평 길이(유예 2달+금리, 익절 2배)', `판매 기준 ${N}이평`, N, 2, true, 2));
+    [[1, '즉시'], [2, '유예 2달(지금)'], [3, '유예 3달'], [4, '유예 4달']].forEach(([g, nm]) => addM('B 5이평 × 유예', `5이평 · ${nm}+금리`, 5, g, true, 2));
+    addM('B 5이평 × 유예', '5이평 · 유예 2달(금리 판단 없음)', 5, 2, false, 2);
+    [[0, '익절 없음'], [3, '익절 3배']].forEach(([tp, nm]) => addM('C 5이평 × 익절', `5이평 · 유예 2달+금리 · ${nm}`, 5, 2, true, tp));
+    [2, 3, 5].forEach(m => addM('D 5이평 × 비용', `5이평 · 수수료·환전 ${m}배`, 5, 2, true, 2, 0, { C: Cx(x => { x.us.commission *= m; x.us.fx_spread *= m; x.kr.commission *= m; }) }));
+    addM('E 5이평 × 이탈 완충', '5이평 × 0.97 아래로 내려와야 이탈', 5, 2, true, 2, 0.03);
+    addM('F 5이평 × 다른 변경', '5이평 + 보유 고점 −20% 판매', 5, 2, true, 2, 0, { o: dd20 });
+    addM('F 5이평 × 다른 변경', '5이평 + 남는 현금 S&P500', 5, 2, true, 2, 0, { o: spCash });
+    addM('F 5이평 × 다른 변경', '5이평 + 확인 때까지 2개월 연속 상승(①)', 5, 2, true, 2, 0, {}, { cond: up2, ck: 'u2' });
+    addM('F 5이평 × 다른 변경', '5이평 + ①+고점 −20% + 남는 현금 S&P500', 5, 2, true, 2, 0, { o: { ...dd20, ...spCash } }, { cond: up2, ck: 'u2' });
+    // 이익 난 종목만 5이평으로(손실 종목은 10이평) / 손실 종목만 5이평으로 — 어디서 이득이 나는지
+    { const rule = mkRule(10, 2, true, 2);
+      add(S('G 5이평을 쓰는 종목'), '이익 난 종목만 5이평 판매(손실 종목은 10이평)', { cand: candOf(mBase), rule, o: { exitMaFn: (h, k) => (h.last >= h.buyPx ? maAtN(h.px, k, 5) : ma10(h.px, k)) } });
+      add(S('G 5이평을 쓰는 종목'), '손실 난 종목만 5이평 판매(이익 종목은 10이평)', { cand: candOf(mBase), rule, o: { exitMaFn: (h, k) => (h.last < h.buyPx ? maAtN(h.px, k, 5) : ma10(h.px, k)) } });
+      add(S('G 5이평을 쓰는 종목'), '미국 종목만 5이평 판매(한국은 10이평)', { cand: candOf(mBase), rule, o: { exitMaFn: (h, k) => (!isKR(h.y) ? maAtN(h.px, k, 5) : ma10(h.px, k)) } });
+      add(S('G 5이평을 쓰는 종목'), '한국 종목만 5이평 판매(미국은 10이평)', { cand: candOf(mBase), rule, o: { exitMaFn: (h, k) => (isKR(h.y) ? maAtN(h.px, k, 5) : ma10(h.px, k)) } }); }
+    posts.push(() => post12());
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 
@@ -301,6 +334,30 @@ function build(c, which) {
     const seg = (v, a, b) => pc(cagrOver(v.full.yearly, YEARS_ALL.filter(y => y >= a && y <= b)));
     V.forEach(v => { if (!v.full || !v.full.yearly) return; const w = yrs.filter(y => (v.full.yearly[y] ?? 0) > (base.full.yearly[y] ?? 0)).length;
       log(`${v.name.slice(0, 50).padEnd(50)} ${String(v === base ? '-' : w + '/' + n).padStart(7)}  ${seg(v, 2012, 2016).padStart(8)}  ${seg(v, 2017, 2021).padStart(8)}  ${seg(v, 2022, 2026).padStart(8)}  ${pc(v.full.cagr).padStart(7)}  ${pc(v.full.mdd).padStart(7)}`); });
+  }
+
+
+  function post12() {                                                          // 12 묶음: 거래 통계(횟수·보유 기간·승률) · 해마다 이긴 해 · 3구간 · 3·5년 창 분포
+    const mine = V.filter((v, i) => i === 0 || String(v.sec).startsWith('12-')), base = V[0], yrs = YEARS_ALL.filter(y => y < 2026), n = yrs.length;
+    const runLog = v => simulate(ym => v.cand(ym).slice(0, 4), 4, v.C || C1, { ...simOpt(v.rule, v.o || {}), cand: v.cand, log: true }, v.dep != null ? v.dep : DEP);
+    log(''); log('## 12 판매 기준 이평 파고들기 — 거래 통계 (전체 기간, 월 100만원)');
+    log('방식                                                       거래 수  평균 보유(월)  이긴 거래  평균 수익  중앙값    연평균');
+    const stats = [];
+    mine.forEach(v => { safe('12 통계', () => {
+      const sm = runLog(v), tr = (sm.trades || []).filter(t => t.ret != null && t.buyYm && t.sellYm);
+      const hold = tr.map(t => mi(t.sellYm) - mi(t.buyYm)), rets = tr.map(t => t.ret), arr = sm.rets.filter(x => !x.partial).map(x => x.r);
+      stats.push({ v, arr });
+      log(`${v.name.slice(0, 50).padEnd(50)} ${String(tr.length).padStart(7)}  ${mean(hold).toFixed(1).padStart(11)}  ${(rets.filter(x => x > 0).length / rets.length * 100).toFixed(0).padStart(7)}%  ${pc(mean(rets)).padStart(8)}  ${pc(pctl(rets, 0.5)).padStart(7)}  ${pc(cagrOf(arr)).padStart(7)}`);
+    }); });
+    log(''); log(`## 12 해마다 기준(A)보다 높았던 해 수(${yrs[0]}~${yrs[n - 1]} ${n}년) · 3구간 연평균`);
+    log('방식                                                         이긴 해   2012~16   2017~21   2022~26   전체    낙폭');
+    const seg = (v, a, b) => pc(cagrOver(v.full.yearly, YEARS_ALL.filter(y => y >= a && y <= b)));
+    mine.forEach(v => { if (!v.full || !v.full.yearly) return; const w = yrs.filter(y => (v.full.yearly[y] ?? 0) > (base.full.yearly[y] ?? 0)).length;
+      log(`${v.name.slice(0, 50).padEnd(50)} ${String(v === base ? '-' : w + '/' + n).padStart(7)}  ${seg(v, 2012, 2016).padStart(8)}  ${seg(v, 2017, 2021).padStart(8)}  ${seg(v, 2022, 2026).padStart(8)}  ${pc(v.full.cagr).padStart(7)}  ${pc(v.full.mdd).padStart(7)}`); });
+    log(''); log('## 12 어느 달에 시작해도? — 3·5년 창 연평균(최소 · 10% · 중앙, 월 수익률 창 기준)');
+    stats.filter(x => x.v === base || /^판매 기준 (3|5|7|9)이평|^5이평 · 유예 2달\+금리$|^5이평 \+ 남는 현금/.test(x.v.name) || x.v.name.startsWith('5이평 · 유예 2달+금리')).slice(0, 8).forEach(({ v, arr }) => {
+      [36, 60].forEach(L => { const a = []; for (let i = 0; i + L <= arr.length; i++) a.push(cagrOf(arr.slice(i, i + L))); if (a.length) log(`${v.name.slice(0, 42).padEnd(42)} ${L / 12}년 창 ${a.length}개: 최소 ${pc(Math.min(...a))} · 10% ${pc(pctl(a, 0.1))} · 중앙 ${pc(pctl(a, 0.5))} · 0% 미만 ${(a.filter(x => x < 0).length / a.length * 100).toFixed(0)}%`); });
+    });
   }
 
   // ─────────────── 묶음 9·2 보고용 도구
