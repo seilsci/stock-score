@@ -278,7 +278,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     // opt.fill: 점수 순위대로 후보(opt.cand)를 보며 1주도 못 사는 종목은 건너뛰고 다음 순위를 산다. 종목 수가 N에 못 미치면 있는 종목끼리 현금을 나눔
     const fill = !!(opt.fill && opt.cand), list = fill ? opt.cand(ymOf(sigK)) : picks;
     if (list.length) {
-      const NN = opt.nFn ? opt.nFn(ymOf(sigK), list) : (N || picks.length);
+      const NN = opt.nFn ? opt.nFn(ymOf(sigK), list, stNow()) : (N || picks.length);
       const per0 = cash / NN;
       let slots = NN;
       const pickedCo = new Set();                           // 이번 구매에서 이미 고른 회사(opt.oneCo)
@@ -341,23 +341,26 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     }
   };
   const doBuys = (sigK, k, priceAt) => {                   // 시험용 바깥 틀: 그달 쉬기(buyBlock) · 늦게 사기(buyDelay) · 현금 일부 남기기(cashKeep)
-    if (opt.buyBlock && opt.buyBlock(k, ymOf(sigK))) return;
+    if (opt.buyBlock && opt.buyBlock(k, ymOf(sigK), stNow())) return;
     if (opt.buyDelay) sigK -= opt.buyDelay;
-    const kc = cash * (opt.cashKeep || 0); cash -= kc;
+    const kc = cash * (opt.cashKeepFn ? Math.max(0, Math.min(1, opt.cashKeepFn(k, stNow()) || 0)) : (opt.cashKeep || 0)); cash -= kc;
     try { doBuys0(sigK, k, priceAt); } finally { cash += kc; }
   };
   let pend = null, fdMiss = 0, tlhN = 0, taxTotal = 0, coSkipN = 0, divTotal = 0;
+  let eqIdx = 1, eqPeak = 1; const eqHist = [], cfs = [];               // 시험용 상태: 전략 수익곡선(시간가중)·최고점·현금흐름
+  const stNow = () => { const n = rets.length; let r12 = 1; for (let i = Math.max(0, n - 12); i < n; i++) r12 *= 1 + rets[i].r; const L = opt.eqMaN || 10, a = eqHist.slice(-L), ma = a.length >= L ? a.reduce((s, x) => s + x, 0) / L : null; const rr12 = rets.slice(-12).map(x => x.r), mu12 = rr12.length ? rr12.reduce((s, x) => s + x, 0) / rr12.length : 0, vol12 = rr12.length >= 6 ? Math.sqrt(rr12.reduce((s, x) => s + (x - mu12) ** 2, 0) / rr12.length) * Math.sqrt(12) : null; return { dd: eqIdx / eqPeak - 1, ret12: r12 - 1, nM: n, vol12, eqBelow: ma != null && eqIdx < ma, eqIdx, eqHist }; };
   for (let k = START; k <= END; k++) {
     cur = led ? { k, dep, sells: [], buys: [], skipped: [], order: [], tax: 0 } : null;
     if (opt.cashRateFn && k > START) cash += cash * Math.max(0, opt.cashRateFn(k) || 0) / 12;
-    if (opt.cashRetFn && k > START) cash *= 1 + (opt.cashRetFn(k) || 0);                              // 놀고 있는 현금을 지수에 넣어 둠(그 달 지수 수익률)
+    if (opt.cashRetFn && k > START) cash *= 1 + (opt.cashRetFn(k, stNow()) || 0);                              // 놀고 있는 현금을 지수에 넣어 둠(그 달 지수 수익률)
     if (opt.sellFd) { const nk = []; for (const h of holds) { if (h.pendK != null && h.pendK <= k) { const pf = fdPx(h.y, k); if (pf > 0) h.last = pf; cash += sellCash(h, k, h.pendReason); } else nk.push(h); } holds = nk; }      // 미룬 판매를 이달 첫날 종가에 실행          // 현금 이자(월 단위, 세금 제외): 놀고 있는 현금에 연 이율/12를 더함
     if (opt.firstDay && k > START) {                                              // 지난달 신호 → 이번 달 첫날 종가에 체결(입금·세금 처리 전 현금)
       // 12월 첫날 구매: 그해 11월까지 실현한 미국 주식 이익에 나올 양도세를 미리 떼어 두고 남은 돈으로 산다(12월 말에 세금이 모자라 보유 종목을 억지로 팔지 않게). opt.taxReserve=false면 예전 방식
       const rsv = (opt.taxReserve !== false && (k - 1) % 12 === 11) ? Math.min(Math.max(0, cash), usTax(yOfK(k))) : 0;
-      cash -= rsv; doBuys(k - 1, k, (o, r) => (opt.fdOpen ? fdOpen(r.y, k) : fdPx(r.y, k))); cash += rsv;
+      cash -= rsv; doBuys(k - 1, k, (o, r) => (opt.fdPxFn ? (opt.fdPxFn(r.y, k) || fdPx(r.y, k)) : opt.fdOpen ? fdOpen(r.y, k) : fdPx(r.y, k))); cash += rsv;
     }
-    const keep = [];
+    const keep = [], stM = stNow();
+    const ctxM = { st: stM, nHold: holds.length, get nBelow() { if (this._nb == null) { this._nb = 0; for (const x of holds) { const m = ma10(x.px, k); if (m && x.last < m) this._nb++; } } return this._nb; } };
     for (const h of holds) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
       if (opt.divFn && !(opt.divSkipBuy && h.buyK === k)) {                       // 배당 시험: 그달 배당락이 있는 보유 종목의 배당을 (세후) 현금으로 받음 — 다음 달 구매에 재투자됨
@@ -366,6 +369,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       }
       h.peak = Math.max(h.peak || h.buyPx || 0, h.last || 0);
       if (h.pendK != null) { if (h.pendK <= k && !opt.sellFd) { cash += sellCash(h, k, h.pendReason); continue; } keep.push(h); continue; }
+      if (opt.decideEvery && (k - START) % opt.decideEvery !== 0) { keep.push(h); continue; }               // 시험용: N개월에 한 번만 판매 판단
       if (opt.dailyFn) { const dr = opt.dailyFn(h, k); if (dr) { h.last = dr.px; if (dl(h, k, dr.rs)) { keep.push(h); continue; } cash += sellCash(h, k, dr.rs); continue; } }   // 일봉 판단(시험): 그달 안에서 일 단위 조건이 걸리면 그날 값으로 판매
       if (opt.skipBuyMonth && h.buyK === k) { keep.push(h); continue; }      // 산 달 말에는 판매 판단을 하지 않음(첫날 구매 방식에서 사자마자 파는 것을 막는 변형)
       if (!opt.grace && h.sellK !== null && h.sellK <= k) { if (dl(h, k, 'ma10')) { keep.push(h); continue; } cash += sellCash(h, k, 'ma10'); continue; }
@@ -401,11 +405,11 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
             let ff = opt.graceRate ? ((opt.rateKR && !h.us) ? krChg12(k) : ffChg12(k)) : null;   // rateKR: 한국 종목은 한국 금리로 판단(미국 종목은 미국 금리)
             if (opt.rateFn) { const v = opt.rateFn(k); ff = v === true ? 1 : v === false ? 0 : null; }   // rateFn(k): 금리가 오르는 중이면 true (모르면 null = 규칙 안 씀)
             const revNow = !!(opt.revFn && opt.revFn(h.px, k));     // 역배열 시험: 10이평 아래인데 역배열이면 유예 없이 즉시
-            const g2 = opt.graceN2 ? opt.graceN2(h, k) : undefined;      // 조건부 유예(시험): 종목 수익·지수 상태에 따라 유예 달 수를 바꿈
+            const g2 = opt.graceN2 ? opt.graceN2(h, k, ctxM) : undefined;      // 조건부 유예(시험): 종목 수익·지수 상태에 따라 유예 달 수를 바꿈
             const graceN = ((ff != null && ff > 0) || revNow) ? 1 : (g2 !== undefined ? g2 : opt.grace);  // 금리 인상 중·역배열→ 1달(=즉시), 아니면 N달
             h.graceCnt = (h.graceCnt || 0) + 1;
             if (h.graceCnt >= graceN) { if (dl(h, k, ff != null && ff > 0 ? 'ma10-금리인상' : revNow ? 'ma10-역배열' : 'ma10-유예만료')) { keep.push(h); continue; } cash += sellCash(h, k, ff != null && ff > 0 ? 'ma10-금리인상' : revNow ? 'ma10-역배열' : 'ma10-유예만료'); continue; }
-          } else h.graceCnt = 0;
+          } else if (!opt.graceNoReset) h.graceCnt = 0;
         }
       }
       // ML 조건부 유예: 매도 신호 달에 sellScored 점수 ≥ 임계값이면 최대 opt.graceML달 유예
@@ -427,7 +431,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         if (al === true) h.armed = true;
         else if (al === false && (!opt.alignArm || h.armed)) { if (dl(h, k, 'align')) { keep.push(h); continue; } cash += sellCash(h, k, 'align'); continue; }
       }
-      if (opt.exitFn) { const rs = opt.exitFn(h, k, { part: (fr, rsn) => sellPart(h, k, fr, rsn) }); if (rs) { if (dl(h, k, rs)) { keep.push(h); continue; } cash += sellCash(h, k, rs); continue; } }      // 시험용 판매 규칙(시간 손절·고점 대비 하락·부분 익절 등)
+      if (opt.exitFn) { const rs = opt.exitFn(h, k, { part: (fr, rsn) => sellPart(h, k, fr, rsn), st: stM, ctx: ctxM, cands: opt.cand ? opt.cand(ymOf(k)) : [], holds }); if (rs) { if (dl(h, k, rs)) { keep.push(h); continue; } cash += sellCash(h, k, rs); continue; } }      // 시험용 판매 규칙(시간 손절·고점 대비 하락·부분 익절 등)
       if (h.sh <= 0) continue;
       keep.push(h);
     }
@@ -445,8 +449,12 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         cash += sellCash(h, k, 'tlh'); holds = holds.filter(x => x !== h); tlhN++;
       }
     }
-    const depK = (opt.depEvery ? ((k - START) % opt.depEvery === 0 ? dep * opt.depEvery : 0) : dep) + (opt.lump && k === START ? opt.lump : 0);
-    cash += depK; if (depK > 0) deposits++;                            // 입금을 먼저 받는다: 12월에는 이 돈으로 양도세를 먼저 내고 남은 돈으로 산다
+    let depK = (opt.depEvery ? ((k - START) % opt.depEvery === 0 ? dep * opt.depEvery : 0) : dep) + (opt.lump && k === START ? opt.lump : 0);
+    if (opt.depFn) { let hv0 = 0; for (const h of holds) hv0 += val(h, k); depK = opt.depFn(k, stM, dep, cash + hv0, depK) || 0; }       // 시험용: 입금액을 상태에 따라(성장·낙폭 때 2배·가치평균·인출(음수))
+    cfs.push([k, -depK]);
+    if (depK < 0) { const need = -depK; if (cash >= need) cash -= need; else { let hv1 = 0; for (const h of holds) hv1 += val(h, k); const f = hv1 > 0 ? Math.min(1, (need - cash) / hv1) : 0; for (const h of holds) { h.sh *= 1 - f; h.basis *= 1 - f; } cash = Math.max(0, cash - need); } }
+    else cash += depK;
+    if (depK > 0) deposits++;                            // 입금을 먼저 받는다: 12월에는 이 돈으로 양도세를 먼저 내고 남은 돈으로 산다
     if ((k - 1) % 12 === 11) {                          // 12월 말: 그해 미국 주식 실현 손익에 양도세(기본공제 후)를 냄
       const Y = yOfK(k), tax = usTax(Y); usGain[Y] = 0; krGain[Y] = 0; taxTotal += tax;
       if (cur) cur.tax = tax;
@@ -460,10 +468,15 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       h.t2pend = false; const ma2 = ma10(h.px, k);
       if (ma2 && h.last > ma2) { const fee2 = h.us ? usFee : C.kr.commission, pk2 = h.last * (h.us ? fxf(k) : 1), lots2 = Math.floor(Math.min(h.basis, cash) * (1 - fee2) / pk2); if (lots2 >= 1) { const a2 = lots2 * pk2 / (1 - fee2); h.sh += lots2; h.basis += a2; cash -= a2; } }
     }
+    if (opt.addFn) for (const h of holds) {                                      // 시험용: 불타기·물타기 — addFn(h,k,st)이 처음 산 금액의 몇 배를 더 살지 돌려줌(월말 종가, 현금 안에서)
+      if (h.buyK === k) continue; const f = opt.addFn(h, k, stM); if (!(f > 0) || !(cash > 0) || !(h.last > 0)) continue;
+      if (!h.b0) h.b0 = h.basis; const fee2 = h.us ? usFee : C.kr.commission, pk2 = h.last * (h.us ? fxf(k) : 1), lots2 = Math.floor(Math.min(h.b0 * f, cash) * (1 - fee2) / pk2);
+      if (lots2 >= 1) { const cost = lots2 * pk2 / (1 - fee2); h.sh += lots2; h.basis += cost; cash -= cost; }
+    }
     if (!opt.firstDay) doBuys(k, k, (o) => o.m.get(k));
     else pend = k;
     let after = cash; for (const h of holds) after += val(h, k);
-    if (prevAfter > 0) rets.push({ k, r: (after - depK) / prevAfter - 1 });
+    if (prevAfter > 0) { const rr = (after - depK) / prevAfter - 1; rets.push({ k, r: rr }); eqIdx *= 1 + rr; eqPeak = Math.max(eqPeak, eqIdx); eqHist.push(eqIdx); }
     prevAfter = after;
     if (led) led.set(ymOf(k), Object.assign(cur, { cash, holdVal: after - cash, fx: fxf(k) }));
     // 보유 스냅샷 (opt.log)
@@ -484,7 +497,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   }
   liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN, divTotal };
+  return { rets, cfs, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN, divTotal };
 }
 function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };
@@ -1440,7 +1453,7 @@ if (process.env.STAGE14 !== '0') {
     if (poolCache.has(key)) return poolCache.get(key);
     const m = new Map(), rateVirt = rule.rateFn || (rule.rate ? (j => { const f = ffChg12(j); return f != null && f > 0 ? true : null; }) : null);
     scored[kA].forEach(list => list.forEach(e => {
-      const r = e.r, o = px(r.y), t0 = mi(r.ym); let p0 = o.op.get(t0 + 1) || fdPx(r.y, t0 + 1); if (!(p0 > 0)) return;
+      const r = e.r, o = px(r.y), t0 = mi(r.ym); let p0 = q.refClose ? o.m.get(t0) : (o.op.get(t0 + 1) || fdPx(r.y, t0 + 1)); if (!(p0 > 0)) return;
       if (q.sig && !q.sig(r, o, t0)) return;                              // 시험용: 돌파 신호 자체를 거르는 조건
       const thr = q.thrFn ? q.thrFn(r) : (q.volK ? Math.min(0.4, Math.max(0.03, q.volK * (r.x[iVol] || 0))) : q.thr);
       let tp = false, cnt = 0, hi = p0, held = false; const st = {};
@@ -1630,22 +1643,37 @@ if (process.env.STAGE14 !== '0') {
   if (process.env.AD9 && RT14) {                                       // AD9: 시험 목록 전체 묶음(ad9.js). AD9=1~10(쉼표로 여러 개) 또는 all
     V.length = 0;
     const rescore = (o = {}) => {                                      // 점수 모델 'A'를 조건을 바꿔 다시 학습해 점수 지도(월 → 점수 순 목록)를 만듦(위 학습 루프와 같은 방식)
-      const out = new Map(), M = MODELS[KA0];
+      //   o.trainFn(Y) 학습 자료 · o.subsample · o.recentDup · o.lamMul 벌점 배수 · o.topCols 기여 큰 지표만 · o.fitFn(Z,t,ym,lam) 다른 선형 학습 · o.modelFn(Z,t,ym,w,P) → 점수 함수(비선형)
+      //   o.monthStd 그달 안에서 표준화 · o.splitBy(r) 그룹별로 따로 학습 · o.xFn(r) 지표 덧붙이기(+ o.extraCols) · o.signs {열번호:+1|-1} 부호 제약 · o.keep 해마다 모델 보관
+      const out = new Map(), M = MODELS[KA0], lamM = M.lam * (o.lamMul || 1), colsAll = o.xFn && o.extraCols ? M.cols.concat(o.extraCols) : M.cols;
+      const xOf = r => (o.xFn ? o.xFn(r) : r.x);
+      const stdBy = (Z, grp) => { const g = new Map(); grp.forEach((k2, i) => { (g.get(k2) || g.set(k2, []).get(k2)).push(i); }); const R = Z.map(z2 => z2.slice()); g.forEach(idx => { if (idx.length < 3) return; for (let c = 0; c < Z[0].length; c++) { let m = 0; idx.forEach(i => { m += Z[i][c]; }); m /= idx.length; let v = 0; idx.forEach(i => { v += (Z[i][c] - m) ** 2; }); const sd = Math.sqrt(v / idx.length) || 1; idx.forEach(i => { R[i][c] = (Z[i][c] - m) / sd; }); } }); return R; };
       years.forEach(Y => {
         let tr0 = o.trainFn ? o.trainFn(Y) : trainSet(ALL, Y);
         const te = ALL.filter(r => Math.floor(r.ym / 100) === Y);
         if (tr0.length < 500 || !te.length) return;
         if (o.subsample) tr0 = tr0.filter((r, i) => hash01(o.subsample.seed + '|' + i) < o.subsample.frac);
         if (o.recentDup) { const lo = (Y - o.recentDup) * 100; tr0 = tr0.concat(tr0.filter(r => r.ym > lo)); }
-        const tr = tr0.map(r => ({ x: r.x, t: clipT(r.t), ym: r.ym }));
-        let P = prep(tr, M.cols), w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), M.lam * (o.lamMul || 1));
-        if (o.topCols) {
-          const idx = P.map((p, i) => [Math.abs(w[i + 1]), i]).sort((a, b) => b[0] - a[0]).slice(0, o.topCols).map(a => P[a[1]].j);
-          P = prep(tr, idx); w = fitRidge(tr.map(r => z(r, P)), tr.map(r => r.t), M.lam * (o.lamMul || 1));
-        }
-        if (o.fitFn) w = o.fitFn(tr.map(r => z(r, P)), tr.map(r => r.t), tr.map(r => r.ym), M.lam);       // 다른 학습 방식(쌍별 순위 학습 등)으로 가중치를 다시 구함
-        if (o.keep) o.keep[Y] = { w, P };                                                             // 해마다 학습한 모델을 꺼내 쓰고 싶을 때
-        te.forEach(r => { const a = out.get(r.ym) || []; a.push({ r, s: score(w, z(r, P)) }); out.set(r.ym, a); });
+        const tr = tr0.map(r => ({ x: xOf(r), t: clipT(r.t), ym: r.ym, y: r.y }));
+        const fitCols = (trr, cols) => { const P = prep(trr, cols); let Z = trr.map(r => z(r, P)); if (o.monthStd) Z = stdBy(Z, trr.map(r => r.ym)); return { P, Z, w: fitRidge(Z, trr.map(r => r.t), lamM) }; };
+        const fitSet = (trr) => {
+          let m = fitCols(trr, colsAll);
+          if (o.topCols) { const idx = m.P.map((p, i) => [Math.abs(m.w[i + 1]), i]).sort((a, c) => c[0] - a[0]).slice(0, o.topCols).map(a => m.P[a[1]].j); m = fitCols(trr, idx); }
+          if (o.signs) { for (let rd = 0; rd < 3; rd++) { const keepC = m.P.filter((p, i) => !(o.signs[p.j] && m.w[i + 1] * o.signs[p.j] < 0)).map(p => p.j); if (keepC.length === m.P.length || keepC.length < 3) break; m = fitCols(trr, keepC); } }
+          const t = trr.map(r => r.t);
+          if (o.fitFn) m.w = o.fitFn(m.Z, t, trr.map(r => r.ym), M.lam);
+          m.f = o.modelFn ? o.modelFn(m.Z, t, trr.map(r => r.ym), m.w, m.P, trr) : ((zx) => score(m.w, zx));
+          return m;
+        };
+        const scoreRows = (m, rows) => { let Zt = rows.map(r => z({ x: xOf(r) }, m.P)); if (o.monthStd) Zt = stdBy(Zt, rows.map(r => r.ym)); return Zt.map((zx, i) => m.f(zx, xOf(rows[i]))); };
+        const gm = fitSet(tr);
+        if (o.keep) o.keep[Y] = { w: gm.w, P: gm.P };
+        if (o.splitBy) {
+          const groups = new Map(); tr.forEach(r => { const k2 = o.splitBy(r); (groups.get(k2) || groups.set(k2, []).get(k2)).push(r); });
+          const models = new Map(); groups.forEach((rows, k2) => { if (rows.length >= 400) models.set(k2, fitSet(rows)); });
+          const byKey = new Map(); te.forEach(r => { const k2 = o.splitBy(r); (byKey.get(k2) || byKey.set(k2, []).get(k2)).push(r); });
+          byKey.forEach((rows, k2) => { const m = models.get(k2) || gm, sc2 = scoreRows(m, rows); rows.forEach((r, i) => { const a = out.get(r.ym) || []; a.push({ r, s: sc2[i] }); out.set(r.ym, a); }); });
+        } else { const sc2 = scoreRows(gm, te); te.forEach((r, i) => { const a = out.get(r.ym) || []; a.push({ r, s: sc2[i] }); out.set(r.ym, a); }); }
       });
       out.forEach(a => a.sort((x, y) => y.s - x.s));
       return out;

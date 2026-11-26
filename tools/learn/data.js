@@ -20,7 +20,7 @@ function trainSet(L, Y) {
     let t = null;
     if (r.exoff !== null && r.exoff <= e) t = r.t;
     else if (e >= 12) { for (let q = MK.length - 1; q >= 0; q--) if (MK[q] <= e && r.mk[q] !== null) { t = r.mk[q]; break; } }
-    if (t !== null) out.push({ ym: r.ym, x: r.x, t });
+    if (t !== null) out.push({ ym: r.ym, x: r.x, t, y: r.y });
   }
   return out;
 }

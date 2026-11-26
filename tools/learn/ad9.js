@@ -6,7 +6,7 @@
 //   한 시험이 오류여도 나머지는 계속 돌고 이름 끝에 [오류: ...]가 붙음. 일봉·새 자료가 필요한 것은 여기에 없음(README-PC.md 참고).
 
 function build(c, which) {
-  const { V, AD8, pool, simulate, simOpt, summ, C1, DEP, mi, ymOf, px, fx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, chg,
+  const { V, AD8, pool, simulate, simOpt, summ, C1, DEP, mi, ymOf, px, fx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, chg, rtk,
     YEARS_ALL, log, cagrOver, END, rescore, ALL, dailyOf, score, z, prep, fitRidge, MK, divOf, fs, path, DATA, RAW } = c;
   const want = String(which).split(',').map(s => s.trim());
   const on = n => want.includes('all') || want.includes(String(n));
@@ -70,6 +70,33 @@ function build(c, which) {
     return x;
   };
 
+
+  // ═════ 묶음 22~27 공용 도구(월봉 지표·시장 폭·업종·한국6/미국10 규칙) ═════
+  const KR6 = (h, k) => maAtN(h.px, k, isKR(h.y) ? 6 : 10);               // 판매 후보 규칙: 한국 6이평 · 미국 10이평
+  const IDXKEY = y => (isKR(y) ? 'ks' : 'sp');
+  const cl = (o, k) => o.m.get(k);
+  const smaK = (o, k, n) => maAtN(o, k, n);
+  const emaCache2 = new Map();
+  const emaK = (o, k, N) => { let by = emaCache2.get(o); if (!by) { by = new Map(); emaCache2.set(o, by); } let ser = by.get(N); if (!ser) { ser = new Map(); const keys = [...o.m.keys()].sort((a, b) => a - b), al = 2 / (N + 1); let e = null; keys.forEach((kk, i) => { const c0 = o.m.get(kk); e = e == null ? c0 : al * c0 + (1 - al) * e; ser.set(kk, i >= N ? e : null); }); by.set(N, ser); } return ser.get(k) ?? null; };
+  const rsiK = (o, k, n = 14) => { let g = 0, l = 0; for (let j = 0; j < n; j++) { const a = cl(o, k - j), b2 = cl(o, k - j - 1); if (!(a > 0 && b2 > 0)) return null; const d = a - b2; if (d > 0) g += d; else l -= d; } return l === 0 ? 100 : 100 - 100 / (1 + g / l); };
+  const macdK = (o, k) => { const a = emaK(o, k, 12), b2 = emaK(o, k, 26); return a != null && b2 != null ? a - b2 : null; };
+  const bbK = (o, k, n = 20) => { const m = smaK(o, k, n); if (!m) return null; let v = 0; for (let j = 0; j < n; j++) v += (cl(o, k - j) - m) ** 2; return { m, sd: Math.sqrt(v / n) }; };
+  const trK = (o, k) => { const h = o.hi.get(k), l = o.lo.get(k), pc2 = cl(o, k - 1); if (!(h > 0 && l > 0 && pc2 > 0)) return null; return Math.max(h - l, Math.abs(h - pc2), Math.abs(l - pc2)); };
+  const atrK = (o, k, n = 14) => { let t = 0; for (let j = 0; j < n; j++) { const v = trK(o, k - j); if (v == null) return null; t += v; } return t / n; };
+  const adxK = (o, k, n = 14) => { let pdm = 0, ndm = 0, tr = 0; const dxs = []; for (let i = n * 2; i >= 0; i--) { const kk = k - i, h = o.hi.get(kk), l = o.lo.get(kk), h0 = o.hi.get(kk - 1), l0 = o.lo.get(kk - 1), t = trK(o, kk); if (!(h > 0 && l > 0 && h0 > 0 && l0 > 0 && t != null)) return null; const up = h - h0, dn = l0 - l; const p = up > dn && up > 0 ? up : 0, q = dn > up && dn > 0 ? dn : 0; if (i > n) { pdm += p; ndm += q; tr += t; } else { pdm = pdm - pdm / n + p; ndm = ndm - ndm / n + q; tr = tr - tr / n + t; const pi = 100 * pdm / (tr || 1), ni = 100 * ndm / (tr || 1); dxs.push(100 * Math.abs(pi - ni) / ((pi + ni) || 1)); } } return dxs.slice(-n).reduce((s, x) => s + x, 0) / Math.min(n, dxs.length); };
+  const midHL = (o, k, n) => { let h = -1, l = 1e18; for (let j = 0; j < n; j++) { const a = o.hi.get(k - j), b2 = o.lo.get(k - j); if (!(a > 0 && b2 > 0)) return null; h = Math.max(h, a); l = Math.min(l, b2); } return (h + l) / 2; };
+  const cloudTop = (o, k) => { const kk = k - 13, ta = midHL(o, kk, 5), ki = midHL(o, kk, 13), sb = midHL(o, kk, 26); if (ta == null || ki == null || sb == null) return null; return Math.max((ta + ki) / 2, sb); };    // 일목 구름(5·13·26개월, 13개월 이동)
+  const r2K = (o, k, n = 12) => { const y = []; for (let j = n - 1; j >= 0; j--) { const v = cl(o, k - j); if (!(v > 0)) return null; y.push(Math.log(v)); } const xm = (n - 1) / 2, ym2 = y.reduce((s, v) => s + v, 0) / n; let sxy = 0, sxx = 0, syy = 0; y.forEach((v, i) => { sxy += (i - xm) * (v - ym2); sxx += (i - xm) ** 2; syy += (v - ym2) ** 2; }); return syy ? sxy * sxy / (sxx * syy) : null; };
+  const betaK = (o, k, key, n = 36) => { const xs = [], ys = []; for (let j = 0; j < n; j++) { const a = cl(o, k - j), b2 = cl(o, k - j - 1), ia = idxAt(key, k - j), ib = idxAt(key, k - j - 1); if (!(a > 0 && b2 > 0 && ia > 0 && ib > 0)) continue; ys.push(a / b2 - 1); xs.push(ia / ib - 1); } if (xs.length < 18) return null; const mx = mean(xs), my = mean(ys); let sxy = 0, sxx = 0; xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; }); return sxx ? sxy / sxx : null; };
+  const normS = y => String(y).replace(/[^A-Za-z0-9]/g, '').toUpperCase(), sfn = y => y.replace(/[^A-Za-z0-9.\-]/g, '_');
+  let SICJ = null; const sicG = y => { if (isKR(y)) return null; if (SICJ === null) { try { SICJ = JSON.parse(fs.readFileSync(path.join(DATA, 'sic.json'), 'utf8')); } catch (e) { SICJ = {}; } } const a = SICJ[sfn(y)]; return a && a.sic ? String(a.sic).padStart(4, '0').slice(0, 2) : null; };
+  let BRD = null;                                                          // 시장 폭: 월별 이평 위 비율·신고가−신저가 수(범위 종목 전체)
+  const breadth = k => { if (BRD === null) { BRD = new Map(); const syms = [...new Set(ALL.map(r => r.y))]; syms.forEach(y => { const o = px(y), keys = [...o.m.keys()].sort((a, b2) => a - b2); keys.forEach(kk => { const m = maAtN(o, kk, 10), c0 = o.m.get(kk); if (!(m > 0 && c0 > 0)) return; const e = BRD.get(kk) || { n: 0, up: 0, hi: 0, lo: 0 }; e.n++; if (c0 > m) e.up++; let h12 = -1, l12 = 1e18, ok = true; for (let j = 1; j <= 12; j++) { const v = o.m.get(kk - j); if (!(v > 0)) { ok = false; break; } h12 = Math.max(h12, v); l12 = Math.min(l12, v); } if (ok) { if (c0 > h12) e.hi++; if (c0 < l12) e.lo++; } BRD.set(kk, e); }); }); } const e = BRD.get(k); return e && e.n > 100 ? { up: e.up / e.n, nhnl: e.hi - e.lo } : null; };
+  let SECM = null;                                                         // 업종(SIC 앞 2자리)별 월 12개월 수익률 중앙값
+  const secMed = (g, k) => { if (SECM === null) { SECM = new Map(); const by = new Map(); [...new Set(ALL.map(r => r.y))].forEach(y => { const gg = sicG(y); if (!gg) return; const o = px(y); o.m.forEach((c0, kk) => { const c1 = o.m.get(kk - 12); if (c0 > 0 && c1 > 0) { const key2 = gg + '|' + kk; (by.get(key2) || by.set(key2, []).get(key2)).push(c0 / c1 - 1); } }); }); by.forEach((a, key2) => { if (a.length >= 4) SECM.set(key2, pctl(a, 0.5)); }); } return SECM.get(g + '|' + k); };
+  const dailyRets = (y, k0, k1) => { const D = dailyOf(y); if (!D) return null; const out = []; for (let kk = k0; kk <= k1; kk++) { const rg = D.month.get(kk); if (!rg) continue; for (let i = Math.max(rg[0], 1); i < rg[1]; i++) out.push(D.c[i] / D.c[i - 1] - 1); } return out; };
+
+  const avgV = (o, kEnd, n) => { let t = 0, c = 0; for (let j = 0; j < n; j++) { const v = o.vol.get(kEnd - j); if (v > 0) { t += v; c++; } } return c >= n / 2 ? t / c : null; };
   // ═════ 묶음 1: 매수 신호 (돌파·확인 조건)
   if (on(1)) {
     const S = n => `1-${n}`;
@@ -142,7 +169,7 @@ function build(c, which) {
       if (hz) { const q = MK.indexOf(hz); if (e >= hz && r.mk[q] !== null) t = r.mk[q]; }
       else if (r.exoff !== null && r.exoff <= e) t = r.t;
       else if (e >= 12) { for (let q = MK.length - 1; q >= 0; q--) if (MK[q] <= e && r.mk[q] !== null) { t = r.mk[q]; break; } }
-      if (t !== null) out.push({ ym: r.ym, x: r.x, t });
+      if (t !== null) out.push({ ym: r.ym, x: r.x, t, y: r.y });
     }
     return out;
   };
@@ -834,6 +861,350 @@ function build(c, which) {
       A('E 5종목', '점수 4 + 대박 1 (5종목)', barbell(m, 1, gainR), { nFn: () => 5 });
     });
     posts.push(() => post12('21-', '21 바벨 구성'));
+  }
+
+
+  // ═════ 묶음 22: 매수 신호 2 — 압축·거래량 마름·저점 높이기·이평 방향·골든크로스·보조지표(RSI·MACD·볼린저·ADX·일목)·상대강도·업종·시장 폭·가격·환율·일봉 조건 (모두 10이평(지금) 규칙과 한국 6·미국 10 규칙에 각각 적용)
+  if (on(22)) {
+    const S = n => `22-${n}`;
+    const X = (sec, name, q, extra = {}, candFn) => {
+      const ck = 'z22' + sec + name, m = q && Object.keys(q).length ? mk({ ck, ...q }) : mBase, cand = candFn ? candFn(m) : candOf(m);
+      add(S(sec), '10이평 · ' + name, { cand, rule: rule10, o: { ...extra } }); add(S(sec), '한국6·미국10 · ' + name, { cand, rule: rule10, o: { exitMaFn: KR6, ...extra } });
+    };
+    X('기준', '기준', {});
+    const pct = (arr, p) => pctl(arr.filter(Number.isFinite), p);
+    const VOLAT = fi('volat12'), CPOS = fi('close_pos'), DD36 = fi('dd36');
+    const band = (o, t0) => { let h = -1, l = 1e18; for (let j = 1; j <= 12; j++) { const a = o.hi.get(t0 - j), b2 = o.lo.get(t0 - j); if (!(a > 0 && b2 > 0)) return null; h = Math.max(h, a); l = Math.min(l, b2); } return h / l - 1; };
+    const bandAll = []; ALL.forEach((r, i) => { if (i % 5) return; const v = band(px(r.y), mi(r.ym)); if (v != null) bandAll.push(v); });
+    const b30 = pct(bandAll, 0.3), v30 = pct(ALL.map(r => r.x[VOLAT]), 0.3), cp80 = pct(ALL.map(r => r.x[CPOS]), 0.8);
+    X('A 압축·거래량', '돌파 전 12개월 고저폭이 하위 30%(압축 뒤 돌파)', { ck: 'a1', sig: (r, o, t0) => { const v = band(o, t0); return v != null && v <= b30; } });
+    X('A 압축·거래량', '12개월 변동성이 하위 30%', { ck: 'a1b', sig: r => r.x[VOLAT] <= v30 });
+    X('A 압축·거래량', '돌파 전 3개월 거래량이 12개월 평균의 70% 이하(거래량이 마른 뒤)', { ck: 'a2', sig: (r, o, t0) => { const v3 = avgV(o, t0 - 1, 3), v12 = avgV(o, t0 - 4, 12); return v3 != null && v12 != null && v3 <= 0.7 * v12; } });
+    X('A 압축·거래량', '최근 3개월 저가가 그 전 6개월 저가보다 높음(저점 높이기)', { ck: 'a3', sig: (r, o, t0) => { const mn = (a, n) => { let m2 = 1e18; for (let j = 0; j < n; j++) { const v = o.lo.get(a - j); if (!(v > 0)) return null; m2 = Math.min(m2, v); } return m2; }; const x1 = mn(t0, 3), x2 = mn(t0 - 3, 6); return x1 != null && x2 != null && x1 > x2; } });
+    X('A 압축·거래량', '돌파 봉 종가가 봉 안 위치 상위 20%(고가 근처 마감)', { ck: 'a4', sig: r => r.x[CPOS] >= cp80 });
+    X('A 압축·거래량', '24개월 고점 대비 −30% 넘게 빠졌다가 돌파(회복형)', { ck: 'a5', sig: r => r.x[DD36] <= -0.3 });
+    const rising = (o, j, n) => { const a = maAtN(o, j, n), b2 = maAtN(o, j - 1, n); return !!(a && b2 && a > b2); };
+    X('B 이평 방향·교차', '확인 달에 5·10·20이평이 모두 오르는 중', { ck: 'b1', cond: ({ o, j }) => rising(o, j, 5) && rising(o, j, 10) && rising(o, j, 20) });
+    X('B 이평 방향·교차', '10이평이 20이평을 최근 3개월 안에 막 넘음(골든크로스)', { ck: 'b2', cond: ({ o, j }) => { for (let i = 0; i <= 3; i++) { const a0 = maAtN(o, j - i - 1, 10), b0 = maAtN(o, j - i - 1, 20), a1 = maAtN(o, j - i, 10), b1 = maAtN(o, j - i, 20); if (a0 && b0 && a1 && b1 && a0 <= b0 && a1 > b1) return true; } return false; } });
+    X('B 이평 방향·교차', '10이평과 20이평을 같은 달에 함께 돌파', { ck: 'b3', sig: (r, o, t0) => { const m20 = maAtN(o, t0, 20), p20 = maAtN(o, t0 - 1, 20); return !!(m20 && p20 && cl(o, t0) > m20 && cl(o, t0 - 1) <= p20); } });
+    X('B 이평 방향·교차', '5이평÷20이평이 1.05 넘음(정배열 간격)', { ck: 'b4', alignFn: (o, j) => { const a = maAtN(o, j, 5), b2 = maAtN(o, j, 10), d = maAtN(o, j, 20); return !!(a && b2 && d && a > b2 && b2 > d && a / d > 1.05); } });
+    X('C 보조지표', '확인 달 월봉 RSI(14) 70 이하', { ck: 'c1', cond: ({ o, j }) => { const v = rsiK(o, j); return v != null && v <= 70; } });
+    X('C 보조지표', '확인 달 월봉 MACD가 0 위이고 오르는 중', { ck: 'c2', cond: ({ o, j }) => { const a = macdK(o, j), b2 = macdK(o, j - 1); return a != null && b2 != null && a > 0 && a > b2; } });
+    X('C 보조지표', '확인 달 종가가 볼린저 밴드(20개월, 2σ) 상단을 넘음', { ck: 'c3', cond: ({ o, j }) => { const bb = bbK(o, j); return !!bb && cl(o, j) > bb.m + 2 * bb.sd; } });
+    X('C 보조지표', '확인 달 ADX(14) 20 이상(추세 강도)', { ck: 'c4', cond: ({ o, j }) => { const v = adxK(o, j); return v != null && v >= 20; } });
+    X('C 보조지표', '확인 달 종가가 일목 구름 위(5·13·26개월)', { ck: 'c5', cond: ({ o, j }) => { const t = cloudTop(o, j); return t != null && cl(o, j) > t; } });
+    X('C 보조지표', '확인 달 종가가 구름 위가 아니면 제외(구름 계산 못 하는 종목은 그대로)', { ck: 'c5b', cond: ({ o, j }) => { const t = cloudTop(o, j); return t == null || cl(o, j) > t; } });
+    X('D 상대강도·시장', '상대강도선(종목÷지수)이 자기 10개월 평균 위', { ck: 'd1', cond: ({ o, j, r }) => { const key = IDXKEY(r ? r.y : ''); let sm = 0; for (let i = 0; i < 10; i++) { const a = cl(o, j - i), ix = idxAt(key, j - i); if (!(a > 0 && ix > 0)) return false; sm += a / ix; } const a0 = cl(o, j), i0 = idxAt(key, j); return a0 / i0 > sm / 10; } });
+    X('D 상대강도·시장', '돌파 달에 그 시장 지수도 10이평을 처음 넘음(시장과 동시 출발)', { ck: 'd2', sig: (r, o, t0) => idxBelow(IDXKEY(r.y), t0 - 1) === true && idxBelow(IDXKEY(r.y), t0) === false });
+    X('D 상대강도·시장', '그 시장 지수가 10이평 아래일 때만 매수(역발상)', {}, { skipFn: (r, o, p, k) => idxBelow(IDXKEY(r.y), k - 1) === false });
+    X('D 상대강도·시장', '범위 종목 중 10이평 위 비율이 50% 넘을 때만 매수', {}, { buyBlock: (k) => { const b2 = breadth(k - 1); return b2 != null && b2.up < 0.5; } });
+    X('D 상대강도·시장', '시장 폭(10이평 위 비율)이 3개월 전보다 좋아질 때만 매수', {}, { buyBlock: (k) => { const a = breadth(k - 1), b2 = breadth(k - 4); return a != null && b2 != null && a.up <= b2.up; } });
+    X('D 상대강도·시장', '12개월 신고가 종목 수에서 신저가 종목 수를 뺀 값이 양수일 때만', {}, { buyBlock: (k) => { const b2 = breadth(k - 1); return b2 != null && b2.nhnl <= 0; } });
+    X('E 업종', '같은 업종(SIC 앞 2자리)에서 12개월 수익률이 업종 중앙값 이상', { ck: 'e1', sig: (r, o, t0) => { const g = sicG(r.y); if (!g) return true; const med = secMed(g, t0), c1 = cl(o, t0 - 12); return med == null || !(c1 > 0) || cl(o, t0) / c1 - 1 >= med; } });
+    X('E 업종', '그달 후보가 가장 많이 몰린 업종 먼저(업종 쏠림 우선)', {}, {}, m => wrap(m, a => { const cnt = new Map(); a.forEach(e => { const g = sicG(e.r.y); if (g) cnt.set(g, (cnt.get(g) || 0) + 1); }); return [...a].map((e, i) => [e, i]).sort((x, y) => ((cnt.get(sicG(y[0].r.y)) || 0) - (cnt.get(sicG(x[0].r.y)) || 0)) || x[1] - y[1]).map(x => x[0]); }));
+    X('F 가격·환율', '1주 가격 1천원 미만(한국)·5달러 미만(미국) 제외', {}, { skipFn: (r, o, p) => p < (isKR(r.y) ? 1000 : 5) });
+    X('F 가격·환율', '원/달러가 1,400원을 넘으면 미국 신규 매수 쉼', {}, { skipFn: (r, o, p, k) => !isKR(r.y) && fx(k) > 1400 });
+    X('F 가격·환율', '구매 첫날 −5% 넘게 갭 하락하면 건너뜀', {}, { skipFn: (r, o, p, k) => { const b2 = o.m.get(k - 1); return b2 > 0 && p / b2 - 1 < -0.05; } });
+    X('F 가격·환율', '확인 문턱을 종목 변동성에 맞춤(1×월 변동성, 5~30%)', { ck: 'f4', thrFn: r => Math.max(0.05, Math.min(0.3, 1 * (r.x[VOLAT] || 0.1))) });
+    X('F 가격·환율', '확인 문턱 1.5×월 변동성(5~30%)', { ck: 'f4b', thrFn: r => Math.max(0.05, Math.min(0.3, 1.5 * (r.x[VOLAT] || 0.1))) });
+    X('F 가격·환율', '확인 문턱을 금리 국면별로(금리 상승 중 15%, 아니면 10%)', { ck: 'f5', thrFn: r => (rateJ(mi(r.ym)) === true ? 0.15 : 0.1) });
+    X('F 가격·환율', '확인 기준점을 돌파 달 종가로(지금은 다음 달 시가)', { ck: 'f6', refClose: true });
+    X('G 일봉', '최근 3개월에 하루 ±30% 넘게 움직인 종목 제외', {}, { skipFn: (r, o, p, k) => { const a = dailyRets(r.y, k - 3, k - 1); return !!a && a.some(v => Math.abs(v) > 0.3); } });
+    X('G 일봉', '최근 3개월에 상한가(하루 +29% 이상)가 있었던 한국 종목 제외', {}, { skipFn: (r, o, p, k) => { if (!isKR(r.y)) return false; const a = dailyRets(r.y, k - 3, k - 1); return !!a && a.some(v => v >= 0.29); } });
+    X('G 일봉', '최근 3개월에 상한가가 있었던 한국 종목만(미국은 그대로)', {}, { skipFn: (r, o, p, k) => { if (!isKR(r.y)) return false; const a = dailyRets(r.y, k - 3, k - 1); return !(a && a.some(v => v >= 0.29)); } });
+    posts.push(() => post12('22-', '22 매수 신호 2'));
+  }
+
+
+  // ═════ 묶음 23: 후보 순위 2 — 지표 하나씩 순위(양방향)·추세 매끄러움·위험조정·가속·베타·업종 모멘텀·한미 백분위·국면별·시장 우선·시총 섞기·종목 성적 기억·환율 국면 (10이평 · 한국6/미국10 규칙)
+  if (on(23)) {
+    const S = n => `23-${n}`;
+    const Y = (sec, name, candFn) => { const cand = candFn(mBase); add(S(sec), '10이평 · ' + name, { cand, rule: rule10 }); add(S(sec), '한국6·미국10 · ' + name, { cand, rule: rule10, o: { exitMaFn: KR6 } }); };
+    Y('기준', '기준(점수 순)', m => candOf(m));
+    const sortKey = (m, f, dir) => wrap(m, a => { const rows = a.map(e => { const v = f(e); return [e, v == null || !Number.isFinite(v) ? null : v]; }); rows.sort((x, y) => (x[1] == null) - (y[1] == null) || (x[1] == null ? 0 : dir * (y[1] - x[1]))); return rows.map(x => x[0]); });
+    const mixKey = (m, f, w) => wrap(m, a => { const rk = (g) => { const r = new Map(), s2 = [...a].sort((x, y) => (g(y) ?? -1e18) - (g(x) ?? -1e18)); s2.forEach((e, i) => r.set(e, i)); return r; }; const r0 = rk(e => e.s), r1 = rk(f); return [...a].sort((x, y) => (r0.get(x) + w * r1.get(x)) - (r0.get(y) + w * r1.get(y))); });
+    // A 지표 하나씩(양방향): m_ 거시·시장 구분 지표는 같은 달 후보끼리 값이 같거나 의미 없어 뺌
+    F.forEach((nm, j) => { if (/^m_|^us$|^etf$/.test(nm)) return; [1, -1].forEach(dir => Y('A 지표 하나씩 순위', `${nm} ${dir > 0 ? '큰 순' : '작은 순'}`, m => sortKey(m, e => e.r.x[j], dir))); });
+    // B 새 순위 기준
+    Y('B 새 순위 기준', '추세가 매끄러운 순(12개월 직선 회귀 R²)', m => sortKey(m, e => r2K(px(e.r.y), e.cj), 1));
+    Y('B 새 순위 기준', '12개월 수익률÷변동성이 큰 순', m => sortKey(m, e => e.r.x[fi('ret12')] / Math.max(0.03, e.r.x[fi('volat12')] || 0.1), 1));
+    Y('B 새 순위 기준', '모멘텀 가속이 큰 순(최근 3개월 수익 − 그 전 3개월 수익)', m => sortKey(m, e => { const o = px(e.r.y), a = cl(o, e.cj), b2 = cl(o, e.cj - 3), c2 = cl(o, e.cj - 6); return a > 0 && b2 > 0 && c2 > 0 ? (a / b2 - 1) - (b2 / c2 - 1) : null; }, 1));
+    Y('B 새 순위 기준', '베타(지수 민감도) 낮은 순', m => sortKey(m, e => betaK(px(e.r.y), e.cj, IDXKEY(e.r.y)), -1));
+    Y('B 새 순위 기준', '베타 높은 순(대조)', m => sortKey(m, e => betaK(px(e.r.y), e.cj, IDXKEY(e.r.y)), 1));
+    Y('B 새 순위 기준', '점수÷변동성(12개월) 큰 순(위험조정)', m => sortKey(m, e => e.s / Math.max(0.03, e.r.x[fi('volat12')] || 0.1), 1));
+    Y('B 새 순위 기준', '점수 − 변동성(12개월) 벌점', m => sortKey(m, e => e.s - 1 * (e.r.x[fi('volat12')] || 0.1), 1));
+    Y('B 새 순위 기준', '업종(SIC) 12개월 수익률 중앙값이 큰 순', m => sortKey(m, e => { const g = sicG(e.r.y); return g ? secMed(g, e.cj) : null; }, 1));
+    // C 섞기·국면
+    Y('C 섞기·국면', '한·미 각각 점수 백분위로 바꾼 뒤 순위(같은 잣대)', m => wrap(m, a => { const pc2 = new Map(); [true, false].forEach(kr => { const g = a.filter(e => isKR(e.r.y) === kr).sort((x, y) => y.s - x.s); g.forEach((e, i) => pc2.set(e, g.length > 1 ? i / (g.length - 1) : 0)); }); return [...a].sort((x, y) => pc2.get(x) - pc2.get(y)); }));
+    Y('C 섞기·국면', '금리 상승 중엔 변동성 낮은 순, 아니면 점수 순', m => wrap(m, (a, ym) => (rateJ(mi(ym)) === true ? [...a].sort((x, y) => (x.r.x[fi('volat12')] ?? 9) - (y.r.x[fi('volat12')] ?? 9)) : a)));
+    Y('C 섞기·국면', '지수가 더 강한(6개월 수익률) 시장의 후보 먼저', m => wrap(m, (a, ym) => { if (!a.length) return a; const k = mi(ym) + 1, rk = key => { const x = idxAt(key, k - 1), y = idxAt(key, k - 7); return x > 0 && y > 0 ? x / y : 1; }; const krBetter = rk('ks') >= rk('sp'); return [...a].map((e, i) => [e, i]).sort((x, y) => ((isKR(x[0].r.y) === krBetter ? 0 : 1) - (isKR(y[0].r.y) === krBetter ? 0 : 1)) || x[1] - y[1]).map(x => x[0]); }));
+    Y('C 섞기·국면', '원화 약세(12개월 환율 상승)면 미국 후보 먼저, 아니면 한국 후보 먼저', m => wrap(m, (a, ym) => { if (!a.length) return a; const k = mi(ym) + 1, weak = fx(k - 1) > fx(k - 13); return [...a].map((e, i) => [e, i]).sort((x, y) => ((isKR(x[0].r.y) === !weak ? 0 : 1) - (isKR(y[0].r.y) === !weak ? 0 : 1)) || x[1] - y[1]).map(x => x[0]); }));
+    const capAt = (e) => { const o = px(e.r.y), c0 = cl(o, e.cj), cap = CAPM.get(e.r.y); return c0 > 0 && cap > 0 && o.lastC > 0 ? cap * c0 / o.lastC : null; };
+    const CAPM = new Map(); try { JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json'), 'utf8')).forEach(x => CAPM.set(x.y, x.cap)); } catch (e) {}
+    Y('C 섞기·국면', '점수 순위 + 시총 큰 순위 반반', m => mixKey(m, capAt, 1));
+    Y('C 섞기·국면', '점수 순위 + 시총 작은 순위 반반', m => mixKey(m, e => { const v = capAt(e); return v == null ? null : -v; }, 1));
+    // D 종목 성적 기억: 같은 종목의 이전 돌파들(12개월 전까지 결과가 난 것)의 평균 정답
+    const PRIOR = new Map(); ALL.forEach(r => { (PRIOR.get(r.y) || PRIOR.set(r.y, []).get(r.y)).push(r); });
+    const priorMean = (e) => { const L = PRIOR.get(e.r.y) || [], lim = mi(e.r.ym); const v = L.filter(r => r !== e.r && mi(r.ym) + 12 <= lim && Number.isFinite(r.t)).map(r => r.t); return v.length ? mean(v) : null; };
+    Y('D 종목 성적 기억', '같은 종목의 이전 돌파 평균 성적이 좋은 순(기억 없으면 뒤)', m => sortKey(m, priorMean, 1));
+    Y('D 종목 성적 기억', '점수 순위 + 종목 성적 기억 순위 반반', m => mixKey(m, priorMean, 1));
+    Y('D 종목 성적 기억', '이전 돌파 평균 성적이 나쁜 종목 제외(평균 0 미만)', m => wrap(m, a => a.filter(e => { const v = priorMean(e); return v == null || v >= 0; })));
+    posts.push(() => post12('23-', '23 후보 순위 2'));
+  }
+
+
+  // ═════ 묶음 24: 점수 모델 2 — 순수 JS 경사 부스팅 트리(GBM)·랜덤포레스트 근사·k-최근접 이웃·분위 회귀·상호작용·부호 제약·그달 안 표준화·국면별/시장별 따로 학습·확인 달 지표로 학습·새 지표(52주 저점 위치·최대 낙폭·일 변동성·상한가·시총·계절·업종)·점수 섞기
+  if (on(24)) {
+    const S = n => `24-${n}`;
+    const gbm = require('./gbm');
+    const alt = (name, opts, ck) => {
+      const m2 = rescore(opts), old = scored[kA]; scored[kA] = m2;
+      let pm; try { pm = mk({ ck: 'q24' + ck }); } finally { scored[kA] = old; }
+      add(S('점수 모델'), '10이평 · ' + name, { cand: candOf(pm), rule: rule10 }); add(S('점수 모델'), '한국6·미국10 · ' + name, { cand: candOf(pm), rule: rule10, o: { exitMaFn: KR6 } });
+      return m2;
+    };
+    add(S('기준'), '10이평 · 점수 모델 그대로(기준)', { cand: candOf(mBase), rule: rule10 }); add(S('기준'), '한국6·미국10 · 점수 모델 그대로(기준)', { cand: candOf(mBase), rule: rule10, o: { exitMaFn: KR6 } });
+    const gbmModel = opt => (Z, t, ym, w, P, trr) => { const cols = P.map(p => p.j), model = gbm.fit(trr.map(r => r.x), t, cols, opt); return (zx, x) => gbm.predict(model, x); };
+    alt('GBM 트리(깊이 3, 300번)', { modelFn: gbmModel({}) }, 'g1');
+    alt('GBM 트리(깊이 2, 200번)', { modelFn: gbmModel({ depth: 2, rounds: 200 }) }, 'g2');
+    alt('GBM 트리(깊이 5, 잎 80, 200번)', { modelFn: gbmModel({ depth: 5, minLeaf: 80, rounds: 200 }) }, 'g3');
+    alt('랜덤포레스트 근사(무작위성 강한 부스팅: 지표 40%·표본 50%·깊이 5)', { modelFn: gbmModel({ depth: 5, minLeaf: 80, ff: 0.4, bag: 0.5, rounds: 300 }) }, 'g4');
+    alt('GBM 씨앗 3개 평균', { modelFn: (Z, t, ym, w, P, trr) => { const cols = P.map(p => p.j), ms = [1, 2, 3].map(sd => gbm.fit(trr.map(r => r.x), t, cols, { seed: sd })); return (zx, x) => mean(ms.map(m => gbm.predict(m, x))); } }, 'g5');
+    const knn = K => (Z, t, ym, w) => { const idx = w.slice(1).map((v, i) => [Math.abs(v), i]).sort((a, b) => b[0] - a[0]).slice(0, 12).map(a => a[1]); const step = Math.max(1, Math.floor(Z.length / 8000)), pts = [], ts = []; for (let i = 0; i < Z.length; i += step) { pts.push(idx.map(c => Z[i][c])); ts.push(t[i]); } return zx => { const q = idx.map(c => zx[c]), ds = pts.map((p, i) => { let d = 0; for (let c = 0; c < q.length; c++) { const e = p[c] - q[c]; d += e * e; } return [d, i]; }); ds.sort((a, b) => a[0] - b[0]); let sm = 0; for (let i = 0; i < K; i++) sm += ts[ds[i][1]]; return sm / K; }; };
+    alt('k-최근접 이웃 50(비슷한 과거 돌파의 평균 정답)', { modelFn: knn(50) }, 'k1');
+    alt('k-최근접 이웃 150', { modelFn: knn(150) }, 'k2');
+    const quant = tau => (Z, t) => { const d = Z[0].length, w = new Array(d + 1).fill(0); w[0] = (() => { const a = [...t].sort((x, y) => x - y); return a[Math.floor(a.length * tau)]; })(); const n = Z.length; for (let ep = 0; ep < 150; ep++) { const lr = 0.05 / (1 + ep / 30), g = new Array(d + 1).fill(0); for (let i = 0; i < n; i++) { let p = w[0]; for (let c = 0; c < d; c++) p += w[c + 1] * Z[i][c]; const u = t[i] >= p ? -tau : 1 - tau; g[0] += u; for (let c = 0; c < d; c++) g[c + 1] += u * Z[i][c]; } for (let c = 0; c <= d; c++) w[c] -= lr * g[c] / n + (c ? lr * 0.002 * w[c] : 0); } return w; };
+    alt('분위 회귀 25%(나쁠 때의 수익을 예측)', { fitFn: quant(0.25) }, 'q1');
+    alt('분위 회귀 50%(중앙값 회귀)', { fitFn: quant(0.5) }, 'q2');
+    alt('지표 상호작용(기여 큰 6개끼리 곱 15개 추가)', { modelFn: (Z, t, ym, w, P) => { const top = w.slice(1).map((v, i) => [Math.abs(v), i]).sort((a, b) => b[0] - a[0]).slice(0, 6).map(a => a[1]), ex = zx => { const o2 = []; for (let i = 0; i < top.length; i++) for (let j = i + 1; j < top.length; j++) o2.push(zx[top[i]] * zx[top[j]]); return zx.concat(o2); }, Zi = Z.map(ex), w2 = fitRidge(Zi, t, 300); return zx => score(w2, ex(zx)); } }, 'i1');
+    const sg = {}; ['gap', 'volat12', 'range', 'body', 'ret1'].forEach(n => { sg[fi(n)] = -1; }); sg[fi('dd36')] = 1;
+    alt('부호 제약 릿지(조용한 돌파 방향만 허용: 이격·변동성·봉 길이·봉 몸통·전월 수익은 −, 36개월 낙폭은 +)', { signs: sg }, 's1');
+    alt('지표를 그달 안에서 표준화한 뒤 학습·점수', { monthStd: true }, 'm1');
+    alt('금리 상승기·아닌 때를 따로 학습', { splitBy: r => rateJ(mi(r.ym)) === true }, 'r1');
+    const MKT = new Map(); try { JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json'), 'utf8')).forEach(x => MKT.set(x.y, x.mk)); } catch (e) {}
+    alt('코스피·코스닥·미국 셋으로 따로 학습', { splitBy: r => MKT.get(r.y) || 'US' }, 'mk1');
+    alt('한국·미국 둘로 따로 학습', { splitBy: r => (isKR(r.y) ? 'KR' : 'US') }, 'mk2');
+    // 확인 달 지표로 학습·점수: 돌파 신호마다 확인된 달이 있으면 그 달의 가격 지표로 바꿔서 같은 정답으로 학습
+    const CJ = new Map(); mBase.forEach(arr => arr.forEach(e => CJ.set(e.r.y + '|' + e.sym, e.cj)));
+    alt('확인 달 지표로 학습하고 같은 방식으로 점수', { xFn: r => { const cj = CJ.get(r.y + '|' + r.ym); if (cj) { const x2 = featAt(px(r.y), cj, r.x); if (x2) return x2; } return r.x; } }, 'c1');
+    // 새 지표 4+4개
+    const LISTCAP = new Map(); try { JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json'), 'utf8')).forEach(x => LISTCAP.set(x.y, x.cap)); } catch (e) {}
+    const nF = F.length;
+    const newF = r => { const o = px(r.y), t0 = mi(r.ym), x = r.x.slice(); const c0 = cl(o, t0);
+      let mn = 1e18, mx = -1, pk = -1, mdd = 0, ok = true; for (let j = 11; j >= 0; j--) { const v = cl(o, t0 - j), l = o.lo.get(t0 - j); if (!(v > 0)) { ok = false; break; } if (l > 0) mn = Math.min(mn, l); pk = Math.max(pk, v); mdd = Math.min(mdd, v / pk - 1); }
+      x[nF] = ok && mn < 1e17 ? c0 / mn - 1 : NaN; x[nF + 1] = ok ? mdd : NaN;
+      const dr = dailyRets(r.y, t0 - 2, t0); x[nF + 2] = dr && dr.length > 10 ? sdOf(dr) : NaN; const dr6 = dailyRets(r.y, t0 - 5, t0); x[nF + 3] = dr6 ? dr6.filter(v => v >= 0.29).length : NaN;
+      const cap = LISTCAP.get(r.y); x[nF + 4] = cap > 0 && c0 > 0 && o.lastC > 0 ? Math.log10(cap * c0 / o.lastC) : NaN; const mo = r.ym % 100; x[nF + 5] = Math.sin(2 * Math.PI * mo / 12); x[nF + 6] = Math.cos(2 * Math.PI * mo / 12);
+      const g = sicG(r.y), md = g ? secMed(g, t0) : null; x[nF + 7] = md != null ? md : NaN; return x; };
+    alt('새 지표 4개(52주 저점 위치·12개월 최대 낙폭·일 변동성·6개월 상한가 일수) 추가', { xFn: r => newF(r), extraCols: [nF, nF + 1, nF + 2, nF + 3] }, 'n1');
+    alt('새 지표 4개(시총·계절 사인/코사인·업종 12개월 수익률) 추가', { xFn: r => newF(r), extraCols: [nF + 4, nF + 5, nF + 6, nF + 7] }, 'n2');
+    alt('새 지표 8개 모두 추가', { xFn: r => newF(r), extraCols: [nF, nF + 1, nF + 2, nF + 3, nF + 4, nF + 5, nF + 6, nF + 7] }, 'n3');
+    // 점수 섞기: 릿지·k-최근접·분위 회귀의 월별 백분위 평균
+    { const mk1 = scored[kA], mk2 = rescore({ modelFn: knn(50) }), mk3 = rescore({ fitFn: quant(0.25) }), mk4 = rescore({ modelFn: gbmModel({}) });
+      const pctMap = mp => { const out = new Map(); mp.forEach((arr, ym) => { const n = arr.length; arr.forEach((x, i) => out.set(x.r.y + '|' + ym, n > 1 ? 1 - i / (n - 1) : 0.5)); }); return out; };
+      const p1 = pctMap(mk1), p2 = pctMap(mk2), p3 = pctMap(mk3), p4 = pctMap(mk4);
+      [['릿지+k-최근접+분위 회귀', [p1, p2, p3]], ['릿지+GBM', [p1, p4]], ['릿지+k-최근접+분위+GBM', [p1, p2, p3, p4]]].forEach(([nm, ps], i) => {
+        const bl = new Map(); mk1.forEach((arr, ym) => { const a2 = arr.map(x => ({ r: x.r, s: mean(ps.map(p => p.get(x.r.y + '|' + ym) ?? 0.5)) })); a2.sort((x, y) => y.s - x.s); bl.set(ym, a2); });
+        const old = scored[kA]; scored[kA] = bl; let pm; try { pm = mk({ ck: 'q24bl' + i }); } finally { scored[kA] = old; }
+        add(S('점수 섞기'), '10이평 · ' + nm + ' 백분위 평균', { cand: candOf(pm), rule: rule10 }); add(S('점수 섞기'), '한국6·미국10 · ' + nm + ' 백분위 평균', { cand: candOf(pm), rule: rule10, o: { exitMaFn: KR6 } }); }); }
+    posts.push(() => post12('24-', '24 점수 모델 2'));
+  }
+
+
+  // ═════ 묶음 25: 비중·포트폴리오 2 — 불타기·물타기·지수 상태별 종목 수·VIX별 현금·변동성 목표·낙폭 회로 차단·낙폭 때 절반 현금·수익곡선 이탈 때 지수로·부진 때 종목 수 줄이기·코어·위성 비율·레버리지 (10이평 · 한국6/미국10)
+  if (on(25)) {
+    const S = n => `25-${n}`;
+    const Z = (sec, name, extra, candFn) => { const cand = (candFn || candOf)(mBase); add(S(sec), '10이평 · ' + name, { cand, rule: rule10, o: { ...extra } }); add(S(sec), '한국6·미국10 · ' + name, { cand, rule: rule10, o: { exitMaFn: KR6, ...extra } }); };
+    Z('기준', '기준', {});
+    const spR = k => { const a = idxAt('sp', k), b2 = idxAt('sp', k - 1); return a && b2 ? (a * fx(k)) / (b2 * fx(k - 1)) - 1 : 0; };
+    // A 불타기·물타기
+    [0.2, 0.5].forEach(g => [0.5, 1].forEach(f => Z('A 불타기·물타기', `보유 종목이 +${g * 100}%가 되면 처음 산 금액의 ${f}배 추가(1회)`, { addFn: (h, k) => { if (h.added) return 0; if (h.last >= h.buyPx * (1 + g)) { h.added = true; return f; } return 0; } })));
+    Z('A 불타기·물타기', '보유 종목이 이평 위에서 −10%가 되면 처음 금액의 0.5배 추가(물타기 대조)', { addFn: (h, k) => { if (h.added) return 0; const m = ma10(h.px, k); if (m && h.last > m && h.last <= h.buyPx * 0.9) { h.added = true; return 0.5; } return 0; } });
+    // B 지수·시장 상태별 종목 수·현금
+    Z('B 상태별 종목 수·현금', '지수(코스피·S&P500)가 둘 다 10이평 위면 6종목, 하나만 위면 4종목, 둘 다 아래면 3종목', { nFn: (ym) => { const k = mi(ym), n = [idxBelow('sp', k), idxBelow('ks', k)].filter(v => v === true).length; return n === 0 ? 6 : n === 1 ? 4 : 3; } });
+    Z('B 상태별 종목 수·현금', '최근 12개월 전략 수익이 마이너스면 2종목, 아니면 4종목', { nFn: (ym, list, st) => (st.nM >= 12 && st.ret12 < 0 ? 2 : 4) });
+    Z('B 상태별 종목 수·현금', '최근 12개월 전략 수익이 마이너스면 6종목(분산), 아니면 4종목', { nFn: (ym, list, st) => (st.nM >= 12 && st.ret12 < 0 ? 6 : 4) });
+    Z('B 상태별 종목 수·현금', 'VIX 20/30/40 이상이면 현금 25/40/50%', { cashKeepFn: (k) => { const v = num(mc(ymOf(k - 1)).vix); return v == null ? 0 : v >= 40 ? 0.5 : v >= 30 ? 0.4 : v >= 20 ? 0.25 : 0; } });
+    Z('B 상태별 종목 수·현금', 'VIX 30 이상이면 현금 50%', { cashKeepFn: (k) => { const v = num(mc(ymOf(k - 1)).vix); return v != null && v >= 30 ? 0.5 : 0; } });
+    [0.15, 0.2, 0.3].forEach(tv => Z('C 변동성 목표', `전략 12개월 변동성이 연 ${tv * 100}%를 넘으면 그만큼 현금(목표 변동성)`, { cashKeepFn: (k, st) => (st.vol12 ? Math.max(0, 1 - tv / st.vol12) : 0) }));
+    // D 낙폭 대응
+    [0.1, 0.15, 0.2].forEach(d => Z('D 낙폭 대응', `전략 낙폭이 −${d * 100}%보다 깊은 동안 신규 매수 쉼(회로 차단)`, { buyBlock: (k, ym, st) => st.dd <= -d }));
+    [0.15, 0.2].forEach(d => Z('D 낙폭 대응', `전략 낙폭이 −${d * 100}%보다 깊어지면 보유 종목 절반을 현금으로`, { exitFn: (h, k, hp) => { if (hp.st.dd > -0.05) h.derisk = false; if (hp.st.dd <= -d && !h.derisk) { h.derisk = true; hp.part(0.5, 'derisk'); } return null; } }));
+    Z('D 낙폭 대응', '전략 수익곡선이 자기 10개월 평균 아래면 전부 팔고 S&P500(원화)에 두기', { exitFn: (h, k, hp) => (hp.st.eqBelow ? 'eqoff' : null), buyBlock: (k, ym, st) => st.eqBelow, cashRetFn: (k, st) => (st.eqBelow ? spR(k) : 0) });
+    Z('D 낙폭 대응', '전략 수익곡선이 자기 6개월 평균 아래면 전부 팔고 S&P500에 두기', { eqMaN: 6, exitFn: (h, k, hp) => (hp.st.eqBelow ? 'eqoff' : null), buyBlock: (k, ym, st) => st.eqBelow, cashRetFn: (k, st) => (st.eqBelow ? spR(k) : 0) });
+    posts.push(() => { post12('25-', '25 비중·포트폴리오 2'); post25(); });
+    function post25() {                                                       // 전략 월 수익률에 지수·레버리지를 섞는 계산(전략 자체는 그대로)
+      const mkRet = (v) => simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...simOpt(v.rule, v.o || {}), cand: v.cand }, DEP).rets.filter(x => !x.partial);
+      const bases = V.filter(v => /기준$/.test(v.name) && String(v.sec).startsWith('25-기준'));
+      bases.forEach(v => safe('25 코어·위성', () => {
+        const rs = mkRet(v), ks = rs.map(x => x.k), arr = rs.map(x => x.r);
+        const idxR = key => ks.map(k => { const a = idxAt(key, k), b2 = idxAt(key, k - 1); return a && b2 ? (key === 'ks' ? a / b2 : (a * fx(k)) / (b2 * fx(k - 1))) - 1 : 0; });
+        log(''); log(`## 25 코어·위성 — ${v.name}: 전략 비중 W% + 지수 (100−W)% (매월 재조정, 연평균 · 낙폭)`);
+        [['sp', 'S&P500'], ['nq', '나스닥100'], ['ks', '코스피']].forEach(([key, nm]) => { const ix = idxR(key); const cells = [100, 70, 50, 30, 10].map(W => { const a = arr.map((x, i) => W / 100 * x + (1 - W / 100) * ix[i]); return `${W}%: ${pc(cagrOf(a))} · ${pc(mddOf(a))}`; }); log(`${nm.padEnd(10)} ${cells.join('   ')}`); });
+        const ix = idxR('sp'); let idx = 1, pk = 1; const dyn = arr.map((x, i) => { const dd = idx / pk - 1, w = Math.max(0.2, Math.min(1, 1 + 2 * dd)); const r = w * x + (1 - w) * ix[i]; idx *= 1 + x; pk = Math.max(pk, idx); return r; });
+        log(`낙폭이 깊을수록 전략 비중을 줄이고 S&P500을 늘림(비중 = 1 + 2×낙폭, 최소 20%): ${pc(cagrOf(dyn))} · ${pc(mddOf(dyn))}`);
+        log('레버리지(전략 수익률×L − (L−1)×(미국 기준금리+1%)÷12):');
+        [1, 1.2, 1.5, 2].forEach(L => { const a = arr.map((x, i) => { const ff = num(mc(ymOf(ks[i] - 1)).ff); return L * x - (L - 1) * ((ff == null ? 2 : ff) / 100 + 0.01) / 12; }); log(`  ${L}배: ${pc(cagrOf(a))} · ${pc(mddOf(a))}`); });
+      }));
+    }
+  }
+
+
+  // ═════ 묶음 26: 매도 2 — ATR 트레일·변동성 손절·RSI 익절·월별 점수 재계산·갈아타기·지수/업종 대비 부진·유예 조건(변동성·이탈 깊이·동시 이탈·한미 따로)·보유 기간별 이평·매수가 2배 익절·장대음봉·거래량 급증 하락·단계적 매도·위험 회피·금리 대상/문턱·채널 이탈·WMA/Hull/KAMA (10이평 · 한국6/미국10)
+  if (on(26)) {
+    const S = n => `26-${n}`;
+    const VOLF = fi('volat12');
+    const W = (sec, name, extra, rule) => { const rl = rule || rule10, cand = rule ? candOf(mk({ ck: 'w26' + sec + name }, rl)) : candOf(mBase); add(S(sec), '10이평 · ' + name, { cand, rule: rl, o: { ...extra } }); add(S(sec), '한국6·미국10 · ' + name, { cand, rule: rl, o: { exitMaFn: KR6, ...extra } }); };
+    W('기준', '기준', {});
+    // A 손절·익절 규칙
+    [2, 3, 4].forEach(kk => W('A 변동폭 트레일·손절', `ATR(14개월) ${kk}배 트레일: 고점 종가에서 ${kk}×ATR 내려오면 판매`, { exitFn: (h, k) => { const a = atrK(h.px, k); return a && h.last <= h.peak - kk * a ? 'atr' : null; } }));
+    [1, 2, 3].forEach(mm => W('A 변동폭 트레일·손절', `변동성 비례 손절: 매수가에서 ${mm}×(12개월 월 변동성)만큼 내려오면 판매`, { exitFn: (h, k) => { const v = h.buyFeats && h.buyFeats[VOLF]; return v > 0 && h.last <= h.buyPx * (1 - mm * v) ? 'volstop' : null; } }));
+    W('A 변동폭 트레일·손절', '월봉 RSI(14)가 85를 넘으면 절반 익절(1회)', { exitFn: (h, k, hp) => { if (!h.rsiDone) { const v = rsiK(h.px, k); if (v != null && v > 85) { h.rsiDone = true; hp.part(0.5, 'rsi'); } } return null; } });
+    W('A 변동폭 트레일·손절', '매수가의 2배에 닿은 뒤 처음 10이평 아래로 내려오면 즉시 판매(익절 기준을 매수가로)', { tpTrail: 0, exitFn: (h, k) => { if (h.last >= 2 * h.buyPx) h.tp2 = true; const m = ma10(h.px, k); return h.tp2 && m && h.last < m ? 'tp2buy' : null; } });
+    W('A 변동폭 트레일·손절', '6개월 최저가 아래로 내려오면 판매(채널 이탈)', { exitFn: (h, k) => { let mn = 1e18; for (let j = 1; j <= 6; j++) { const v = h.px.lo.get(k - j); if (!(v > 0)) return null; mn = Math.min(mn, v); } return h.last < mn ? 'chan' : null; } });
+    // B 점수·상대 비교로 판매
+    const keep = {}; rescore({ keep });
+    const evSc = {}; scored[kA].forEach((arr, ym) => { const Y = Math.floor(ym / 100); (evSc[Y] = evSc[Y] || []).push(...arr.map(x => x.s)); });
+    const sdS = sdOf(Object.values(evSc).flat());
+    const reScore = (h, k) => { const M = keep[Math.floor(ymOf(k) / 100)]; if (!M || !h.buyFeats) return null; const x2 = featAt(h.px, k, h.buyFeats); return x2 ? score(M.w, z({ x: x2 }, M.P)) : null; };
+    [0.1, 0.2, 0.3].forEach(q => W('B 점수·상대 비교', `보유 종목 점수를 매달 다시 계산해서 그해 점수 하위 ${q * 100}%면 판매`, { exitFn: (h, k) => { if (h.buyK === k) return null; const v = reScore(h, k), arr = evSc[Math.floor(ymOf(k) / 100)]; return v != null && arr && v < pctl(arr, q) ? 'rescore' : null; } }));
+    [0.5, 1].forEach(mg => W('B 점수·상대 비교', `갈아타기: 새 1위 후보 점수가 보유 최저 점수보다 ${mg}σ 넘게 높으면 그 종목 교체`, { exitFn: (h, k, hp) => { if (h.buyK === k) return null; const low = hp.holds.reduce((a, x) => (a == null || (x.buyScore ?? 9) < (a.buyScore ?? 9) ? x : a), null); if (low !== h) return null; const top = hp.cands.find(e => !hp.holds.some(x => x.y === e.r.y)); return top && top.s - (h.buyScore ?? 0) >= mg * sdS ? 'swap' : null; } }));
+    W('B 점수·상대 비교', '지수 대비 3개월 연속 부진하면 판매', { exitFn: (h, k) => { if (h.buyK >= k - 2) return null; const key = IDXKEY(h.y); for (let j = 0; j < 3; j++) { const a = cl(h.px, k - j), b2 = cl(h.px, k - j - 1), ia = idxAt(key, k - j), ib = idxAt(key, k - j - 1); if (!(a > 0 && b2 > 0 && ia > 0 && ib > 0) || a / b2 >= ia / ib) return null; } return 'weak'; } });
+    W('B 점수·상대 비교', '12개월 수익률이 업종(SIC) 중앙값보다 낮으면 판매(미국만)', { exitFn: (h, k) => { const g = sicG(h.y); if (!g || h.buyK === k) return null; const md = secMed(g, k), c1 = cl(h.px, k - 12); return md != null && c1 > 0 && h.last / c1 - 1 < md ? 'secweak' : null; } });
+    W('B 점수·상대 비교', '지수가 10이평 아래이고 금리가 오르는 중이면 보유 전부 판매(위험 회피)', { exitFn: (h, k) => (idxBelow(IDXKEY(h.y), k) === true && rateJ(k) === true ? 'riskoff' : null) });
+    // C 월봉 모양으로 판매
+    W('C 월봉 모양', '월봉 몸통이 −15% 이하이거나(장대음봉) 윗꼬리가 봉 폭의 60%를 넘는 음봉이면 판매', { exitFn: (h, k) => { const op = h.px.op.get(k), hi = h.px.hi.get(k), lo = h.px.lo.get(k), c0 = h.last; if (!(op > 0 && hi > 0 && lo > 0) || h.buyK === k) return null; const hl = hi - lo || 1; return (c0 - op) / op <= -0.15 || (c0 < op && (hi - Math.max(op, c0)) / hl > 0.6) ? 'candle' : null; } });
+    W('C 월봉 모양', '거래량이 12개월 평균의 2배 넘게 터지며 −10% 넘게 빠지면 판매', { exitFn: (h, k) => { const v = h.px.vol.get(k), av = avgV(h.px, k - 1, 12), c1 = cl(h.px, k - 1); return v > 0 && av && v >= 2 * av && c1 > 0 && h.last / c1 - 1 <= -0.1 ? 'volcrash' : null; } });
+    // D 유예 조건
+    const vmed = pctl(ALL.map(r => r.x[VOLF]).filter(Number.isFinite), 0.5);
+    W('D 유예 조건', '변동성 큰 종목은 유예 3달, 작은 종목은 유예 1달', { graceN2: (h) => ((h.buyFeats && h.buyFeats[VOLF] >= vmed) ? 3 : 1) });
+    W('D 유예 조건', '변동성 큰 종목은 유예 1달, 작은 종목은 유예 3달', { graceN2: (h) => ((h.buyFeats && h.buyFeats[VOLF] >= vmed) ? 1 : 3) });
+    const depthG = maFn => (h, k) => { const m = maFn(h, k); if (!m) return undefined; const d = h.last / m - 1; return d >= -0.03 ? 2 : d <= -0.1 ? 1 : undefined; };
+    W('D 유예 조건', '이평보다 −3% 이내로만 내려오면 유예 2달, −10% 이하로 깊게 내려오면 즉시', { graceN2: (h, k) => depthG((x, kk) => (isKR(x.y) && false ? 0 : ma10(x.px, kk)))(h, k) });
+    W('D 유예 조건', '유예 중 첫 이탈 가격보다 −15% 더 떨어지면 즉시 판매', { graceN2: (h, k) => { if (h.fbp == null) h.fbp = h.last; return h.last <= h.fbp * 0.85 ? 1 : undefined; }, exitFn: (h, k) => { const m = ma10(h.px, k); if (m && h.last >= m) h.fbp = null; return null; } });
+    W('D 유예 조건', '유예 중 이평 위로 올라와도 이탈 횟수를 초기화하지 않고 누적', { graceNoReset: true });
+    W('D 유예 조건', '이평 아래 보유 종목이 3개 넘게 동시에 생기면(시장 급락) 유예 3달로 연장', { graceN2: (h, k, ctx) => (ctx.nBelow >= 3 ? 3 : undefined) });
+    W('D 유예 조건', '한국은 유예 1달·미국은 유예 3달', { graceN2: (h) => (isKR(h.y) ? 1 : 3) });
+    W('D 유예 조건', '한국은 유예 3달·미국은 유예 1달', { graceN2: (h) => (isKR(h.y) ? 3 : 1) });
+    W('D 유예 조건', '한국은 유예 2달·미국은 유예 4달', { graceN2: (h) => (isKR(h.y) ? 2 : 4) });
+    W('D 유예 조건', '매수 후 6개월 안에는 유예 1달, 그 뒤에는 유예 2달', { graceN2: (h, k) => (k - h.buyK < 6 ? 1 : 2) });
+    W('D 유예 조건', '단계적 매도: 처음 이탈 달에 절반 팔고 다음 달에도 아래면 나머지', { exitFn: (h, k, hp) => { if (h.graceCnt === 1 && !h.halfSold) { h.halfSold = true; hp.part(0.5, 'half'); } if (h.graceCnt === 0) h.halfSold = false; return null; } });
+    // E 판매 이평 모양
+    const wmaK = (o, k, n) => { let sm = 0, ws = 0; for (let j = 0; j < n; j++) { const v = cl(o, k - j); if (!(v > 0)) return null; sm += v * (n - j); ws += n - j; } return sm / ws; };
+    const hullK = (o, k, n) => { const h2 = Math.max(2, Math.round(n / 2)), sq = Math.max(2, Math.round(Math.sqrt(n))), ser = []; for (let j = sq - 1; j >= 0; j--) { const a = wmaK(o, k - j, h2), b2 = wmaK(o, k - j, n); if (a == null || b2 == null) return null; ser.push(2 * a - b2); } let sm = 0, ws = 0; ser.forEach((v, i) => { sm += v * (i + 1); ws += i + 1; }); return sm / ws; };
+    const kamaC = new Map(); const kamaK = (o, k, n) => { let by = kamaC.get(o); if (!by) { by = new Map(); kamaC.set(o, by); } let ser = by.get(n); if (!ser) { ser = new Map(); const keys = [...o.m.keys()].sort((a, b2) => a - b2), fast = 2 / 3, slow = 2 / 31; let kv = null; keys.forEach((kk, i) => { const c0 = o.m.get(kk); if (i < n) { ser.set(kk, null); kv = c0; return; } let ch = Math.abs(c0 - o.m.get(keys[i - n])), vol = 0; for (let j = 0; j < n; j++) vol += Math.abs(o.m.get(keys[i - j]) - o.m.get(keys[i - j - 1])); const er = vol ? ch / vol : 0, sc = (er * (fast - slow) + slow) ** 2; kv = kv + sc * (c0 - kv); ser.set(kk, kv); }); by.set(n, ser); } return ser.get(k) ?? null; };
+    [5, 7, 10].forEach(n => { W('E 판매 이평 모양', `판매 기준을 가중이평(WMA ${n})으로`, { exitMaFn: (h, k) => wmaK(h.px, k, n) }); W('E 판매 이평 모양', `판매 기준을 헐 이평(Hull ${n})으로`, { exitMaFn: (h, k) => hullK(h.px, k, n) }); W('E 판매 이평 모양', `판매 기준을 적응형 이평(KAMA ${n})으로`, { exitMaFn: (h, k) => kamaK(h.px, k, n) }); });
+    W('E 판매 이평 모양', '보유 처음 3개월은 10이평, 그 뒤는 5이평', { exitMaFn: (h, k) => maAtN(h.px, k, k - h.buyK < 3 ? 10 : 5) });
+    W('E 판매 이평 모양', '보유 처음 3개월은 5이평, 그 뒤는 10이평', { exitMaFn: (h, k) => maAtN(h.px, k, k - h.buyK < 3 ? 5 : 10) });
+    W('E 판매 이평 모양', '코스닥은 5이평·코스피는 10이평·미국은 10이평', { exitMaFn: (h, k) => maAtN(h.px, k, /\.KQ$/.test(h.y) ? 5 : 10) });
+    W('E 판매 이평 모양', '코스닥은 6이평·코스피는 8이평·미국은 10이평', { exitMaFn: (h, k) => maAtN(h.px, k, /\.KQ$/.test(h.y) ? 6 : isKR(h.y) ? 8 : 10) });
+    // F 금리 판단 바꾸기(후보 풀도 같은 규칙으로 다시 만듦)
+    const lvl = (key, k) => { const v = rtk(k)[key]; return v != null ? +v : null; };
+    const rl = (nm, fn) => ({ ...rule10, rateFn: fn, rateName: nm });
+    W('F 금리 판단', '금리 판단을 기준금리(연방기금)가 6개월 전보다 높으면 즉시로', null, rl('기준금리 6개월', k => { const a = num(mc(ymOf(k)).ff), b2 = num(mc(ymOf(k - 6)).ff); return a != null && b2 != null ? a > b2 : null; }));
+    W('F 금리 판단', '금리 판단을 10년−2년 스프레드가 6개월 전보다 줄면(평탄화) 즉시로', null, rl('스프레드 6개월', k => { const a = num(mc(ymOf(k)).t10y2y), b2 = num(mc(ymOf(k - 6)).t10y2y); return a != null && b2 != null ? a < b2 : null; }));
+    [0.25, 0.5].forEach(th => W('F 금리 판단', `국채 10년이 6개월 전보다 ${th}%p 넘게 올라야 즉시(문턱)`, null, rl('문턱' + th, k => { const a = lvl('dgs10', k), b2 = lvl('dgs10', k - 6); return a != null && b2 != null ? a - b2 > th : null; })));
+    W('F 금리 판단', '국채 10년이 직전 6개월 평균보다 높으면 즉시(평균과 비교)', null, rl('평균 6개월', k => { const a = lvl('dgs10', k); let sm = 0, n = 0; for (let j = 1; j <= 6; j++) { const v = lvl('dgs10', k - j); if (v != null) { sm += v; n++; } } return a != null && n >= 4 ? a > sm / n : null; }));
+    W('F 금리 판단', '국채 10년이 6개월 전보다 높고 12개월 전보다도 높아야 즉시', null, rl('6·12개월', k => { const a = lvl('dgs10', k), b2 = lvl('dgs10', k - 6), c2 = lvl('dgs10', k - 12); return a != null && b2 != null && c2 != null ? a > b2 && a > c2 : null; }));
+    posts.push(() => post12('26-', '26 매도 2'));
+  }
+
+
+  // ═════ 묶음 27: 체결·운용·검증·비교 전략 — 결정 주기·매수일(2·3·5·10거래일·15일·첫 5일 평균·반반)·적립 방식(성장·낙폭 2배·가치평균)·은퇴 인출·배당락·미국 선거 주기·판매 이평×유예×문턱×익절 격자(걸어가며 고르기·PBO·보정 샤프)·가격 잡음·한국/미국 따로 이평·단순 전략 비교(평균회귀·저변동성·시총 상위 보유)
+  if (on(27)) {
+    const S = n => `27-${n}`;
+    const T = (sec, name, extra, candFn, vx = {}) => { const cand = (candFn || candOf)(mBase); add(S(sec), '10이평 · ' + name, { cand, rule: rule10, ...vx, o: { ...extra } }); add(S(sec), '한국6·미국10 · ' + name, { cand, rule: rule10, ...vx, o: { exitMaFn: KR6, ...extra } }); };
+    T('기준', '기준', {});
+    // A 결정 주기·매수일
+    [2, 3].forEach(n => T('A 결정 주기', `${n}개월에 한 번만 사고팔기(그 사이엔 판매 판단도 쉼)`, { decideEvery: n, buyBlock: (k) => (k - mi(201112)) % n !== 0 }));
+    const dpx = (kind) => (y, k) => { const D = dailyOf(y); if (!D) return null; const rg = D.month.get(k); if (!rg) return null; const nth = n2 => (rg[0] + n2 - 1 < rg[1] ? D.c[rg[0] + n2 - 1] : null); const day15 = () => { for (let i = rg[0]; i < rg[1]; i++) if (D.d[i] % 100 >= 15) return D.c[i]; return null; };
+      if (kind === 'n2') return nth(2); if (kind === 'n3') return nth(3); if (kind === 'n5') return nth(5); if (kind === 'n10') return nth(10); if (kind === 'd15') return day15();
+      if (kind === 'avg5') { let t = 0, c0 = 0; for (let n2 = 1; n2 <= 5; n2++) { const v = nth(n2); if (v) { t += v; c0++; } } return c0 ? t / c0 : null; }
+      if (kind === 'half') { const a = nth(1), b2 = day15(); return a && b2 ? (a + b2) / 2 : null; } return null; };
+    [['n2', '매수를 이틀째 종가에(신호가 하루 늦어도)'], ['n3', '매수를 사흘째 종가에'], ['n5', '매수를 5거래일째 종가에'], ['n10', '매수를 10거래일째 종가에'], ['d15', '매수를 15일(달력) 이후 첫 종가에'], ['avg5', '첫 5거래일 평균가로 매수'], ['half', '1일 종가와 15일 종가의 평균가로 매수(반씩 나눠 사기)']].forEach(([kd, nm]) => T('A 결정 주기', nm, { fdPxFn: dpx(kd) }));
+    // B 적립 방식·인출
+    T('B 적립·인출', '월 입금액을 해마다 +5%씩 늘리기', { depFn: (k, st, dep, val, def) => dep * Math.pow(1.05, Math.floor((k - mi(201112)) / 12)) });
+    T('B 적립·인출', '전략 낙폭이 −15%보다 깊으면 그달 입금 2배', { depFn: (k, st, dep, val, def) => (st.dd <= -0.15 ? 2 * dep : dep) });
+    T('B 적립·인출', '가치평균법: 목표 평가액(매월 1% 복리로 커지는 경로)에 맞춰 입금(0~3배)', { depFn: (k, st, dep, val) => { const n = k - mi(201112), target = dep * ((Math.pow(1.01, n + 1) - 1) / 0.01); return Math.max(0, Math.min(3 * dep, target - val)); } });
+    [0.04, 0.06].forEach(wr => T('B 적립·인출', `은퇴 인출: 첫 달 1억원, 이후 입금 없이 매년 ${wr * 100}%(월 ${(wr / 12 * 100).toFixed(2)}%)를 인출`, { lump: 1e8, depFn: (k, st, dep, val, def) => (k === mi(201112) ? def : -wr / 12 * 1e8) }, null, { dep: 0, ret: wr }));
+    T('B 적립·인출', '그달 배당락이 있는 종목은 구매 건너뜀(배당락 직전 매수 피하기)', { skipFn: (r, o, p, k) => divOf(r.y, k) > 0 });
+    [[[2013, 2017, 2021, 2025], '미국 대선 다음 해'], [[2014, 2018, 2022], '중간선거 해'], [[2012, 2016, 2020, 2024], '대선 해'], [[2015, 2019, 2023], '대선 전해']].forEach(([ys, nm]) => T('B 적립·인출', `${nm}(${ys.join('·')})에는 신규 매수 쉼`, { buyBlock: (k) => ys.includes(Math.floor(ymOf(k) / 100)) }));
+    // C 가격 잡음(판매 판단에 ±σ 잡음)
+    [0.01, 0.02].forEach(sg => [1, 2, 3].forEach(sd => { const nz = (h, k) => 1 + sg * (2 * hash01('nz|' + sd + '|' + h.y + '|' + k) - 1); add(S('C 판단 잡음'), `10이평 · 판매 이평에 ±${sg * 100}% 잡음(씨앗 ${sd})`, { cand: candOf(mBase), rule: rule10, o: { exitMaFn: (h, k) => { const m = ma10(h.px, k); return m ? m * nz(h, k) : m; } } }); add(S('C 판단 잡음'), `한국6·미국10 · 판매 이평에 ±${sg * 100}% 잡음(씨앗 ${sd})`, { cand: candOf(mBase), rule: rule10, o: { exitMaFn: (h, k) => { const m = KR6(h, k); return m ? m * nz(h, k) : m; } } }); }));
+    // D 한국/미국 따로 이평 길이(시장 간 검증): 한 시장만 거래하며 판매 이평 3~12
+    [3, 4, 5, 6, 7, 8, 9, 10, 12].forEach(n => { [['한국', r => !isKR(r.y)], ['미국', r => isKR(r.y)]].forEach(([nm, skip]) => add(S('D 시장별 이평'), `${nm}만 거래 · 판매 ${n}이평`, { cand: candOf(mBase), rule: rule10, o: { skipFn: (r) => skip(r), exitMaFn: (h, k) => maAtN(h.px, k, n) } })); });
+    // E 격자: 판매 이평 × 유예 / × 확인 문턱 / × 익절 (후보 풀도 같은 규칙으로 다시 만듦)
+    const mkR = (N, g, tp) => ({ tp, grace: g, rate: true, rateFn: chg('dgs10', 6), rateName: '국채10년 6개월', exitMaN: N });
+    const grid = (type, N, g, tp, thr) => { const rl = mkR(N, g, tp), m = mk({ ck: `g27${type}${N}_${g}_${tp}_${thr}`, ...(thr ? { thr } : {}) }, rl); add(S('E 격자 ' + type), `격자${type} 이평 ${N} · 유예 ${g}달 · 익절 ${tp || '없음'} · 문턱 ${(thr || 0.1) * 100}%`, { cand: candOf(m), rule: rl, o: { exitMaN: N }, grid: { type, N, g, tp, thr: thr || 0.1 } }); };
+    [4, 5, 6, 7, 8, 10].forEach(N => { [1, 2, 3, 4].forEach(g => grid('A', N, g, 2)); [0.05, 0.075, 0.15, 0.2].forEach(th => grid('B', N, 2, 2, th)); [0, 1.5, 2.5, 3].forEach(tp => grid('C', N, 2, tp)); });
+    posts.push(() => { post12('27-', '27 체결·운용·검증'); post27(); });
+    function post27() {
+      const mkRet = (v) => simulate(ym => v.cand(ym).slice(0, 4), 4, v.C || C1, { ...simOpt(v.rule, v.o || {}), cand: v.cand, log: true }, v.dep != null ? v.dep : DEP);
+      // 1) 적립 방식: 돈 가중 수익률(IRR)·최종 평가액
+      const irrCf = (cfs, liq) => { const k0 = cfs[0][0], kL = cfs[cfs.length - 1][0], f = r => { let t = 0; cfs.forEach(([k, fl]) => { t += fl / Math.pow(1 + r, k - k0); }); return t + liq / Math.pow(1 + r, kL - k0); }; let lo = -0.05, hi = 0.1; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (f(m) > 0) lo = m; else hi = m; } return Math.pow(1 + lo, 12) - 1; };
+      log(''); log('## 27 적립·인출 방식 — 돈 가중 수익률(IRR, 입금 시점 반영)·총 입금·최종 세후 평가액(청산 가정)');
+      V.filter(v => String(v.sec).startsWith('27-기준') || (String(v.sec) === '27-B 적립·인출' && /입금|가치평균|인출/.test(v.name))).forEach(v => safe('27 적립', () => {
+        const sm = mkRet(v), tot = sm.cfs.reduce((a, [k, fl]) => a - fl, 0);
+        log(`${v.name.slice(0, 58).padEnd(58)} IRR ${pc(irrCf(sm.cfs, sm.liq)).padStart(7)} · 총 입금(−인출) ${(tot / 1e8).toFixed(2)}억 · 최종 ${(sm.liq / 1e8).toFixed(2)}억`);
+      }));
+      // 2) 격자 표·걸어가며 고르기·PBO·보정 샤프
+      const G = V.filter(v => v.grid && v.full && v.full.yearly), Yrs = YEARS_ALL.filter(y => y < 2026);
+      if (G.length >= 10) {
+        log(''); log(`## 27 격자 — 판매 이평 × 유예(익절 2배·문턱 10%): 연평균 (행 = 이평, 열 = 유예 1·2·3·4달)`);
+        const cell = (type, N, a) => { const v = G.find(x => x.grid.type === type && x.grid.N === N && (type === 'A' ? x.grid.g === a : type === 'B' ? x.grid.thr === a : x.grid.tp === a)); return v ? pc(v.full.cagr).padStart(7) : '      -'; };
+        [4, 5, 6, 7, 8, 10].forEach(N => log(`이평 ${String(N).padStart(2)}: ${[1, 2, 3, 4].map(g => cell('A', N, g)).join(' ')}`));
+        log('판매 이평 × 확인 문턱 (열 = 5%·7.5%·15%·20%; 10%는 위 표 유예 2달 열):'); [4, 5, 6, 7, 8, 10].forEach(N => log(`이평 ${String(N).padStart(2)}: ${[0.05, 0.075, 0.15, 0.2].map(t => cell('B', N, t)).join(' ')}`));
+        log('판매 이평 × 익절 (열 = 없음·1.5배·2.5배·3배; 2배는 위 표 유예 2달 열):'); [4, 5, 6, 7, 8, 10].forEach(N => log(`이평 ${String(N).padStart(2)}: ${[0, 1.5, 2.5, 3].map(t => cell('C', N, t)).join(' ')}`));
+        const ycol = v => Yrs.map(y => v.full.yearly[y] ?? 0), M = G.map(ycol), nV = G.length, nY = Yrs.length;
+        // 걸어가며 고르기: 그 전 연도 성과가 가장 좋은 설정을 다음 해에 씀(확장 창 / 최근 3년)
+        const wf = (mode) => { const chosen = [], base = V.find(v => v.name === '10이평 · 기준'); const res = []; for (let yi = 4; yi < nY; yi++) { let best = -1, bv = -1e9; for (let i = 0; i < nV; i++) { const lo = mode === 3 ? yi - 3 : 0; let p = 1; for (let j = lo; j < yi; j++) p *= 1 + M[i][j]; const sc2 = Math.pow(p, 1 / (yi - lo)); if (sc2 > bv) { bv = sc2; best = i; } } res.push(M[best][yi]); chosen.push(G[best].name.replace('격자', '')); } return { res, chosen }; };
+        const cg = a => Math.pow(a.reduce((p, x) => p * (1 + x), 1), 1 / a.length) - 1;
+        const w1 = wf(0), w3 = wf(3), mean0 = []; for (let yi = 4; yi < nY; yi++) mean0.push(mean(M.map(r => r[yi])));
+        const bs = V.find(v => v.name === '10이평 · 기준'); const bY = bs ? Yrs.slice(4).map(y => bs.full.yearly[y] ?? 0) : null;
+        log(`걸어가며 고르기(${Yrs[4]}~${Yrs[nY - 1]}, 격자 ${nV}개 중 그 전 성과 최고): 확장 창 ${pc(cg(w1.res))} · 최근 3년 ${pc(cg(w3.res))} · 격자 평균 ${pc(cg(mean0))}` + (bY ? ` · 지금 규칙(10이평) ${pc(cg(bY))}` : ''));
+        log('  해마다 고른 설정(확장 창): ' + w1.chosen.join(' / '));
+        // PBO(CSCV): 연도를 반으로 나눠 앞에서 고른 최고 설정이 뒤에서 중앙값 아래인 비율
+        const comb = (n, k) => { const out = []; const rec = (st, cur) => { if (cur.length === k) { out.push(cur.slice()); return; } for (let i = st; i < n; i++) { cur.push(i); rec(i + 1, cur); cur.pop(); } }; rec(0, []); return out; };
+        let bad = 0, tot = 0; comb(nY, nY / 2 | 0).forEach(Is => { const set = new Set(Is), Os = [...Array(nY).keys()].filter(i => !set.has(i)); const isM = M.map(r => mean(Is.map(i => r[i]))), osM = M.map(r => mean(Os.map(i => r[i]))); let bi = 0; isM.forEach((v, i) => { if (v > isM[bi]) bi = i; }); const rank = osM.filter(v => v < osM[bi]).length; const w = (rank + 1) / (nV + 1); if (Math.log(w / (1 - w)) <= 0) bad++; tot++; });
+        log(`과최적화 확률(PBO): ${(bad / tot * 100).toFixed(0)}% (격자 ${nV}개, 연도 ${nY}개를 반씩 나눈 ${tot}가지; 50%에 가까울수록 '앞에서 고른 설정이 뒤에서 평범', 낮을수록 선택이 통함)`);
+        // 보정 샤프 비율(Deflated Sharpe): 격자 최고 설정이 격자 크기만큼 시험한 효과를 빼도 통계적으로 의미 있나
+        safe('27 보정 샤프', () => {
+          const phi = x => 0.5 * (1 + (() => { const t = 1 / (1 + 0.3275911 * Math.abs(x / Math.SQRT2)), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-(x * x) / 2); return x >= 0 ? y : -y; })());
+          const phiInv = p => { let lo = -8, hi = 8; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (phi(m) < p) lo = m; else hi = m; } return (lo + hi) / 2; };
+          const series = G.map(v => mkRet(v).rets.filter(x => !x.partial).map(x => x.r)), srs = series.map(a => mean(a) / sdOf(a)), bi = srs.indexOf(Math.max(...srs)), a = series[bi], n2 = a.length, mu = mean(a), sd = sdOf(a), sk = mean(a.map(x => ((x - mu) / sd) ** 3)), ku = mean(a.map(x => ((x - mu) / sd) ** 4)), gam = 0.5772156649, vS = sdOf(srs) ** 2;
+          const sr0 = Math.sqrt(vS) * ((1 - gam) * phiInv(1 - 1 / nV) + gam * phiInv(1 - 1 / (nV * Math.E))), sr = srs[bi], dsr = phi((sr - sr0) * Math.sqrt(n2 - 1) / Math.sqrt(1 - sk * sr + (ku - 1) / 4 * sr * sr));
+          log(`보정 샤프(Deflated Sharpe): 격자 최고(${G[bi].name.replace('격자', '')}) 월 샤프 ${sr.toFixed(3)}(연 ${(sr * Math.sqrt(12)).toFixed(2)}) · ${nV}번 시험했을 때 우연히 나올 최고 월 샤프 ${sr0.toFixed(3)} → 진짜일 확률 ${(dsr * 100).toFixed(0)}% (95% 넘으면 보정 후에도 유의)`);
+        });
+      }
+      // 3) 거래 단위 부트스트랩(평균 거래 수익 신뢰구간)
+      safe('27 부트스트랩', () => { ['10이평 · 기준', '한국6·미국10 · 기준'].forEach(nm => { const v = V.find(x => x.name === nm); if (!v) return; const tr = (mkRet(v).trades || []).filter(t => t.ret != null && t.sellYm).map(t => t.ret), R = rng(11), means = []; for (let i = 0; i < 3000; i++) { let t = 0; for (let j = 0; j < tr.length; j++) t += tr[Math.floor(R() * tr.length)]; means.push(t / tr.length); } log(`거래 단위 부트스트랩 ${nm}: 평균 거래 수익 ${pc(mean(tr))} · 95% 구간 ${pc(pctl(means, 0.025))}~${pc(pctl(means, 0.975))} · 평균이 0 이하일 확률 ${(means.filter(x => x <= 0).length / means.length * 100).toFixed(1)}%`); }); });
+      // 4) 단순 전략 비교(범위 전체에서 매달 다시 고르기, 비용 0.15%/월)
+      safe('27 단순 전략', () => {
+        const U2 = universe(), k0 = mi(201201), k1 = mi(202610), cost = 0.0015;
+        const vol12 = (s, k) => { const r = []; for (let j = 0; j < 12; j++) { const a = s.cl.get(k - j), b2 = s.cl.get(k - j - 1); if (!(a > 0 && b2 > 0)) return null; r.push(Math.log(a / b2)); } return sdOf(r); };
+        const strat = (pick) => { const out = []; for (let k = k0; k <= k1; k++) { const mem = U2.members(k - 1), ch = pick(mem, k - 1); const rr = []; ch.forEach(s => { const a = s.cl.get(k - 1), b2 = s.cl.get(k); if (a > 0 && b2 > 0) rr.push(b2 / a - 1); }); out.push(rr.length ? mean(rr) - cost : 0); } return out; };
+        const rows = [
+          ['평균회귀 4종목: 10이평에서 가장 멀리 아래로 빠진 종목(한 달 보유)', (mem, k) => mem.map(s => { const m = smaK({ m: s.cl }, k, 10), c0 = s.cl.get(k); return m && c0 ? [s, c0 / m - 1] : null; }).filter(Boolean).sort((a, b2) => a[1] - b2[1]).slice(0, 4).map(x => x[0])],
+          ['평균회귀 20종목', (mem, k) => mem.map(s => { const m = smaK({ m: s.cl }, k, 10), c0 = s.cl.get(k); return m && c0 ? [s, c0 / m - 1] : null; }).filter(Boolean).sort((a, b2) => a[1] - b2[1]).slice(0, 20).map(x => x[0])],
+          ['저변동성 20종목: 12개월 변동성이 가장 낮은 종목(한 달 보유)', (mem, k) => mem.map(s => [s, vol12(s, k)]).filter(x => x[1] != null).sort((a, b2) => a[1] - b2[1]).slice(0, 20).map(x => x[0])],
+          ['12개월 모멘텀 상위 20종목(한 달 보유)', (mem, k) => mem.map(s => { const a = s.cl.get(k), b2 = s.cl.get(k - 12); return a > 0 && b2 > 0 ? [s, a / b2 - 1] : null; }).filter(Boolean).sort((a, b2) => b2[1] - a[1]).slice(0, 20).map(x => x[0])],
+          ['코스피 시총 상위 10종목 보유', (mem, k) => mem.filter(s => s.grp === 'KOSPI').sort((a, b2) => (b2.cap * b2.cl.get(k) / b2.last) - (a.cap * a.cl.get(k) / a.last)).slice(0, 10)],
+          ['미국 시총 상위 10종목 보유', (mem, k) => mem.filter(s => s.grp === 'US').sort((a, b2) => (b2.cap * b2.cl.get(k) / b2.last) - (a.cap * a.cl.get(k) / a.last)).slice(0, 10)],
+        ];
+        log(''); log('## 27 단순 전략과 비교(범위 종목 전체에서 매달 다시 고름·한 달 보유·비용 0.15%/월, 2012-01~2026-10, 생존 편향 포함)');
+        rows.forEach(([nm, f]) => { const a = strat(f); log(`${nm.padEnd(66)} 연평균 ${pc(cagrOf(a)).padStart(7)} · 낙폭 ${pc(mddOf(a)).padStart(7)}`); });
+      });
+    }
+  }
+
+
+  // ═════ 묶음 28: 종목 범위(시총 상위 개수) — exp.sh가 3_build.js를 CAP_KOSPI·CAP_KOSDAQ·CAP_US로 다시 돌려 만든 events에서 같은 규칙을 시험(결과는 설정마다 따로 붙음). '기본'은 다시 만들어도 지금 결과와 같은지 확인용
+  if (on(28)) {
+    const lab = process.env.CAP_LABEL || '기본', S = n => `28-${n}`;
+    add(S('범위'), `${lab} · 10이평(지금)`, { cand: candOf(mBase), rule: rule10 });
+    add(S('범위'), `${lab} · 한국6·미국10`, { cand: candOf(mBase), rule: rule10, o: { exitMaFn: KR6 } });
+    add(S('범위'), `${lab} · 5이평`, { cand: candOf(mk({ ck: 'r28' }, { ...rule10, exitMaN: 5 })), rule: { ...rule10, exitMaN: 5 }, o: { exitMaN: 5 } });
+    posts.push(() => post12('28-', '28 종목 범위 ' + lab));
   }
 
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());

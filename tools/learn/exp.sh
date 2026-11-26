@@ -11,19 +11,37 @@ export STAGE3=0 STAGE4=0 STAGE5=0 STAGE6=0 STAGE7=0 STAGE8=0 STAGE9=0 STAGE10=0 
 export AD8_HALVES="${AD8_HALVES:-6}"
 # 돌릴 묶음: 인자가 있으면 그것, 없으면 exp_batches.txt(Claude가 그때그때 바꿔 올림 → 사용자는 stock_exp.bat만 켜면 됨), 그것도 없으면 전부
 BATCHES="${*:-$(tr '\r\n' '  ' < exp_batches.txt 2>/dev/null)}"
-[ -z "${BATCHES// /}" ] && BATCHES="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21"
-declare -A NAME=([1]="매수 신호" [2]="순위" [3]="점수 모델" [4]="비중·구성" [5]="매도" [6]="자금·비용·세금" [7]="체결·시점" [8]="종목 범위" [9]="검증" [10]="다른 전략과 비교" [11]="조합·일관성 점검" [12]="판매 기준 이평 파고들기" [13]="판매 규칙 2(5이평 흔들어 보기)" [14]="점수 학습 바꾸기" [15]="신호 쪽 이평 길이(events 다시 만듦)" [16]="일봉 판단(일봉 받기 포함)" [17]="미국 공매도(공매도 받기 포함)" [18]="남은 시험 모음(지수·EMA·쌍별 학습·확인 시점 지표·업종·S&P500)" [19]="점수 오답 분석·손실 걸러내기" [20]="지친 말 점수(보유 종목이 지쳤는지)" [21]="바벨 구성(점수 + 대박 칸)")
+[ -z "${BATCHES// /}" ] && BATCHES="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28"
+declare -A NAME=([1]="매수 신호" [2]="순위" [3]="점수 모델" [4]="비중·구성" [5]="매도" [6]="자금·비용·세금" [7]="체결·시점" [8]="종목 범위" [9]="검증" [10]="다른 전략과 비교" [11]="조합·일관성 점검" [12]="판매 기준 이평 파고들기" [13]="판매 규칙 2(5이평 흔들어 보기)" [14]="점수 학습 바꾸기" [15]="신호 쪽 이평 길이(events 다시 만듦)" [16]="일봉 판단(일봉 받기 포함)" [17]="미국 공매도(공매도 받기 포함)" [18]="남은 시험 모음(지수·EMA·쌍별 학습·확인 시점 지표·업종·S&P500)" [19]="점수 오답 분석·손실 걸러내기" [20]="지친 말 점수(보유 종목이 지쳤는지)" [21]="바벨 구성(점수 + 대박 칸)" [22]="매수 신호 2" [23]="후보 순위 2" [24]="점수 모델 2(GBM·kNN·분위·새 지표)" [25]="비중·포트폴리오 2" [26]="매도 2" [27]="체결·운용·검증·비교 전략" [28]="종목 범위(events 다시 만듦)")
 # 묶음 15: 신호·정답·지표를 n이평으로 다시 만든 events(3_build.js MA_N=n)로 시험 → 끝나면 원래 events.csv로 되돌림(중간에 멈춰도 다음 실행 때 events_keep.csv가 남아 있으면 자동 복구)
+# events를 다시 만들 때는 stock_learn(run.sh)과 같은 종목 범위 환경변수를 써야 비교가 됨(옛 묶음 15는 이 환경변수 없이 만들어 다른 종목 범위 결과였음 → 2026-11-27 고침)
+BUILD_ENV="WIDE=1 UNIVERSE=cap LIQ_KR=0 LIQ_US=0"
 run15(){
   [ -f data/events_keep.csv ] && cp data/events_keep.csv data/events.csv   # 지난번에 중간에 멈췄다면 복구
   cp data/events.csv data/events_keep.csv || return 1
   trap 'cp data/events_keep.csv data/events.csv 2>/dev/null' EXIT
   : > data/exp_run_15.log; : > data/bt15.txt; local rc=0 n
-  for n in ${MA15:-5 7 15 20}; do
+  for n in ${MA15:-10 5 7 15 20}; do
     echo "   · 신호 ${n}이평 events 다시 만드는 중 $(date '+%H:%M')"
-    if MA_N=$n node 3_build.js >> data/exp_run_15.log 2>&1 && MA_N=$n AD9=15 node 7_backtest.js >> data/exp_run_15.log 2>&1; then
-      { echo "---- 신호 ${n}이평 ----"; awk '/^## (확인 매수 후속|1[2-9]|2[01] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; } >> data/bt15.txt
+    if env $BUILD_ENV MA_N=$n node 3_build.js >> data/exp_run_15.log 2>&1 && MA_N=$n AD9=15 node 7_backtest.js >> data/exp_run_15.log 2>&1; then
+      { echo "---- 신호 ${n}이평 ----"; awk '/^## (확인 매수 후속|1[2-9]|2[0-8] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; } >> data/bt15.txt
     else rc=1; echo "---- 신호 ${n}이평 실행 오류 ----" >> data/bt15.txt; tr '\r' '\n' < data/exp_run_15.log | tail -5 >> data/bt15.txt; fi
+  done
+  cp data/events_keep.csv data/events.csv && rm -f data/events_keep.csv; trap - EXIT
+  return $rc
+}
+# 묶음 28: 종목 범위(시총 상위 개수)를 바꿔 events를 다시 만들어 시험(코스피·코스닥·미국 개수). 첫 줄 '기본'은 events를 다시 만들어도 지금 결과와 같은지 확인용
+run28(){
+  [ -f data/events_keep.csv ] && cp data/events_keep.csv data/events.csv
+  cp data/events.csv data/events_keep.csv || return 1
+  trap 'cp data/events_keep.csv data/events.csv 2>/dev/null' EXIT
+  : > data/exp_run_28.log; : > data/bt28.txt; local rc=0 c lab kp kq us
+  for c in ${CFG28:-기본:300:200:500 코스피100:100:200:500 코스피500:500:200:500 코스닥100:300:100:500 코스닥400:300:400:500 미국200:300:200:200 미국1000:300:200:1000 전체작게:100:100:200 전체크게:500:400:1000}; do
+    IFS=: read lab kp kq us <<< "$c"
+    echo "   · 종목 범위 $lab(코스피 $kp·코스닥 $kq·미국 $us) events 다시 만드는 중 $(date '+%H:%M')"
+    if env $BUILD_ENV CAP_KOSPI=$kp CAP_KOSDAQ=$kq CAP_US=$us node 3_build.js >> data/exp_run_28.log 2>&1 && CAP_LABEL="$lab" AD9=28 node 7_backtest.js >> data/exp_run_28.log 2>&1; then
+      { echo "---- 종목 범위 $lab (코스피 $kp · 코스닥 $kq · 미국 $us) ----"; awk '/^## (확인 매수 후속 28|28 )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; } >> data/bt28.txt
+    else rc=1; echo "---- 종목 범위 $lab 실행 오류 ----" >> data/bt28.txt; tr '\r' '\n' < data/exp_run_28.log | tail -5 >> data/bt28.txt; fi
   done
   cp data/events_keep.csv data/events.csv && rm -f data/events_keep.csv; trap - EXIT
   return $rc
@@ -42,9 +60,10 @@ for B in $BATCHES; do
   if [ "$B" = 16 ]; then echo "── 일봉 받기(이미 받은 종목은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; node 2g_daily.js 2>&1; fi
   if [ "$B" = 17 ]; then echo "── 공매도 받기(FINRA 공개 파일, 이미 받은 달은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; CONC=${SHORT_CONC:-12} node 2h_short.js 2>&1; fi
   if [ "$B" = 18 ]; then echo "── 업종·S&P500 자료 받기(키 불필요, 이미 받은 것은 건너뜀) $(date '+%H:%M')"; node 2j_sp500.js 2>&1; node 2i_sic.js 2>&1; fi
+  case " 22 23 24 26 27 " in *" $B "*) [ -f data/sic.json ] || { echo "── 업종 자료 받기"; node 2j_sp500.js 2>&1; node 2i_sic.js 2>&1; }; [ -d data/daily ] || { echo "── 일봉 받기"; node 2g_daily.js 2>&1; };; esac
   echo "── 묶음 $B ${NAME[$B]} 시작 $(date '+%H:%M')"
-  if { [ "$B" = 15 ] && run15; } || { [ "$B" != 15 ] && AD9="$B" node 7_backtest.js > "data/exp_run_$B.log" 2>&1; }; then
-    { echo; echo "================ 묶음 $B · ${NAME[$B]} ================"; if [ "$B" = 15 ]; then cat data/bt15.txt; else awk '/^## (확인 매수 후속|9 검증|10 다른 전략|11 일관성|1[2-9]|2[01] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; fi; } >> "$OUT"
+  if { [ "$B" = 15 ] && run15; } || { [ "$B" = 28 ] && run28; } || { [ "$B" != 15 ] && [ "$B" != 28 ] && AD9="$B" node 7_backtest.js > "data/exp_run_$B.log" 2>&1; }; then
+    { echo; echo "================ 묶음 $B · ${NAME[$B]} ================"; if [ "$B" = 15 ]; then cat data/bt15.txt; elif [ "$B" = 28 ]; then cat data/bt28.txt; else awk '/^## (확인 매수 후속|9 검증|10 다른 전략|11 일관성|1[2-9]|2[0-8] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; fi; } >> "$OUT"
     echo "── 묶음 $B 끝"
   else
     { echo; echo "================ 묶음 $B · ${NAME[$B]} — 실행 오류 ================"; tr '\r' '\n' < "data/exp_run_$B.log" | tail -8; [ "$B" = 15 ] && cat data/bt15.txt; } >> "$OUT"
