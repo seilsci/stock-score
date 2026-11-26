@@ -23,12 +23,12 @@ LAST=$(date +%s); : > $D/steptimes.new
 mark(){ local n=$(date +%s); echo "$1 $((n-LAST))" >> $D/steptimes.new; LAST=$n; }
 say "===== 학습 시작 $(date '+%Y-%m-%d %H:%M') ====="
 RT=$D/runtimes.txt; touch "$RT"
-PREV=$(grep " learn@$WHERE " "$RT" | tail -1 | sed -n 's/.*total=\([0-9]*\).*/\1/p')      # 지난 PC 실행의 실제 소요 시간(초) — 같은 PC에서 월봉이 이미 있을 때가 비교 기준
-[ -n "$PREV" ] && say "지난 $WHERE 실행 실측: $((PREV/60))분 → 이번 100% 예상 $(date -d @$((T0+PREV)) '+%H:%M') (월봉을 새로 받는 양에 따라 달라짐, 진행 중에는 실측으로 계속 고침)" || say "($WHERE 실행 시간 기록이 아직 없어요. 이번 실행 시간을 기록해 다음부터 예상에 씁니다)"
 
 PFROM=0 PTO=1 node 1_lists.js | tee -a $LOG
 done_ "종목 목록 (1/8)"
-eval "$(node plan.js)"      # 진행률 구간 B1~B7 (이미 받은 월봉은 거의 0%, 지난 실행의 단계별 실측 시간 반영)
+eval "$(node plan.js)"      # 진행률 구간 B1~B7 (이미 받은 월봉은 거의 0%, 지난 실행의 단계별 실측 시간 반영) + NEED(새로 받을 월봉 종목 수)
+PRED=$(node eta.js learn "$WHERE" "${NEED:-0}")      # 같은 곳(pc/cloud) 지난 실측의 중앙값(받기 시간은 새로 받을 때만 더함)
+[ -n "$PRED" ] && say "지난 $WHERE 실측 기준 이번 전체 약 $((PRED/60))분 → 100% 예상 $(date -d @$((T0+PRED)) '+%H:%M') (새로 받을 월봉 ${NEED:-0}개 · 진행 중에는 실측으로 계속 고침)" || say "($WHERE 실행 시간 기록이 아직 없어요. 이번 실행 시간을 기록해 다음부터 예상에 씁니다)"
 LAST=$(date +%s); TDL=$LAST
 [ -d "$D/raw" ] && { say "옛 월봉(3개월 간격 오류) 삭제"; rm -rf "$D/raw"; }
 for k in 1 2 3; do
