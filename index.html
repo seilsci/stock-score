@@ -126,6 +126,13 @@ a{color:inherit}
 .inf-note summary{cursor:pointer;font-weight:600;color:var(--fg)}.inf-note p{margin:8px 0 0;line-height:1.6}
 .inf-foot{text-align:center;font-size:11.5px;color:var(--mut);margin:14px 0 0}
 @media(min-width:560px){.inf-sell{grid-template-columns:repeat(3,minmax(0,1fr))}.inf-sell .inf-sc{padding-bottom:12px}.inf-sell .inf-ic{position:static;margin-bottom:2px;display:block}.inf-sell p{margin-right:0}}
+.dq{margin:14px 0 4px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.dq q{display:block;quotes:none;font-size:13.5px;line-height:1.65;color:var(--fg);font-weight:600;text-align:center;word-break:keep-all}
+.dq q b{color:var(--buy)}
+.dq .by{display:block;text-align:center;font-size:11px;color:var(--mut);margin-top:6px}
+.dq .pts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:12px}
+.dq .pt{background:var(--chip);border-radius:10px;padding:8px 6px;text-align:center;font-size:11.5px;color:var(--mut);line-height:1.45}
+.dq .pt b{display:block;color:var(--fg);font-size:12px;margin-bottom:2px}
 </style>
 <link rel="stylesheet" href="theme.css">
 </head>
@@ -181,6 +188,8 @@ a{color:inherit}
       <div class="inf-sc c2"><div class="inf-ic">📈</div><strong>금리가 오르는 중</strong><p>미국 국채 10년 금리가 6개월 전 달말보다 높으면,<br>10이평 아래로 내려온 <b>즉시</b> 매도</p></div>
       <div class="inf-sc c3"><div class="inf-ic">⏳</div><strong>그 외에는 유예</strong><p>10이평 아래로 내려온 첫 달은 <span class="inf-y">유예</span> → <b>2개월째</b>에도 아래면 매도 <small>(위로 올라오면 유예 초기화)</small></p></div>
     </div>
+    <div class="dq"><q>한 문이 닫히면 다른 문이 열린다.<br>그러나 우리는 닫힌 문만 오래 바라보느라<br><b>열려 있는 문</b>을 보지 못할 때가 많다</q><span class="by">— 헬렌 켈러</span>
+      <div class="pts"><div class="pt"><b>닫힌 문</b>이평 아래로 내려오면 정리</div><div class="pt"><b>미련 없이</b>판 종목은 다시 사지 않음</div><div class="pt"><b>열린 문</b>판 돈은 바로 새 후보로</div></div></div>
     <div class="inf-chips">
       <span>🇰🇷 코스피 상위 300</span><span>코스닥 상위 200</span><span>🇺🇸 미국 상위 500</span><span class="mut">시가총액 순 · 구매 시점 기준</span>
       <span>월 100만원</span><span>점수 순 4종목 균등</span><span>못 사면 다음 순위</span><span class="mut">채권·레버리지·인버스형 제외</span>
