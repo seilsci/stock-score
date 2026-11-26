@@ -543,12 +543,12 @@ function build(c, which) {
     const m5 = mk({ ck: 's5' }, r5);
     const normSym = y => String(y).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
     const SH = new Map();
-    const shMonth = k => {                                                       // 그 달(k) 종목별 공매도 비율. 거래량이 너무 적은 종목(월 10만 주 미만·10일 미만)은 뺌
+    const shMonth = k => {                                                       // 그 달(k) 종목별 공매도 비율. 거래량이 너무 적은 종목(받은 날 합계 10만 주 미만·3일 미만)은 뺌
       if (SH.has(k)) return SH.get(k);
       let v = null;
       try {
         const j = JSON.parse(fs.readFileSync(path.join(DATA, 'short', ymOf(k) + '.json'), 'utf8')), m = new Map(), arr = [];
-        for (const [sym, a] of Object.entries(j.d || {})) if (a[1] >= 1e5 && a[2] >= 10) { const r = a[0] / a[1]; m.set(normSym(sym), r); arr.push(r); }
+        for (const [sym, a] of Object.entries(j.d || {})) if (a[1] >= 1e5 && a[2] >= 3) { const r = a[0] / a[1]; m.set(normSym(sym), r); arr.push(r); }
         arr.sort((x, y) => x - y); if (arr.length > 200) v = { m, arr };
       } catch (e) {}
       SH.set(k, v); return v;
