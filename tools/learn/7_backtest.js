@@ -1651,7 +1651,7 @@ if (process.env.STAGE14 !== '0') {
       return out;
     };
     require('./ad9').build({ V, AD8, pool, simulate, simOpt, run14, summ, C1, DEP, mi, ymOf, px, fx, fdPx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, chg, rtk, RT14,
-      YEARS_ALL, log, cagrOver, START_Y, END, CUR, rescore, ALL, dailyOf, score, z, MK: require('./data').MK, divOf, fs, path, DATA, RAW, START }, process.env.AD9);
+      YEARS_ALL, log, cagrOver, START_Y, END, CUR, rescore, ALL, dailyOf, score, z, prep, fitRidge, MK: require('./data').MK, divOf, fs, path, DATA, RAW, START }, process.env.AD9);
   }
   if (process.env.AD8_ETF === '1' && RT14) {                            // ETF 제외 시험: 후보에서 ETF를 빼고(다음 순위 종목을 삼) 현재 규칙 그대로 / 대조: ETF만
     V.length = 0; const rule10 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6) }, mC = pool({ thr: 0.1, rule: rule10, rateName: '국채10년 6개월' });

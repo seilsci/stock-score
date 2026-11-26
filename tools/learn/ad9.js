@@ -7,7 +7,7 @@
 
 function build(c, which) {
   const { V, AD8, pool, simulate, simOpt, summ, C1, DEP, mi, ymOf, px, fx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, chg,
-    YEARS_ALL, log, cagrOver, END, rescore, ALL, dailyOf, score, z, MK, divOf, fs, path, DATA, RAW } = c;
+    YEARS_ALL, log, cagrOver, END, rescore, ALL, dailyOf, score, z, prep, fitRidge, MK, divOf, fs, path, DATA, RAW } = c;
   const want = String(which).split(',').map(s => s.trim());
   const on = n => want.includes('all') || want.includes(String(n));
   const pc = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
@@ -42,6 +42,33 @@ function build(c, which) {
     const rows = a.map(e => { const v = key(e); return [e, v == null || !Number.isFinite(v) ? (dir > 0 ? -1e18 : 1e18) : v]; });
     rows.sort((x, y) => dir * (y[1] - x[1])); return rows.map(x => x[0]);
   });
+
+  // 월봉에서 가격 지표를 다시 만드는 도구(묶음 18·20 공용): featAt(px, 월, 기본 지표 배열) → 갱신한 지표 배열(못 만들면 null)
+  const FI = {}; ['gap', 'slope1', 'slope3', 'cross24', 'below', 'above24', 'c_ma12', 'ma10_ma24', 'vol', 'vol3', 'body', 'upwick', 'lowwick', 'range', 'ret1', 'ret3', 'ret12', 'high24', 'dd36', 'volat12', 'turn', 'up6', 'slope6', 'c_ma60', 'hi12_break', 'vol_max36', 'ma_up6', 'close_pos', 'gap_prev'].forEach(n => { FI[n] = fi(n); });
+  const MANs = +process.env.MA_N || 10;
+  const featAt = (o, k, x0) => {
+    const c = j => o.m.get(k - j), ma = j => maAtN(o, k - j, MANs), ab = j => { const a = c(j), m = ma(j); return a > 0 && m > 0 ? a > m : null; };
+    const c0 = c(0), ma0 = ma(0); if (!(c0 > 0) || !(ma0 > 0)) return null;
+    const x = x0.slice(), set = (n, v) => { if (v != null && Number.isFinite(v)) x[FI[n]] = v; };
+    const avgC = (a, b2) => { let t = 0; for (let j = a; j <= b2; j++) { const v = c(j); if (!(v > 0)) return null; t += v; } return t / (b2 - a + 1); };
+    const maxHi = (a, b2) => { let t = -1; for (let j = a; j <= b2; j++) { const v = o.hi.get(k - j); if (v > t) t = v; } return t > 0 ? t : null; };
+    const avgV = (a, b2) => { let t = 0, n = 0; for (let j = a; j <= b2; j++) { const v = o.vol.get(k - j); if (v > 0) { t += v; n++; } } return n ? t / n : null; };
+    set('gap', c0 / ma0 - 1);
+    const m1 = ma(1), m3 = ma(3), m6 = ma(6); if (m1) set('slope1', ma0 / m1 - 1); if (m3) set('slope3', ma0 / m3 - 1); if (m6) set('slope6', ma0 / m6 - 1);
+    { let cr = 0, a24 = 0, ok = true; for (let j = 1; j <= 24; j++) { const a = ab(j), b2 = ab(j + 1); if (a == null || b2 == null) { ok = false; break; } if (a !== b2) cr++; if (a) a24++; } if (ok) { set('cross24', cr); set('above24', a24 / 24); } }
+    { let bl = 0; for (let j = 1; j < 120; j++) { const a = ab(j); if (a === false) bl++; else break; } set('below', bl); }
+    const a12 = avgC(0, 11), a24m = avgC(0, 23), a60 = avgC(0, 59); if (a12) set('c_ma12', c0 / a12 - 1); if (a24m) set('ma10_ma24', ma0 / a24m - 1); if (a60) set('c_ma60', c0 / a60 - 1);
+    const op = o.op.get(k), h = o.hi.get(k), l = o.lo.get(k);
+    if (op > 0 && h > 0 && l > 0) { const hl = h - l || 1; set('body', (c0 - op) / op); set('upwick', (h - Math.max(op, c0)) / hl); set('lowwick', (Math.min(op, c0) - l) / hl); set('range', hl / op); set('close_pos', (c0 - l) / hl); }
+    const c1 = c(1), c3 = c(3), c12 = c(12); if (c1 > 0) set('ret1', c0 / c1 - 1); if (c3 > 0) set('ret3', c0 / c3 - 1); if (c12 > 0) set('ret12', c0 / c12 - 1);
+    { const h24 = maxHi(1, 24), h36 = maxHi(1, 36), h12 = maxHi(1, 12); if (h24) set('high24', c0 / h24 - 1); if (h36) set('dd36', c0 / h36 - 1); if (h12) set('hi12_break', c0 >= h12 ? 1 : 0); }
+    { const lr = []; let ok = true; for (let j = 0; j < 12; j++) { const a = c(j), b2 = c(j + 1); if (!(a > 0 && b2 > 0)) { ok = false; break; } lr.push(Math.log(a / b2)); } if (ok) { const mu = lr.reduce((t, v) => t + v, 0) / 12; set('volat12', Math.sqrt(lr.reduce((t, v) => t + (v - mu) ** 2, 0) / 12)); } }
+    { let up = 0, mu = 0, ok = true; for (let j = 0; j < 6; j++) { const a = c(j), b2 = c(j + 1), ma1 = ma(j), ma2 = ma(j + 1); if (!(a > 0 && b2 > 0 && ma1 > 0 && ma2 > 0)) { ok = false; break; } if (a > b2) up++; if (ma1 > ma2) mu++; } if (ok) { set('up6', up); set('ma_up6', mu); } }
+    { const pg = ab(1) != null && c1 > 0 && ma(1) > 0 ? c1 / ma(1) - 1 : null; set('gap_prev', pg); }
+    { const v = o.vol.get(k), v12 = avgV(1, 12), v3 = avgV(0, 2), vb = avgV(3, 14); const v36 = (() => { let t = 0; for (let j = 1; j <= 36; j++) { const q = o.vol.get(k - j); if (q > t) t = q; } return t; })();
+      if (v > 0 && v12) { set('vol', Math.log((v + 1) / (v12 + 1))); set('turn', Math.log10(v12 * c0 + 1)); } if (v3 && vb) set('vol3', Math.log((v3 + 1) / (vb + 1))); if (v > 0 && v36 > 0) set('vol_max36', v / v36); }
+    return x;
+  };
 
   // ═════ 묶음 1: 매수 신호 (돌파·확인 조건)
   if (on(1)) {
@@ -609,31 +636,6 @@ function build(c, which) {
     altModel('쌍별 순위 학습(수익 차이 0.3 넘는 쌍만)', { fitFn: pairFit({ margin: 0.3 }) }, 'pw3');
     altModel('쌍별 순위 학습(쌍 2배·12번 반복)', { fitFn: pairFit({ k: 8, epochs: 12 }) }, 'pw4');
     // D 확인 시점 지표 다시 계산: 지금 점수는 돌파 달 지표인데, 확인 달(구매 결정 달)의 가격 지표로 다시 계산해 같은 모델로 점수를 냄. 월봉 가격으로 만들 수 있는 지표만 갱신(거시·지수·돌파 실패 횟수는 돌파 때 값 그대로)
-    const FI = {}; ['gap', 'slope1', 'slope3', 'cross24', 'below', 'above24', 'c_ma12', 'ma10_ma24', 'vol', 'vol3', 'body', 'upwick', 'lowwick', 'range', 'ret1', 'ret3', 'ret12', 'high24', 'dd36', 'volat12', 'turn', 'up6', 'slope6', 'c_ma60', 'hi12_break', 'vol_max36', 'ma_up6', 'close_pos', 'gap_prev'].forEach(n => { FI[n] = fi(n); });
-    const MANs = +process.env.MA_N || 10;
-    const featAt = (o, k, x0) => {
-      const c = j => o.m.get(k - j), ma = j => maAtN(o, k - j, MANs), ab = j => { const a = c(j), m = ma(j); return a > 0 && m > 0 ? a > m : null; };
-      const c0 = c(0), ma0 = ma(0); if (!(c0 > 0) || !(ma0 > 0)) return null;
-      const x = x0.slice(), set = (n, v) => { if (v != null && Number.isFinite(v)) x[FI[n]] = v; };
-      const avgC = (a, b2) => { let t = 0; for (let j = a; j <= b2; j++) { const v = c(j); if (!(v > 0)) return null; t += v; } return t / (b2 - a + 1); };
-      const maxHi = (a, b2) => { let t = -1; for (let j = a; j <= b2; j++) { const v = o.hi.get(k - j); if (v > t) t = v; } return t > 0 ? t : null; };
-      const avgV = (a, b2) => { let t = 0, n = 0; for (let j = a; j <= b2; j++) { const v = o.vol.get(k - j); if (v > 0) { t += v; n++; } } return n ? t / n : null; };
-      set('gap', c0 / ma0 - 1);
-      const m1 = ma(1), m3 = ma(3), m6 = ma(6); if (m1) set('slope1', ma0 / m1 - 1); if (m3) set('slope3', ma0 / m3 - 1); if (m6) set('slope6', ma0 / m6 - 1);
-      { let cr = 0, a24 = 0, ok = true; for (let j = 1; j <= 24; j++) { const a = ab(j), b2 = ab(j + 1); if (a == null || b2 == null) { ok = false; break; } if (a !== b2) cr++; if (a) a24++; } if (ok) { set('cross24', cr); set('above24', a24 / 24); } }
-      { let bl = 0; for (let j = 1; j < 120; j++) { const a = ab(j); if (a === false) bl++; else break; } set('below', bl); }
-      const a12 = avgC(0, 11), a24m = avgC(0, 23), a60 = avgC(0, 59); if (a12) set('c_ma12', c0 / a12 - 1); if (a24m) set('ma10_ma24', ma0 / a24m - 1); if (a60) set('c_ma60', c0 / a60 - 1);
-      const op = o.op.get(k), h = o.hi.get(k), l = o.lo.get(k);
-      if (op > 0 && h > 0 && l > 0) { const hl = h - l || 1; set('body', (c0 - op) / op); set('upwick', (h - Math.max(op, c0)) / hl); set('lowwick', (Math.min(op, c0) - l) / hl); set('range', hl / op); set('close_pos', (c0 - l) / hl); }
-      const c1 = c(1), c3 = c(3), c12 = c(12); if (c1 > 0) set('ret1', c0 / c1 - 1); if (c3 > 0) set('ret3', c0 / c3 - 1); if (c12 > 0) set('ret12', c0 / c12 - 1);
-      { const h24 = maxHi(1, 24), h36 = maxHi(1, 36), h12 = maxHi(1, 12); if (h24) set('high24', c0 / h24 - 1); if (h36) set('dd36', c0 / h36 - 1); if (h12) set('hi12_break', c0 >= h12 ? 1 : 0); }
-      { const lr = []; let ok = true; for (let j = 0; j < 12; j++) { const a = c(j), b2 = c(j + 1); if (!(a > 0 && b2 > 0)) { ok = false; break; } lr.push(Math.log(a / b2)); } if (ok) { const mu = lr.reduce((t, v) => t + v, 0) / 12; set('volat12', Math.sqrt(lr.reduce((t, v) => t + (v - mu) ** 2, 0) / 12)); } }
-      { let up = 0, mu = 0, ok = true; for (let j = 0; j < 6; j++) { const a = c(j), b2 = c(j + 1), ma1 = ma(j), ma2 = ma(j + 1); if (!(a > 0 && b2 > 0 && ma1 > 0 && ma2 > 0)) { ok = false; break; } if (a > b2) up++; if (ma1 > ma2) mu++; } if (ok) { set('up6', up); set('ma_up6', mu); } }
-      { const pg = ab(1) != null && c1 > 0 && ma(1) > 0 ? c1 / ma(1) - 1 : null; set('gap_prev', pg); }
-      { const v = o.vol.get(k), v12 = avgV(1, 12), v3 = avgV(0, 2), vb = avgV(3, 14); const v36 = (() => { let t = 0; for (let j = 1; j <= 36; j++) { const q = o.vol.get(k - j); if (q > t) t = q; } return t; })();
-        if (v > 0 && v12) { set('vol', Math.log((v + 1) / (v12 + 1))); set('turn', Math.log10(v12 * c0 + 1)); } if (v3 && vb) set('vol3', Math.log((v3 + 1) / (vb + 1))); if (v > 0 && v36 > 0) set('vol_max36', v / v36); }
-      return x;
-    };
     { const keep = {}; rescore({ keep });
       const sc2 = (e, avg) => { const Y = Math.floor(e.r.ym / 100), M = keep[Y]; if (!M) return e.s; const x2 = featAt(px(e.r.y), e.cj, e.r.x); if (!x2) return e.s; const s2 = score(M.w, z({ x: x2 }, M.P)); return avg ? (s2 + e.s) / 2 : s2; };
       [[false, '확인 달 지표로 다시 계산한 점수 순'], [true, '돌파 때 점수와 확인 달 점수의 평균 순']].forEach(([avg, nm]) => {
@@ -731,6 +733,55 @@ function build(c, which) {
         log(''); log(`## 19 지표 하나로 손실 걸러내기(${v.name}) — 그 지표가 가장 나쁜 10% 거래를 빼면 거래 평균 수익이 얼마나 오르나 (앞쪽 ${E1.length}건 / 뒤쪽 ${E2.length}건, 둘 다 오르는 것만, 같은 자료에서 고른 것이라 과장됨)`);
         res.filter(x => x[1] > 0 && x[2] > 0).sort((x, y) => Math.min(y[1], y[2]) - Math.min(x[1], x[2])).slice(0, 8).forEach(([nm, a, b]) => log(`${nm.padEnd(30)} 앞쪽 ${pc(a).padStart(7)} · 뒤쪽 ${pc(b).padStart(7)}`));
       }));
+    }
+  }
+
+
+  // ═════ 묶음 20: 지친 말 점수 — "달리는 말에 타고, 지치면 내리고, 다시 달리는 말에 탄다". 지금 점수는 올라탈 때(돌파) 고르는 점수인데, 보유 중인 종목이 지쳤는지(곧 꺾일지)·더 갈지를 따로 점수로 만들어
+  //   ① 지쳤다고 보면 이평 이탈 전에 판매 ② 이평 아래로 내려왔어도 안 지쳤으면 유예를 늘림 ③ 지쳤으면 유예 없이 즉시 판매 를 시험. 점수는 '이평 위에 있는 모든 종목-달'(보유 상태) 자료로 해마다 그 전까지만 학습: 다음 달 −8% 이하 하락 여부(위험)·다음 3개월 수익(기대).
+  if (on(20)) {
+    const S = n => `20-${n}`;
+    const r5 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6), rateName: '국채10년 6개월', exitMaN: 5 };
+    const m5 = mk({ ck: 'k5' }, r5);
+    const base = new Array(F.length).fill(NaN), COLS = Object.values(FI), MANt = +process.env.MA_N || 10;
+    // 보유 상태 표: 이평 위에 있는 종목-달마다 지표 + 다음 달 하락 여부 + 다음 3개월 수익
+    const syms = [...new Set(ALL.map(r => r.y))], panel = [];
+    syms.forEach(y => { const o = px(y), keys = [...o.m.keys()].sort((a, b) => a - b); if (keys.length < 60) return;
+      keys.forEach(k => { if (k < keys[0] + 40 || ymOf(k) < 200901) return; const c0 = o.m.get(k), c1 = o.m.get(k + 1), c3 = o.m.get(k + 3); if (!(c0 > 0 && c1 > 0 && c3 > 0)) return;
+        const ma = maAtN(o, k, MANt); if (!(ma > 0) || c0 <= ma) return; const x = featAt(o, k, base); if (!x) return;
+        panel.push({ k, y, x, t1: c1 / c0 - 1 <= -0.08 ? 1 : 0, r1: c1 / c0 - 1, t3: Math.max(-1, Math.min(1, Math.log(c3 / c0))) }); }); });
+    const models = {};                                                          // 연도 → { P, wR(위험), wE(기대), q(위험 분위값들), e(기대 분위값들) }
+    const yrsM = [...new Set(panel.map(r => Math.floor(ymOf(r.k) / 100)))].filter(Y => Y >= 2012).sort();
+    yrsM.forEach(Y => { const cut = mi(Y * 100 + 1) - 3, tr = panel.filter((r, i) => r.k < cut && i % 2 === 0); if (tr.length < 2000) return;
+      const P = prep(tr, COLS), Zs = tr.map(r => z(r, P)), wR = fitRidge(Zs, tr.map(r => r.t1), 300), wE = fitRidge(Zs, tr.map(r => r.t3), 300);
+      const pr = Zs.map(zx => score(wR, zx)).sort((a, b) => a - b), pe = Zs.map(zx => score(wE, zx)).sort((a, b) => a - b), qf = (a, p) => a[Math.min(a.length - 1, Math.floor(p * a.length))];
+      models[Y] = { P, wR, wE, q: { 5: qf(pr, 0.95), 10: qf(pr, 0.9), 20: qf(pr, 0.8), 50: qf(pr, 0.5), 70: qf(pr, 0.3) }, e: { 10: qf(pe, 0.1), 50: qf(pe, 0.5) } }; });
+    const cache = new Map();
+    const sc = (h, k) => { const key = h.y + '|' + k; if (cache.has(key)) return cache.get(key); const M = models[Math.floor(ymOf(k) / 100)]; let v = null;
+      if (M) { const x = featAt(h.px, k, base); if (x) { const zx = z({ x }, M.P); v = { risk: score(M.wR, zx), exp: score(M.wE, zx), M }; } } cache.set(key, v); return v; };
+    const tired = (h, k, p) => { const v = sc(h, k); return !!(v && v.risk >= v.M.q[p]); };
+    const fresh = (h, k, p) => { const v = sc(h, k); return !!(v && v.risk <= v.M.q[p]); };
+    const lowExp = (h, k) => { const v = sc(h, k); return !!(v && v.exp <= v.M.e[10]); };
+    add(S('기준'), '10이평(지금) 기준', { cand: candOf(mBase), rule: rule10 }); add(S('기준'), '5이평 기준', { cand: candOf(m5), rule: r5, o: { exitMaN: 5 } });
+    [[mBase, rule10, {}, '10이평'], [m5, r5, { exitMaN: 5 }, '5이평']].forEach(([m, rule, o0, nm]) => {
+      const A = (sec, name, extra) => add(S(sec), `${nm} · ${name}`, { cand: candOf(m), rule, o: { ...o0, ...extra } });
+      [[20, '상위 20%'], [10, '상위 10%'], [5, '상위 5%']].forEach(([p, t]) => A('A 지쳤으면 이평 위여도 판매', `다음 달 큰 하락 위험이 ${t}이면 판매`, { exitFn: (h, k) => (tired(h, k, p) ? 'tired' : null) }));
+      A('A 지쳤으면 이평 위여도 판매', '다음 3개월 기대 수익이 하위 10%면 판매', { exitFn: (h, k) => (lowExp(h, k) ? 'tired' : null) });
+      A('B 안 지쳤으면 유예 연장', '이평 아래여도 위험이 하위 30%면 유예 3달', { graceN2: (h, k) => (fresh(h, k, 70) ? 3 : undefined) });
+      A('B 안 지쳤으면 유예 연장', '이평 아래여도 위험이 하위 50%면 유예 3달', { graceN2: (h, k) => (fresh(h, k, 50) ? 3 : undefined) });
+      A('C 지쳤으면 유예 없이 판매', '이평 아래이고 위험이 상위 50%면 유예 없이 즉시', { graceN2: (h, k) => (tired(h, k, 50) ? 1 : undefined) });
+      A('D 섞기', '유예 3달(안 지침) + 즉시(지침) 같이', { graceN2: (h, k) => (fresh(h, k, 70) ? 3 : tired(h, k, 50) ? 1 : undefined) });
+      A('D 섞기', '유예 3달/즉시 + 위험 상위 10% 이평 위여도 판매', { graceN2: (h, k) => (fresh(h, k, 70) ? 3 : tired(h, k, 50) ? 1 : undefined), exitFn: (h, k) => (tired(h, k, 10) ? 'tired' : null) });
+    });
+    posts.push(() => { post12('20-', '20 지친 말 점수'); post20(); });
+    function post20() {                                                       // 지친 말을 미리 알 수 있나: 점수 구간별 다음 달·3개월 수익(그 해 이전 자료로만 학습한 점수, 학습에 안 쓴 해의 자료)
+      log(''); log(`## 20 지친 말 점수 — 보유 상태 표 ${panel.length}행(이평 위 종목-달) · 학습한 해 ${Object.keys(models).length}개`);
+      const bins = (lo, hi) => { const out = Array.from({ length: 5 }, () => ({ n: 0, r1: 0, t1: 0, t3: 0 }));
+        panel.forEach(r => { const Y = Math.floor(ymOf(r.k) / 100); if (Y < lo || Y > hi) return; const M = models[Y]; if (!M) return; const zx = z(r, M.P), v = score(M.wR, zx); const b = v >= M.q[10] ? 0 : v >= M.q[20] ? 1 : v >= M.q[50] ? 2 : v >= M.q[70] ? 3 : 4; const o = out[b]; o.n++; o.r1 += r.r1; o.t1 += r.t1; o.t3 += r.t3; });
+        return out; };
+      [['앞쪽 2012~2019', 2012, 2019], ['뒤쪽 2020~', 2020, 2100]].forEach(([nm, lo, hi]) => { const b = bins(lo, hi);
+        log(`${nm}: 위험 점수 구간별 — 행 수 · 다음 달 평균 수익 · 다음 달 −8% 이하 비율 · 다음 3개월 평균 로그수익`);
+        ['상위 10%(가장 지침)', '상위 10~20%', '중간(20~50%)', '50~70%', '하위 30%(가장 건강)'].forEach((l, i) => { const o = b[i]; log(`  ${l.padEnd(20)} ${String(o.n).padStart(7)}  ${pc(o.r1 / (o.n || 1)).padStart(7)}  ${(o.t1 / (o.n || 1) * 100).toFixed(1).padStart(5)}%  ${(o.t3 / (o.n || 1)).toFixed(3).padStart(7)}`); }); });
     }
   }
 
