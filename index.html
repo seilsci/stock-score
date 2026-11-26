@@ -41,6 +41,8 @@ h1{font-size:20px;margin:0}
 .ch-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:0 2px 6px}
 .ch-n{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ch-p{white-space:nowrap;font-weight:600}
+.fold-b{font:inherit;font-size:11px;font-weight:700;color:var(--mut);background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:2px 9px;cursor:pointer;white-space:nowrap;flex:none;align-self:center;line-height:1.5}
+.chart.folded>:not(.ch-h){display:none!important}
 .ch-l{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:11.5px;color:var(--mut);padding:2px 2px 0}
 .ch-l span{white-space:nowrap}
 .ch-l i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
@@ -156,7 +158,7 @@ a{color:inherit}
   </div>
   <div class="hint" id="hint"></div>
   <div class="chartbox"><div class="chart">
-    <div class="ch-h"><div class="ch-n" id="cn">&nbsp;</div><div class="ch-p" id="cp"></div></div>
+    <div class="ch-h"><div class="ch-n" id="cn">&nbsp;</div><div class="ch-p" id="cp"></div><button type="button" class="fold-b" id="fold-b">접기</button></div>
     <canvas id="cv"></canvas>
     <div class="ch-l"><span><i style="background:var(--ma)"></i><span id="ma-lg">월 10이평</span></span><span id="ma-lg6" hidden><i style="background:#0ea5a4"></i>월 6이평(한국 판매 기준)</span><span>월봉 3년 · 아래는 거래대금(≈월 거래량×종가)</span></div>
   </div></div>
@@ -410,6 +412,15 @@ function chartTip(cv, ev, i) {
   if (px0 < 8) px0 = 8; if (py0 < 8) py0 = Math.min(ev.clientY + 22, window.innerHeight - h - 8);
   t.style.left = px0 + 'px'; t.style.top = py0 + 'px';
 }
+/* 그래프 접기/열기: 오른쪽 위 버튼으로만 접고 열어요(그래프를 눌러도 접히지 않음). 상태는 이 기기에 저장 */
+var IFOLD = false; try { IFOLD = localStorage.getItem('ifold') === '1'; } catch (e) {}
+function foldApply() { var c = document.querySelector('.chart'), b = document.getElementById('fold-b'); if (c) c.classList.toggle('folded', IFOLD); if (b) b.textContent = IFOLD ? '열기' : '접기'; }
+document.addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('#fold-b'); if (!b) return;
+  e.stopPropagation(); IFOLD = !IFOLD; try { localStorage.setItem('ifold', IFOLD ? '1' : '0'); } catch (x) {}
+  foldApply(); if (!IFOLD && typeof drawChart === 'function') drawChart();       // 펼칠 때 폭에 맞게 다시 그림
+}, true);
+foldApply();
 function bindChart(cv) {
   if (cv._bound) return; cv._bound = true; cv.style.touchAction = 'pan-y';
   var move = function (ev) {

@@ -103,6 +103,9 @@ canvas{display:block;width:100%;height:230px}
 .h-row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:7px 4px;border-radius:8px;cursor:pointer;font-size:13px}
 .h-row:hover{background:var(--chip)}
 .h-cv{display:none;padding:2px 4px 10px}.h-cv.open{display:block}
+.fold-b{font:inherit;font-size:11px;font-weight:700;color:var(--mut);background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:2px 9px;cursor:pointer;white-space:nowrap;flex:none;align-self:center;line-height:1.5}
+.fold-bar{display:flex;justify-content:flex-end;padding:0 0 4px}
+.folded>:not(.rc-h):not(.ch-h){display:none!important}
 .h-row.sel{background:var(--chip)}
 .h-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h-nm{min-width:0}.h-bd{font-size:10px;color:var(--mut);margin-top:1px}
@@ -383,7 +386,7 @@ canvas{display:block;width:100%;height:230px}
 
   <div class="sec-title">보유 종목</div>
   <div id="chart-box">
-    <div class="ch-h"><div class="ch-n" id="ch-name">&nbsp;</div><div class="ch-p" id="ch-price"></div></div>
+    <div class="ch-h"><div class="ch-n" id="ch-name">&nbsp;</div><div class="ch-p" id="ch-price"></div><button type="button" class="fold-b" data-fold="box">접기</button></div>
     <canvas id="cv"></canvas>
     <div class="ch-l"><span><i style="background:var(--ma)"></i><span id="ma-lg">월 10이평</span></span><span id="ma-lg6" hidden><i style="background:#0ea5a4"></i>월 6이평(한국 판매 기준)</span><span>월봉 캔들 (올림 <b style="color:var(--buy)">■</b> 내림 <b style="color:var(--sell)">■</b>) · 아래는 거래대금(월 거래량×종가) ·<br>옆으로 끌면 이전·이후 달</span><span style="color:var(--buy)">▲ 매수</span><span style="color:var(--sell)">▼ 매도</span></div>
   </div>
@@ -511,7 +514,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
       +'</div>'
       +'<div class="h-ret '+cls+'">'+pc(ret)+'</div>'
       +'<div class="h-sc" data-sc-i="'+i+'" title="점수 기준 보기">'+(sc==null?'-':sc+'점')+'</div>'
-      +'</div><div class="h-cv"><canvas></canvas></div></div>';
+      +'</div><div class="h-cv"><div class="fold-bar"><button type="button" class="fold-b" data-fold="row">그래프 접기</button></div><canvas></canvas></div></div>';
   }).join('');
   list.querySelectorAll('.h-row').forEach(function(row){
     row.onclick=function(e){
@@ -756,6 +759,39 @@ window.addEventListener('resize',function(){
   if(document.getElementById('chart-box').style.display==='block' && cv._redraw) cv._redraw();
   document.querySelectorAll('#hold-list .h-cv.open canvas').forEach(function(c){ if(c._redraw) c._redraw(); });
 });
+
+/* ── 그래프 접기/열기: 카드 오른쪽 위 버튼으로만 접고 열어요(그래프를 눌러도 접히지 않음). 상태는 이 기기에 저장 ── */
+var FOLD={}; try{ FOLD=JSON.parse(localStorage.getItem('jfold')||'{}')||{}; }catch(e){ FOLD={}; }
+function foldSave(){ try{ localStorage.setItem('jfold',JSON.stringify(FOLD)); }catch(e){} }
+var FOLD_REDRAW={cum:function(){ renderCumChart(); }, yr:function(){ renderYearChart(); }, ret:function(){ renderRetChart(); }, box:function(){ var cv=document.getElementById('cv'); if(cv&&cv._redraw) cv._redraw(); }};
+function foldApply(card,key,btn){ var f=!!FOLD[key]; card.classList.toggle('folded',f); if(btn) btn.textContent=f?'열기':'접기'; }
+function foldInit(card,key){                                                   // 카드 머리줄(.rc-h / .ch-h) 오른쪽 끝에 접기/열기 버튼을 달고 저장된 상태를 적용
+  var head=card.querySelector('.rc-h, .ch-h'); if(!head) return;
+  var b=head.querySelector('.fold-b');
+  if(!b){ b=document.createElement('button'); b.type='button'; b.className='fold-b'; b.dataset.fold=key; head.appendChild(b); }
+  foldApply(card,key,b);
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest&&e.target.closest('.fold-b'); if(!b) return;
+  e.stopPropagation(); e.preventDefault(); if(typeof yTipHide==='function') yTipHide();
+  var kind=b.dataset.fold;
+  if(kind==='row'){                                                            // 줄 안에 펼친 그래프: 그 줄을 눌러 닫은 것과 같게 처리
+    var c=b.closest('.lr-c, .h-cv'); if(!c) return; var row=null;
+    var tr=c.closest('tr.my-gr'); if(tr) row=tr.previousElementSibling;
+    else { var ps=c.previousElementSibling; if(ps&&ps.matches('.rc-r, .h-row')) row=ps; else row=c.parentNode.querySelector('.lr-h[data-r], .lr-d[data-r], .lr-h[data-g], .lr-d[data-g]'); }
+    if(row) row.click(); else c.classList.remove('open');
+    return;
+  }
+  var card=b.closest('#cum-card, #yr-card, #ret-card, #chart-box'); if(!card) return;
+  var key=card.id==='cum-card'?'cum':card.id==='yr-card'?'yr':card.id==='ret-card'?'ret':'box';
+  FOLD[key]=!FOLD[key]; foldSave(); foldApply(card,key,b);
+  if(!FOLD[key]&&FOLD_REDRAW[key]) FOLD_REDRAW[key]();                         // 펼칠 때 폭에 맞게 다시 그림
+},true);
+(function(){                                                                   // 그래프 카드는 다시 그려질 때마다 버튼을 다시 달아 줌
+  var map={'cum-card':'cum','yr-card':'yr','ret-card':'ret'};
+  Object.keys(map).forEach(function(id){ var el=document.getElementById(id); if(!el) return; foldInit(el,map[id]); new MutationObserver(function(){ foldInit(el,map[id]); }).observe(el,{childList:true}); });
+  var bx=document.getElementById('chart-box'); if(bx) foldApply(bx,'box',bx.querySelector('.fold-b'));
+})();
 
 /* ── 점수 모달 ── */
 function computeContribs(feats, n){
@@ -1026,7 +1062,7 @@ function renderLedger(){
       +'<div style="min-width:0"><div class="lr-n">'+name+'</div></div>'
       +'<div class="lr-a">'+amt+'<div class="lr-b">잔액 '+won(after)+'</div></div></div>'
       +(sub?'<div class="lr-s lr-d"'+(drawArgs?' data-r="'+(rows.length-1)+'"':'')+'>'+sub+'</div>':'')
-      +(drawArgs?'<div class="lr-c"><canvas></canvas></div>':'')+'</div>';
+      +(drawArgs?'<div class="lr-c"><div class="fold-bar"><button type="button" class="fold-b" data-fold="row">그래프 접기</button></div><canvas></canvas></div>':'')+'</div>';
   };
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">'+(FD?'월초 현금 <span class="meta">(지난달 말 현금 − 이달 첫날 구매)</span>':'전달 이월 현금')+'</div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
   var depRow=function(){ bal+=m.dep; add('dep','입금','월 적립금','',signWon(m.dep),bal); };
@@ -1598,7 +1634,7 @@ function renderPlanView(){
     gr.push(args||null);
     html+='<div class="lr '+cls+(args?' clk':'')+'"><div class="lr-h"'+(args?' data-g="'+(gr.length-1)+'"':'')+'><span class="lr-k">'+k+'</span><div style="min-width:0"><div class="lr-n">'+name+'</div></div>'
       +'<div class="lr-a">'+amt+'<div class="lr-b">잔액 '+won(after)+'</div></div></div>'+(sub?'<div class="lr-s lr-d"'+(args?' data-g="'+(gr.length-1)+'"':'')+'>'+sub+'</div>':'')
-      +(args?'<div class="lr-c"><canvas></canvas></div>':'')+'</div>';
+      +(args?'<div class="lr-c"><div class="fold-bar"><button type="button" class="fold-b" data-fold="row">그래프 접기</button></div><canvas></canvas></div>':'')+'</div>';
   };
   if(P.fd) bal-=buySum;                                                      // 첫날 구매 방식: 이달 첫날 구매는 지난달 화면(10월)에 있고, 이 화면은 말일 + 다음 달 1일
   html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">'+(P.fd?'월초 현금 <span class="meta">(지난달 말 현금 − 이달 첫날 구매)</span>':'전달 이월 현금')+'</div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
@@ -1657,7 +1693,7 @@ function renderPlanView(){
       NC.forEach(function(c){
         gr.push({y:c.y,end:DC.dnx,buy:DC.dnx,sell:null,raw:chartRaw(c.row)}); var gi=gr.length-1, ls=localScore(c.y,c.row), sc=ls!=null?ls:c.score;
         html+='<div class="lr cand clk"><div class="lr-h" data-g="'+gi+'"><span class="lr-k">후보</span><div style="min-width:0"><div class="lr-n">'+esc(c.name)+(c.us?' <span class="lr-b">미국</span>':'')+'</div></div><div class="lr-a">'+pxS(c.px,c.us)+'</div></div>'
-          +'<div class="lr-s lr-d" data-g="'+gi+'">점수 <span class="lr-sc" data-candsc="'+esc(c.y)+'">'+sc+'</span> <span class="meta">'+(c.brk?'돌파 '+fmt(c.brk)+' · ':'')+'눌러서 이유 보기</span></div><div class="lr-c"><canvas></canvas></div></div>';
+          +'<div class="lr-s lr-d" data-g="'+gi+'">점수 <span class="lr-sc" data-candsc="'+esc(c.y)+'">'+sc+'</span> <span class="meta">'+(c.brk?'돌파 '+fmt(c.brk)+' · ':'')+'눌러서 이유 보기</span></div><div class="lr-c"><div class="fold-bar"><button type="button" class="fold-b" data-fold="row">그래프 접기</button></div><canvas></canvas></div></div>';
       });
     } else html+='<div class="sum-note" style="margin:8px 4px 0"><b>다음 달 첫날 구매 후보</b> (이번 달 말에 확정되면 삽니다): 시트(Apps Script)가 확인 매수 후보를 아직 내려주지 않아 표시할 수 없습니다. 최신 Apps Script로 업데이트하면 여기에 나옵니다.</div>';
   }
@@ -2134,7 +2170,7 @@ function myRecRender(open){
   var line=function(o){                       // 한 줄: 이름(누르면 월봉 그래프) · 점수 칩(누르면 나무) · 설명 · 오른쪽 금액
     var gi=G.length; G.push(o.g||null);
     var si=-1; if(o.sc){ si=S.length; S.push(o.sc); }
-    return '<div class="rc-r'+(o.g?' clk':'')+'"'+(o.g?' data-g="'+gi+'"':'')+'><div><span class="rc-nm">'+esc(o.name)+'</span>'+(o.us?' <small style="display:inline">미국</small>':'')+(o.score!=null?' <span class="lr-sc" data-rs="'+si+'">'+o.score+'</span>':(o.hold?' <span class="lr-sc no">-</span> <small style="display:inline">월봉이 형성되지 않음</small>':''))+(o.sub?'<small>'+o.sub+'</small>':'')+'</div>'+(o.right?'<div class="rc-rt">'+(o.pct?'<span class="rc-pct">'+o.pct+'</span>':'')+'<b>'+o.right+'</b></div>':'')+'</div>'+(o.g?'<div class="lr-c"><canvas></canvas></div>':'');
+    return '<div class="rc-r'+(o.g?' clk':'')+'"'+(o.g?' data-g="'+gi+'"':'')+'><div><span class="rc-nm">'+esc(o.name)+'</span>'+(o.us?' <small style="display:inline">미국</small>':'')+(o.score!=null?' <span class="lr-sc" data-rs="'+si+'">'+o.score+'</span>':(o.hold?' <span class="lr-sc no">-</span> <small style="display:inline">월봉이 형성되지 않음</small>':''))+(o.sub?'<small>'+o.sub+'</small>':'')+'</div>'+(o.right?'<div class="rc-rt">'+(o.pct?'<span class="rc-pct">'+o.pct+'</span>':'')+'<b>'+o.right+'</b></div>':'')+'</div>'+(o.g?'<div class="lr-c"><div class="fold-bar"><button type="button" class="fold-b" data-fold="row">그래프 접기</button></div><canvas></canvas></div>':'');
   };
   var holdSc=function(x){ var us=isUSy(x.y), prevM=myPrevYm(+x.buyYm), sc=scoreFromBars(x.y,prevM,us), f=sc!=null?featsFromBars(x.y,prevM,us):null;
     return {score:sc,sc:f?{y:x.y,buyYm:+x.buyYm,name:x.name,feats:f,label:' 구매 당시 점수(구매 전달 말 지표), ',note:'이 점수는 내가 <b>산 시점(구매 전달 말)의 지표</b>를 최신 모델로 계산한 값입니다. 시장 지수 관련 3개 항목은 0으로 처리됩니다.'}:null}; };
@@ -2220,7 +2256,7 @@ function renderMy(){
     if(hbk&&barsOf(hbk)){ hgi=MYH_G.length; MYH_G.push({y:hbk,end:myThisYm(),buy:(p.open?+p.open.slice(0,4)*100+ +p.open.slice(5,7):myThisYm()),sell:null});
       var pm=myPrevYm(MYH_G[hgi].buy), sc0=scoreFromBars(hbk,pm,!/\.(KS|KQ)$/.test(hbk)), f0=sc0!=null?featsFromBars(hbk,pm,!/\.(KS|KQ)$/.test(hbk)):null;
       if(sc0!=null&&f0){ hsi=MYH_S.length; MYH_S.push({y:hbk,buyYm:MYH_G[hgi].buy,name:p.name||p.code,feats:f0}); hsc=sc0; } }
-    rows+='<tr'+(hgi>=0?' class="clk" data-hg="'+hgi+'"':'')+'><td>'+esc(p.name||p.code)+(hsc!=null?' <span class="lr-sc" data-hs="'+hsi+'">'+hsc+'</span>':' <span class="lr-sc no">-</span> <small class="my-nt">'+myNoScoreText(p.code)+'</small>')+(lv?'<br><small class="my-lv '+(lv.chg>=0?'p':'n')+'">'+'<span class="my-n" data-k="p:'+cc+'" data-to="'+lv.px+'" data-f="'+(isUS?'usd':'kp')+'">'+myFmtTick(isUS?'usd':'kp',lv.px)+'</span>'+(lv.pct!=null?' '+(lv.chg>=0?'▲':'▼')+Math.abs(lv.pct).toFixed(2)+'%':'')+'</small>':'')+'</td><td>'+(+p.qty.toFixed(4)).toLocaleString()+'</td><td>'+Math.round(avg).toLocaleString()+'</td><td>'+(v!=null?(lv?'<span class="my-n" data-k="v:'+cc+'" data-to="'+Math.round(v)+'" data-f="val">'+Math.round(v).toLocaleString()+'</span>':Math.round(v).toLocaleString()):'-')+'</td><td class="'+(pl==null?'':pl>=0?'p':'n')+'">'+(pl==null?'-':(pl>=0?'+':'−')+Math.abs(Math.round(pl)).toLocaleString()+' ('+(pl>=0?'+':'')+(pl/p.cost*100).toFixed(1)+'%)')+'</td><td class="my-x"><button type="button" class="x" data-delk="'+esc(p.key)+'" aria-label="이 종목 체결 모두 삭제" title="이 종목 체결 모두 삭제">×</button></td></tr>'+(hgi>=0?'<tr class="my-gr"><td colspan="6"><div class="lr-c"><canvas></canvas></div></td></tr>':'');
+    rows+='<tr'+(hgi>=0?' class="clk" data-hg="'+hgi+'"':'')+'><td>'+esc(p.name||p.code)+(hsc!=null?' <span class="lr-sc" data-hs="'+hsi+'">'+hsc+'</span>':' <span class="lr-sc no">-</span> <small class="my-nt">'+myNoScoreText(p.code)+'</small>')+(lv?'<br><small class="my-lv '+(lv.chg>=0?'p':'n')+'">'+'<span class="my-n" data-k="p:'+cc+'" data-to="'+lv.px+'" data-f="'+(isUS?'usd':'kp')+'">'+myFmtTick(isUS?'usd':'kp',lv.px)+'</span>'+(lv.pct!=null?' '+(lv.chg>=0?'▲':'▼')+Math.abs(lv.pct).toFixed(2)+'%':'')+'</small>':'')+'</td><td>'+(+p.qty.toFixed(4)).toLocaleString()+'</td><td>'+Math.round(avg).toLocaleString()+'</td><td>'+(v!=null?(lv?'<span class="my-n" data-k="v:'+cc+'" data-to="'+Math.round(v)+'" data-f="val">'+Math.round(v).toLocaleString()+'</span>':Math.round(v).toLocaleString()):'-')+'</td><td class="'+(pl==null?'':pl>=0?'p':'n')+'">'+(pl==null?'-':(pl>=0?'+':'−')+Math.abs(Math.round(pl)).toLocaleString()+' ('+(pl>=0?'+':'')+(pl/p.cost*100).toFixed(1)+'%)')+'</td><td class="my-x"><button type="button" class="x" data-delk="'+esc(p.key)+'" aria-label="이 종목 체결 모두 삭제" title="이 종목 체결 모두 삭제">×</button></td></tr>'+(hgi>=0?'<tr class="my-gr"><td colspan="6"><div class="lr-c"><div class="fold-bar"><button type="button" class="fold-b" data-fold="row">그래프 접기</button></div><canvas></canvas></div></td></tr>':'');
   });
   var unrl=val-cost, tot=unrl+R.realized, cls=function(x){ return x>=0?'p':'n'; };
   document.getElementById('my-cnt').textContent=MY.length+'건';
