@@ -18,6 +18,7 @@
 - Apps Script는 수정 후 **배포 → 배포 관리 → 연필(수정) → 새 버전**으로 배포(URL 유지). 웹 앱 액세스는 "모든 사용자".
 - 개인정보·API 키·시트 링크는 저장소에 넣지 않음. **apix 키는 `~/apix-key.txt`(저장소 밖)에만.** 로그·커밋에 키가 찍히지 않게.
 - **학습·시뮬레이션(`tools/learn/run.sh` 전체 실행)은 절대 Claude가 클라우드에서 돌리지 않음. 예외 없음.** 사용자 PC가 더 빠르고, 결과(`result/`)는 PC에서 만든 것만 저장소에 넣음. 사용자는 바탕화면 `stock_learn.bat`(= `tools/learn/run_learn.bat`: `git pull && tools/learn/run.sh`, **끝나면 묻지 않고 `result/`에 자동 커밋·push** 후 Enter로 닫기, 안 올리려면 `run.sh --no-push`)로 돌림(토큰 0). Claude는 코드 수정·결과 분석만 하고, 돌려야 할 때는 "PC에서 stock_learn.bat을 돌려 주세요"라고 안내. 단 PC는 `git pull`로 코드를 받으므로 **고친 코드가 PC가 pull하는 브랜치(main)에 있어야 함** → 코드를 main에 올린 뒤 PC에서 돌려 달라고 안내할 것(올리는 건 위 지시대로 확인 불필요). 가벼운 한 줄 확인(파일 문법·작은 계산)만 클라우드에서 가능(`tools/learn/README-PC.md`).
+- **PC의 이 저장소 위치(2026-11-26 확인)**: Git Bash에서 `cd ~/stock-score`(= 홈 폴더 바로 아래 `stock-score`, 터미널을 처음 열면 홈 폴더라서 먼저 이 폴더로 들어가야 `git pull`이 됨). 바탕화면에 `stock_learn.bat`·`stock_exp.bat`은 아직 없음(필요하면 `tools/learn/run_learn.bat`·`run_exp.bat`을 바탕화면에 복사). 터미널에서 직접 하려면 `tools/learn/run.sh`(학습)·`tools/learn/exp.sh`(시험).
 - 이 PC의 Claude Code는 제3자 API(apix)라 크레딧이 한정됨: `/model`로 Sonnet, 파일은 필요한 부분만 읽기.
 
 ## 지금 상태 (2026-11-24)
