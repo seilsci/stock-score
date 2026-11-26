@@ -1196,11 +1196,14 @@ function renderMonthTable(){                 // 연도(세로) × 월(가로) �
   card.innerHTML=h;
   Array.prototype.forEach.call(card.querySelectorAll('.mt-tabs button'),function(b){ b.onclick=function(){ MT_KEY=b.getAttribute('data-k'); MT_PICKED=true; renderMonthTable(); }; });
 }
+var RETY=null, RETY_SEL=null;                                                      // 월별 수익률 그래프에서 따로 고른 연도(다른 곳에서 월·연도를 고르면 그쪽을 따름)
 function renderRetChart(){
   var card=document.getElementById('ret-card');
   if(!LED || !SEL_YM){ card.style.display='none'; return; }
   card.style.display='block';
-  var Y=String(SEL_YM).slice(0,4), vals=[], ann=1, n=0, win=0, best=null, worst=null, bv={ks:[],sp:[],nq:[]}, bann={ks:1,sp:1,nq:1}, bany={ks:false,sp:false,nq:false};
+  var yrsAll={}; Object.keys(RET).forEach(function(k){ yrsAll[k.slice(0,4)]=1; }); if(XMODE&&MYRM) Object.keys(MYRM).forEach(function(k){ yrsAll[String(k).slice(0,4)]=1; });
+  var yrList=Object.keys(yrsAll).sort();
+  var Y=(RETY&&RETY_SEL===String(SEL_YM)&&yrsAll[RETY])?RETY:String(SEL_YM).slice(0,4), vals=[], ann=1, n=0, win=0, best=null, worst=null, bv={ks:[],sp:[],nq:[]}, bann={ks:1,sp:1,nq:1}, bany={ks:false,sp:false,nq:false};
   var hasSt=false, hasMyY=false; for(var q=1;q<=12;q++){ var yq=Y+(q<10?'0':'')+q; if(RET[yq]!=null) hasSt=true; if(XMODE&&MYRM[yq]!=null) hasMyY=true; }
   var useMy=hasMyY&&!hasSt;                                                    // 전략 기록이 없는 해는 내 수익률을 보여 줌
   for(var m=1;m<=12;m++){
@@ -1210,11 +1213,13 @@ function renderRetChart(){
     if(r!=null){ n++; ann*=1+r; if(r>0) win++; if(best==null||r>best.r) best={r:r,m:m}; if(worst==null||r<worst.r) worst={r:r,m:m}; }
   }
   var annR=ann-1, cls=annR>=0?'p':'n';
-  card.innerHTML='<div class="rc-h"><div class="rc-t">'+Y+'년 월별 수익률'+(useMy?' <span style="font-weight:400;color:var(--mut);font-size:12px">(내 수익률)</span>':'')+'</div>'
+  card.innerHTML='<div class="yr-row" id="ret-yrs">'+yrList.map(function(y){ return '<button type="button" class="yr-btn'+(y===Y?' sel':'')+'" data-ry="'+y+'">'+y+'</button>'; }).join('')+'</div>'
+    +'<div class="rc-h"><div class="rc-t">'+Y+'년 월별 수익률'+(useMy?' <span style="font-weight:400;color:var(--mut);font-size:12px">(내 수익률)</span>':'')+'</div>'
     +(n?'<div class="rc-y '+cls+'">'+pc(annR)+'</div>':'')+'</div>'
     +'<canvas id="rc"></canvas>'+benchLegend(Y+'년 지수 수익률', {ks:bany.ks?bann.ks-1:null,sp:bany.sp?bann.sp-1:null,nq:bany.nq?bann.nq-1:null})
     +(n?'<div class="rc-s"><span>플러스 <b>'+win+'</b> / '+n+'개월</span><span>최고 <b class="p">'+best.m+'월 '+pc(best.r)+'</b></span><span>최저 <b class="'+(worst.r>=0?'p':'n')+'">'+worst.m+'월 '+pc(worst.r)+'</b></span></div>'
       :'<div class="rc-s">이 해는 수익률 데이터가 없습니다.</div>');
+  card.querySelectorAll('#ret-yrs .yr-btn').forEach(function(b){ b.onclick=function(){ RETY=b.dataset.ry; RETY_SEL=String(SEL_YM); yTipHide(); renderRetChart(); }; });          // 연도 버튼: 그 해의 월별 수익률만 바꿔 보여 줌(고른 월·일지는 그대로)
   var cv=document.getElementById('rc'); if(!n) { cv.style.display='none'; return; }
   var W2=cv.clientWidth||600, H=190, dpr=window.devicePixelRatio||1;
   cv.width=W2*dpr; cv.height=H*dpr; cv.style.height=H+'px';
