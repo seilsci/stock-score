@@ -9,7 +9,9 @@ cd "$(dirname "$0")" || exit 1
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) WHERE=${RUN_WHERE:-pc};; *) WHERE=${RUN_WHERE:-cloud};; esac
 export STAGE3=0 STAGE4=0 STAGE5=0 STAGE6=0 STAGE7=0 STAGE8=0 STAGE9=0 STAGE10=0 STAGE11=0 STAGE12=0 STAGE13=0 STAGE14=1 NODE_NO_WARNINGS=1
 export AD8_HALVES="${AD8_HALVES:-6}"
-BATCHES="${*:-1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17}"
+# 돌릴 묶음: 인자가 있으면 그것, 없으면 exp_batches.txt(Claude가 그때그때 바꿔 올림 → 사용자는 stock_exp.bat만 켜면 됨), 그것도 없으면 전부
+BATCHES="${*:-$(tr '\r\n' '  ' < exp_batches.txt 2>/dev/null)}"
+[ -z "${BATCHES// /}" ] && BATCHES="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17"
 declare -A NAME=([1]="매수 신호" [2]="순위" [3]="점수 모델" [4]="비중·구성" [5]="매도" [6]="자금·비용·세금" [7]="체결·시점" [8]="종목 범위" [9]="검증" [10]="다른 전략과 비교" [11]="조합·일관성 점검" [12]="판매 기준 이평 파고들기" [13]="판매 규칙 2(5이평 흔들어 보기)" [14]="점수 학습 바꾸기" [15]="신호 쪽 이평 길이(events 다시 만듦)" [16]="일봉 판단(일봉 받기 포함)" [17]="미국 공매도(공매도 받기 포함)")
 # 묶음 15: 신호·정답·지표를 n이평으로 다시 만든 events(3_build.js MA_N=n)로 시험 → 끝나면 원래 events.csv로 되돌림(중간에 멈춰도 다음 실행 때 events_keep.csv가 남아 있으면 자동 복구)
 run15(){
