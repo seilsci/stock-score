@@ -7,7 +7,7 @@
 
 function build(c, which) {
   const { V, AD8, pool, simulate, simOpt, summ, C1, DEP, mi, ymOf, px, fx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, chg,
-    YEARS_ALL, log, cagrOver, END, rescore, ALL, MK, divOf, fs, path, DATA, RAW } = c;
+    YEARS_ALL, log, cagrOver, END, rescore, ALL, dailyOf, MK, divOf, fs, path, DATA, RAW } = c;
   const want = String(which).split(',').map(s => s.trim());
   const on = n => want.includes('all') || want.includes(String(n));
   const pc = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
@@ -439,6 +439,72 @@ function build(c, which) {
     [5, 7, 10, 15].filter(N => N !== MAN).forEach(N => { const r = mkr(N), m = mk({ ck: 'sg' + N }, r); add(S(), `신호 ${MAN}이평 · 판매 ${N}이평`, { cand: candOf(m), rule: r, o: { exitMaN: N } }); });
     [[2, '유예 2달'], [1, '즉시']].forEach(([g, nm]) => { const r = { ...mkr(MAN), grace: g }, m = mk({ ck: 'sgg' + g }, r); add(S(), `신호 ${MAN}이평 · 판매 ${MAN}이평 · ${nm}`, { cand: candOf(m), rule: r, o: { exitMaN: MAN } }); });
     posts.push(() => post12('15-', '15 신호 이평 길이'));
+  }
+
+
+  // ═════ 묶음 16: 일봉 판단 — 보유 중 일 단위로 손절·이평 이탈을 보고 그날 값으로 팔기(data/daily, 2g_daily.js로 받음). 월봉 판단(지금)에 더하거나 대신함.
+  //   일봉이 없는 종목·달, 월말 종가와 일봉 종가가 3% 넘게 어긋나는 달(액면·감자 조정 불일치)은 일봉 규칙을 쓰지 않고 월봉 규칙만 씀. 매수 후 첫날(구매일)은 건너뛰고 다음 날부터 봄.
+  if (on(16)) {
+    const S = n => `16-${n}`;
+    const r5 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6), rateName: '국채10년 6개월', exitMaN: 5 };
+    const m5 = mk({ ck: 'd5' }, r5);
+    let miss = 0, used = 0;
+    // 규칙: stopPeak(고점 종가 대비 하락률, 종가 기준·그날 종가에 판매) · stopLow(고점 종가 대비 저가 하락률, 손절가에 판매·종가가 더 낮으면 종가) · stopBuy(매수가 대비 하락률, 종가) · ma(일봉 N일 이평 아래 종가가 days일 연속이면 그날 종가에 판매)
+    //       · armUp/armStop(매수가의 armUp배를 넘긴 뒤 고점 종가 대비 armStop 하락이면 판매)
+    const mkDaily = (cfg) => (h, k) => {
+      const D = dailyOf(h.y); if (!D) { return null; }
+      const rg = D.month.get(k); if (!rg) return null;
+      const mc = h.px.m.get(k), lastC = D.c[rg[1] - 1];
+      if (mc && Math.abs(lastC / mc - 1) > 0.03) { if (!h.dBadK || h.dBadK !== k) { h.dBadK = k; miss++; } return null; }
+      const St = h.dS || (h.dS = { peak: h.buyPx || 0, below: 0 });
+      used++;
+      for (let i = rg[0]; i < rg[1]; i++) {
+        if (h.buyK === k && i === rg[0]) continue;                          // 구매일(그달 첫 거래일)은 건너뜀
+        const c = D.c[i], l = D.l[i];
+        if (cfg.stopLow && l <= St.peak * (1 - cfg.stopLow)) return { px: Math.min(c, St.peak * (1 - cfg.stopLow)), rs: 'd-저가손절' };
+        if (cfg.stopPeak && c <= St.peak * (1 - cfg.stopPeak)) return { px: c, rs: 'd-고점손절' };
+        if (cfg.stopBuy && h.buyPx && c <= h.buyPx * (1 - cfg.stopBuy)) return { px: c, rs: 'd-매수가손절' };
+        if (cfg.ma && i + 1 >= cfg.ma) {
+          const sma = (D.cs[i + 1] - D.cs[i + 1 - cfg.ma]) / cfg.ma;
+          if (c < sma) { St.below++; if (St.below >= (cfg.days || 1)) return { px: c, rs: 'd-일봉이평' }; } else St.below = 0;
+        }
+        if (cfg.armUp) { if (c >= h.buyPx * cfg.armUp) St.armed = true; if (St.armed && c <= St.peak * (1 - cfg.armStop)) return { px: c, rs: 'd-익절후하락' }; }
+        if (c > St.peak) St.peak = c;
+      }
+      return null;
+    };
+    const base = (sec, name, cfg, five, extra = {}) => add(S(sec), name, five ? { cand: candOf(m5), rule: r5, o: { exitMaN: 5, dailyFn: mkDaily(cfg), ...extra } } : { cand: candOf(mBase), rule: rule10, o: { dailyFn: mkDaily(cfg), ...extra } });
+    add(S('기준'), '월봉 규칙 그대로(기준, 일봉 안 봄) 10이평', { cand: candOf(mBase), rule: rule10 });
+    add(S('기준'), '월봉 규칙 그대로(기준, 일봉 안 봄) 5이평', { cand: candOf(m5), rule: r5, o: { exitMaN: 5 } });
+    [false, true].forEach(five => {
+      const T = five ? '5이평 + ' : '10이평(지금) + ';
+      [0.15, 0.2, 0.25, 0.3, 0.4].forEach(p => base('A 일봉 고점 대비 손절(종가)', `${T}일봉 종가가 고점 종가 −${p * 100}%면 그날 종가에 판매`, { stopPeak: p }, five));
+      [0.15, 0.2, 0.25, 0.3].forEach(p => base('B 일봉 고점 대비 손절(저가 기준, 손절가에 판매 — 종가가 더 낮으면 종가)', `${T}일봉 저가가 고점 종가 −${p * 100}%면 손절가(종가가 더 낮으면 종가)에 판매`, { stopLow: p }, five));
+      [0.15, 0.2, 0.3].forEach(p => base('C 일봉 매수가 대비 손절', `${T}일봉 종가가 매수가 −${p * 100}%면 그날 종가에 판매`, { stopBuy: p }, five));
+      [[0.2, 0.15], [0.3, 0.2]].forEach(([a, b]) => base('D 일봉 매수가+고점 이중 손절', `${T}매수가 −${a * 100}% 또는 고점 −${(a + 0.05) * 100}%`, { stopBuy: a, stopPeak: a + 0.05 }, five));
+      [[1.5, 0.15], [2, 0.15], [2, 0.2], [2, 0.25], [3, 0.2]].forEach(([u, q]) => base('E 일봉 익절 뒤 하락', `${T}매수가의 ${u}배를 넘긴 뒤 고점 −${q * 100}%면 판매`, { armUp: u, armStop: q }, five));
+    });
+    // F 일봉 이평 이탈(월봉 이탈에 더함: 일봉 이평 아래 종가가 days일 연속이면 그날 판매) — 월봉 판단은 그대로 남음
+    [[50, 1], [50, 5], [100, 1], [100, 5], [100, 10], [150, 5], [200, 1], [200, 5], [200, 10]].forEach(([n, d]) => base('F 일봉 이평 이탈(월봉 판단에 더함)', `10이평(지금) + 일봉 ${n}일 이평 아래 종가 ${d}일 연속이면 판매`, { ma: n, days: d }, false));
+    [[50, 5], [100, 5], [200, 5]].forEach(([n, d]) => base('F 일봉 이평 이탈(월봉 판단에 더함)', `5이평 + 일봉 ${n}일 이평 아래 종가 ${d}일 연속이면 판매`, { ma: n, days: d }, true));
+    // G 일봉 이평만 쓰고 월봉 이탈 판단은 끔(익절 트레일만 남음)
+    [[50, 5], [100, 5], [150, 5], [200, 5], [100, 1], [200, 10]].forEach(([n, d]) => base('G 일봉 이평만(월봉 이탈 끔)', `일봉 ${n}일 이평 아래 종가 ${d}일 연속이면 판매, 월봉 이탈 판단 없음`, { ma: n, days: d }, false, { exitMaFn: () => 0 }));
+    // H 조합
+    base('H 조합', '10이평 + 일봉 100일 이평 5일 연속 + 고점 −25%', { ma: 100, days: 5, stopPeak: 0.25 }, false);
+    base('H 조합', '5이평 + 일봉 100일 이평 5일 연속 + 고점 −25%', { ma: 100, days: 5, stopPeak: 0.25 }, true);
+    base('H 조합', '10이평 + 매수가 −20% + 고점 −25% + 익절 뒤 −20%(2배)', { stopBuy: 0.2, stopPeak: 0.25, armUp: 2, armStop: 0.2 }, false);
+    posts.push(() => { post12('16-', '16 일봉 판단'); post16(); });
+    function post16() {                                                       // 일봉 규칙이 실제로 판 거래: 이유별 건수·평균 수익, 그리고 일봉을 쓴/못 쓴 달 수
+      const mine = V.filter((v, i) => String(v.sec).startsWith('16-'));
+      log(''); log('## 16 일봉 판단 — 판매 이유별 건수(평균 수익) · 일봉 규칙을 쓴 보유-달 수 / 월봉과 어긋나 못 쓴 달 수(전체 시험 합계)');
+      log(`일봉을 쓴 보유-달 ${used} · 월봉과 3% 넘게 어긋나 건너뛴 달 ${miss}` + (used === 0 ? ' → 일봉 자료가 없음: node 2g_daily.js 먼저 실행' : ''));
+      log('방식                                                       이유별(건수 · 평균 수익)');
+      mine.forEach(v => { safe('16 이유', () => {
+        const sm = simulate(ym => v.cand(ym).slice(0, 4), 4, v.C || C1, { ...simOpt(v.rule, v.o || {}), cand: v.cand, log: true }, v.dep != null ? v.dep : DEP), by = {};
+        (sm.trades || []).filter(t => t.ret != null && t.sellYm).forEach(t => { const r = String(t.reason).replace(/^ma10-.*/, '월봉 이탈').replace(/^tpTrail$/, '월봉 익절').replace(/^ma10$/, '월봉 이탈'); (by[r] = by[r] || []).push(t.ret); });
+        log(`${v.name.slice(0, 54).padEnd(54)} ` + Object.entries(by).sort((a, b) => b[1].length - a[1].length).map(([r, a]) => `${r} ${a.length}(${pc(mean(a))})`).join(' · '));
+      }); });
+    }
   }
 
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
