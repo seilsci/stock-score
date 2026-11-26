@@ -574,6 +574,11 @@ function build(c, which) {
     [0.5, 0.6].forEach(t => both('H 절대 비율', `월 공매도 비율이 ${t * 100}% 넘는 미국 종목 제외`, wrap(mBase, a => a.filter(e => { const r = shRatio(e.r.y, e.cj); return r == null || r <= t; })), wrap(m5, a => a.filter(e => { const r = shRatio(e.r.y, e.cj); return r == null || r <= t; }))));
     posts.push(() => { post12('17-', '17 공매도'); post17(); });
     function post17() {                                                       // 실제 거래를 공매도 비율 순위 구간별로 나눠 봄(신호 달 = 구매 전달 말)
+      safe('17 연결 진단', () => {                                              // 어디가 비었나: 연도별로 공매도 자료가 있는 달 수 / 그 해 미국 후보 중 값이 연결된 비율(달은 있는데 비율이 낮으면 종목 이름이 안 맞는 것, 달이 비면 받기가 덜 된 것)
+        const byY = {}; mBase.forEach(arr => arr.forEach(e => { if (isKR(e.r.y)) return; const Y = Math.floor(e.r.ym / 100), o = byY[Y] || (byY[Y] = { n: 0, h: 0 }); o.n++; if (shPct(e.r.y, e.cj) != null) o.h++; }));
+        const lines = Object.keys(byY).sort().map(Y => { let mo = 0; for (let mth = 1; mth <= 12; mth++) if (shMonth(mi(+Y * 100 + mth))) mo++; return `${Y}: 자료 있는 달 ${mo}/12 · 후보 ${byY[Y].n}건 중 연결 ${byY[Y].h}건(${byY[Y].n ? (byY[Y].h / byY[Y].n * 100).toFixed(0) : 0}%)`; });
+        log(''); log('## 17 연결 진단 — ' + lines.join(' | '));
+      });
       log(''); log(`## 17 공매도 — 자료 연결: 미국 후보 ${total}건 중 공매도 값이 있는 것 ${have}건(${total ? (have / total * 100).toFixed(0) : 0}%)` + (have === 0 ? ' → 공매도 자료가 없음: node 2h_short.js 먼저 실행' : ''));
       log('## 17 공매도 — 실제 거래를 구매 전달 말의 공매도 비율 순위(미국 종목 중 백분위)로 나눈 성과(전체 기간)');
       log('방식                       구간                    거래 수   이긴 거래   평균 수익   중앙값');
