@@ -2,8 +2,8 @@
  * 주식 점수 — 월봉 10이평 돌파 신호 (Apps Script)
  *
  * 매수: 전달 종가 ≤ 전달 10이평  그리고  이번 달 최근 종가 > 이번 달 10이평
- * 유예: 이번 달 처음 10이평 아래로 내려옴(하향 돌파 1개월째). 다음 달에도 아래면 매도
- * 매도: 하향 돌파 후 2개월째까지 계속 10이평 아래(전전달 위 → 전달·이번 달 아래).
+ * 유예: 이번 달 처음 판매 기준 이평 아래로 내려옴(하향 돌파 1개월째). 다음 달에도 아래면 매도. 판매 기준 이평 = 미국 10이평 · 한국 6이평(2026-11-27 변경, 매수 돌파와 익절 2배 기준은 10이평 그대로)
+ * 매도: 하향 돌파 후 2개월째까지 계속 판매 기준 이평 아래(전전달 위 → 전달·이번 달 아래).
  *       단, 미국 국채 10년 금리가 6개월 전 달말보다 올라 있으면(FRED DGS10) 유예 없이 하향 돌파 즉시 매도
  * 10이평 = 최근 10개월 월말 종가 평균(이번 달은 최근 종가를 그 달 종가로 씀)
  *
@@ -27,7 +27,7 @@ var CFG = {
 };
 
 var HEAD = ['시장', '코드', '이름', '종류', '시총', '시총단위', '최근종가', '10이평',
-            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수', '확인', '익절'];
+            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수', '확인', '익절', '판매이평'];   // 판매이평: 매도·유예 판단에 쓰는 이평(한국 6이평 · 미국 10이평)
 
 /* ───────── 처음 한 번 실행 ───────── */
 function setup() {
@@ -456,10 +456,14 @@ function makeRow_(s, mon, liq) {
   var pma = n >= M + 1 ? avg_(c.slice(n - M - 1, n - 1)) : '';
   var pma2 = n >= M + 2 ? avg_(c.slice(n - M - 2, n - 2)) : '';
   var sig = '';
+  var XN = s.market === 'US' ? M : 6;                                         // 판매 기준 이평 길이: 미국 10이평 · 한국 6이평 (매수 돌파·익절 2배 기준은 모두 10이평 그대로)
+  var xma = n >= XN ? avg_(c.slice(n - XN)) : '';
+  var pxma = n >= XN + 1 ? avg_(c.slice(n - XN - 1, n - 1)) : '';
+  var pxma2 = n >= XN + 2 ? avg_(c.slice(n - XN - 2, n - 2)) : '';
   if (ma !== '' && pma !== '') {
-    var below = cur < ma;
-    var justCrossed = below && prev >= pma;                                   // 이번 달 처음 아래로
-    var second = below && prev < pma && pma2 !== '' && c[n - 3] >= pma2;      // 전달 처음 아래로 → 이번 달 2개월째
+    var below = xma !== '' && cur < xma;
+    var justCrossed = below && pxma !== '' && prev >= pxma;                   // 이번 달 처음 판매 이평 아래로
+    var second = below && pxma !== '' && prev < pxma && pxma2 !== '' && c[n - 3] >= pxma2;   // 전달 처음 아래로 → 이번 달 2개월째
     if (prev <= pma && cur > ma) sig = '매수';
     else if (second || (justCrossed && rateUp_())) sig = '매도';
     else if (justCrossed) sig = '유예';
@@ -478,7 +482,7 @@ function makeRow_(s, mon, liq) {
   // 매수 신호 종목만 점수 계산
   var scoreVal = sig === '매수' ? scoreMonthly_(mon, s) : '';
   return [s.market, s.code, s.name, s.type, s.cap, s.capUnit, round_(cur), round_(ma), n > 1 ? round_(prev) : '',
-          round_(pma), sig, mon[n - 1].date, n, chart, scoreVal, conf, tp];
+          round_(pma), sig, mon[n - 1].date, n, chart, scoreVal, conf, tp, xma !== '' ? round_(xma) : ''];
 }
 
 /* ───────── 사이트용 ───────── */
@@ -523,7 +527,7 @@ function holdRows_(param) {
     var mon = parseYahooMonthly_(bodies[i]); if (!mon || mon.length <= CFG.MONTHS) return;
     var kr = /\.(KS|KQ)$/.test(y), mk = kr ? (/\.KS$/.test(y) ? 'KOSPI' : 'KOSDAQ') : 'US';
     var r = makeRow_({ market: mk, code: kr ? y.slice(0, -3) : y, name: '', type: '', cap: '', capUnit: '' }, mon);   // liq 없이: 순위와 무관하게 계산
-    rows.push({ '시장': mk, '코드': r[1], '키': y, '최근종가': r[6], '10이평': r[7], '전달종가': r[8], '전달10이평': r[9], '신호': r[10], '기준일': r[11],
+    rows.push({ '시장': mk, '코드': r[1], '키': y, '최근종가': r[6], '10이평': r[7], '전달종가': r[8], '전달10이평': r[9], '신호': r[10], '기준일': r[11], '판매이평': r[17],
       '차트': mon.map(function (x) { return [+x.ym, round_(x.open), round_(x.high), round_(x.low), round_(x.close), Math.round(x.vol || 0)]; }) });
   });
   return { rows: rows };

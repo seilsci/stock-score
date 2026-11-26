@@ -296,7 +296,7 @@ canvas{display:block;width:100%;height:230px}
 <main>
   <div class="navtabs"><a class="ntab" href="index.html">📈 종목</a><a class="ntab on" href="#" data-p="log">📒 매매일지</a><a class="ntab" href="#" data-p="ret">📊 수익률</a></div>
   <h1 id="pg-title">매매일지</h1>
-  <div class="sub"><div><span id="dep-label">첫달 100만원 · 월 100만원</span> · <span id="sell-label">tp2x트레일+국채10년 금리 유예2달</span> ·</div><div><span id="strat-label">10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매)</span> · 비용·세금 반영</div></div>
+  <div class="sub"><div><span id="dep-label">첫달 100만원 · 월 100만원</span> · <span id="sell-label">tp2x트레일 · 한국 6이평·미국 10이평 이탈 · 국채10년 금리 유예2달</span> ·</div><div><span id="strat-label">10이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매)</span> · 비용·세금 반영</div></div>
 
   <div class="subtabs" id="subtabs"><button type="button" data-v="how">📖 매매방법</button><button type="button" data-v="hist" class="on">🧾 거래내역 보기</button><button type="button" data-v="sold">💰 매도 거래 내역</button></div>
   <div id="view-sold" hidden>
@@ -311,7 +311,7 @@ canvas{display:block;width:100%;height:230px}
     <h2 class="jf-h"><span class="jf-dot"></span>일지는 이렇게 계산해요</h2>
     <div class="jf-tl">
       <div class="jf-day"><i>🗓</i><b>월말 (말일 종가)</b></div>
-      <div class="jf-step"><em>1</em><div><strong>판매 판단</strong><span>보유 종목이 <b>익절 트레일</b>(10이평의 2배 도달 후 하락)이거나<br><b>10이평 아래</b>로 내려왔으면 판다. 금리가 오르는 중이면 즉시, 아니면 2개월째에 판다</span></div></div>
+      <div class="jf-step"><em>1</em><div><strong>판매 판단</strong><span>보유 종목이 <b>익절 트레일</b>(10이평의 2배 도달 후 하락)이거나<br><b>판매 기준 이평 아래</b>(한국 6이평 · 미국 10이평)로 내려왔으면 판다. 금리가 오르는 중이면 즉시, 아니면 2개월째에 판다</span></div></div>
       <div class="jf-step"><em>2</em><div><strong>입금</strong><span>매달 <b id="jf-dep">100만원</b>이 들어온다</span></div></div>
       <div class="jf-step"><em>3</em><div><strong>세금</strong><span>12월에 그해 미국 주식 이익에서 <b>250만원 공제 후 22%</b>를 낸다</span></div></div>
       <div class="jf-step"><em>4</em><div><strong>후보 확정</strong><span class="nw">돌파 후 +10%·5&gt;10&gt;20 정배열을 <b>이번 달 처음</b> 채우면 후보</span></div></div>
@@ -434,7 +434,7 @@ var FEAT_DESC = {
   prev_fail:'최근 돌파 실패 횟수',ma_up6:'6개월 중 이평 상승 개월',close_pos:'고저 중 종가 위치',gap_prev:'전달 이평 대비'
 };
 var REASON_S = { ma10:'이평 아래', tpTrail:'익절 트레일', 'ma10-금리인상':'이평 아래+금리↑', 'ma10-유예만료':'이평 아래+유예' };
-var REASON = { ma10:'10이평 아래', tpTrail:'익절(2배 도달 후 하락)', 'ma10-금리인상':'10이평 아래+금리인상', 'ma10-유예만료':'10이평 아래+유예만료' };
+var REASON = { ma10:'판매 이평 아래', tpTrail:'익절(2배 도달 후 하락)', 'ma10-금리인상':'판매 이평 아래+금리인상', 'ma10-유예만료':'판매 이평 아래+유예만료' };
 
 function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function fmt(ym){ var s=String(ym); return s.slice(0,4)+'-'+s.slice(4); }
@@ -1323,6 +1323,7 @@ function barsOf(y){
   u.cs=u.c; return u;                          // yms·cs·pos(월 → 위치) + o·h·l
 }
 function ma10At(cs,i){ if(i<9) return null; var t=0; for(var k=i-9;k<=i;k++) t+=cs[k]; return t/10; }
+function exitMaAt(cs,i,y){ var n=isUSy(y)?10:6; if(i<n-1) return null; var t=0; for(var k=i-n+1;k<=i;k++) t+=cs[k]; return t/n; }   // 판매 기준 이평: 한국 6이평 · 미국 10이평(익절 트레일은 그대로 10이평의 2배)
 function krTaxY(Y){ var t=COSTS.kr.sell_tax, v=0, nm=function(x){ return x<10000?x*100+1:x; }, yy=Y<10000?Y*100+12:Y; Object.keys(t).map(Number).sort(function(a,b){ return nm(a)-nm(b); }).forEach(function(y){ if(nm(y)<=yy) v=t[y]; }); return v; }          // 키: 연도(YYYY) 또는 연월(YYYYMM, 그 달 말 매도부터). Y: 연도 또는 연월
 function isEtfHold(h){ var t=findFeats({y:h.y,buyYm:h.buyYm}); var f=t&&t.feats.filter(function(x){ return x[0]==='etf'; })[0]; return !!(f&&f[1]===1); }
 
@@ -1356,17 +1357,15 @@ function planCore(o){
     var iNow=b.pos[o.nowYm], iBuy=b.pos[h.buyYm]; if(iNow==null||iBuy==null) return;       // 이번 달 가격이 없으면 보유 유지
     var iEnd=b.pos[o.lastYm]!=null?b.pos[o.lastYm]:iNow-1, tp=false, gc=0;
     for(var m=iBuy+(o.fd?0:1);m<=iEnd;m++){                                                // 매수 다음 달(첫날 구매면 산 달)~지난달 상태 복원
-      var mm=ma10At(b.cs,m); if(mm==null) continue;
-      if(b.cs[m]>=2*mm) tp=true;
-      if(b.cs[m]<mm) gc++; else gc=0;
+      var mm=ma10At(b.cs,m), xm=exitMaAt(b.cs,m,h.y);
+      if(mm!=null && b.cs[m]>=2*mm) tp=true;
+      if(xm!=null){ if(b.cs[m]<xm) gc++; else gc=0; }
     }
-    var price=b.cs[iNow], ma=ma10At(b.cs,iNow), reason=null, status=null;
-    if(ma!=null){
-      if(price>=2*ma) tp=true; else if(tp) reason='tpTrail';
-      if(!reason && price<ma){
-        var need=o.rateUp?1:2;
-        if(gc+1>=need) reason=o.rateUp?'ma10-금리인상':'ma10-유예만료'; else status='유예';
-      }
+    var price=b.cs[iNow], ma=ma10At(b.cs,iNow), xma=exitMaAt(b.cs,iNow,h.y), reason=null, status=null;
+    if(ma!=null){ if(price>=2*ma) tp=true; else if(tp) reason='tpTrail'; }
+    if(!reason && xma!=null && price<xma){
+      var need=o.rateUp?1:2;
+      if(gc+1>=need) reason=o.rateUp?'ma10-금리인상':'ma10-유예만료'; else status='유예';
     }
     var us=isUSy(h.y);
     if(reason){
@@ -1409,11 +1408,11 @@ function exitFor(y,buyYm){                 // 그 달에 샀다면 언제·왜 �
   var tp=false, gc=0;
   for(var m=iBuy+(isFD()?0:1);m<b.yms.length;m++){                                   // 첫날 구매면 산 달의 월말부터 판단
     var ym=String(b.yms[m]), L0=LED0.months[ym]; if(!L0) break;                       // 장부 마지막 달까지만
-    var ma=ma10At(b.cs,m); if(ma==null) continue;
+    var ma=ma10At(b.cs,m), xma=exitMaAt(b.cs,m,y); if(ma==null&&xma==null) continue;
     var px=b.cs[m], reason=null;
-    if(px>=2*ma) tp=true; else if(tp) reason='tpTrail';
-    if(!reason){
-      if(px<ma){ gc++; var need=L0.rateUp?1:2; if(gc>=need) reason=L0.rateUp?'ma10-금리인상':'ma10-유예만료'; }
+    if(ma!=null){ if(px>=2*ma) tp=true; else if(tp) reason='tpTrail'; }
+    if(!reason && xma!=null){
+      if(px<xma){ gc++; var need=L0.rateUp?1:2; if(gc>=need) reason=L0.rateUp?'ma10-금리인상':'ma10-유예만료'; }
       else gc=0;
     }
     if(reason) return {ym:ym,reason:reason};
@@ -1526,7 +1525,7 @@ function renderPlanView(){
     list.innerHTML=''; return;
   }
   var P=PLAN, ym=SEL_YM, sellSum=P.sells.reduce(function(t,x){ return t+x.amt; },0), buySum=P.buys.reduce(function(t,x){ return t+x.amt; },0);
-  var rateTxt=P.api.rateUp===true?'오르는 중 → 10이평 아래로 내려오면 즉시 매도':P.api.rateUp===false?'오르지 않음 → 10이평 아래 2개월째에 매도':'확인 못 함 → 2개월 유예 적용';
+  var rateTxt=P.api.rateUp===true?'오르는 중 → 판매 기준 이평(한국 6·미국 10) 아래로 내려오면 즉시 매도':P.api.rateUp===false?'오르지 않음 → 판매 기준 이평 아래 2개월째에 매도':'확인 못 함 → 2개월 유예 적용';
   label.innerHTML=fmt(ym)+' 예정 주문 (판매 '+P.sells.length+' · 구매 '+P.buys.length+')<span class="plan-tag">예정</span>';
   sc.innerHTML='<div class="sum-t">'+fmt(ym)+' · 지금 사면 이렇게 삽니다 <span class="plan-tag">예정</span></div><div class="sum-g">'
     +'<div class="sum-i sum-big"><span class="k">예상 월말 현금</span><b>'+won(P.cashEnd)+'</b></div>'
@@ -1605,7 +1604,7 @@ function renderPlanView(){
       });
     } else html+='<div class="sum-note" style="margin:8px 4px 0"><b>다음 달 첫날 구매 후보</b> (이번 달 말에 확정되면 삽니다): 시트(Apps Script)가 확인 매수 후보를 아직 내려주지 않아 표시할 수 없습니다. 최신 Apps Script로 업데이트하면 여기에 나옵니다.</div>';
   }
-  if(P.watch.length) html+='<div class="sum-note" style="margin:6px 4px 0">유예 중: '+P.watch.map(function(w){ return esc(w.name); }).join(', ')+' — 이번 달 처음 10이평 아래로 내려왔고, 월말에도 아래면 다음 달에 판매됩니다.</div>';
+  if(P.watch.length) html+='<div class="sum-note" style="margin:6px 4px 0">유예 중: '+P.watch.map(function(w){ return esc(w.name); }).join(', ')+' — 이번 달 처음 판매 기준 이평(한국 6·미국 10) 아래로 내려왔고, 월말에도 아래면 다음 달에 판매됩니다.</div>';
   list.innerHTML=html;
   list.querySelectorAll('.lr-h[data-g], .lr-d[data-g]').forEach(function(h){
     h.onclick=function(){
@@ -2068,7 +2067,7 @@ function myRecRender(open){
   var cg=function(x){ var r=rowOf[x.y]&&rowOf[x.y].row; return r?{y:x.y,end:R.ym,buy:R.ym,sell:null,raw:chartRaw(r)||undefined}:null; };
   h+='<div class="rc-g s">판매 추천 (이달 말 종가 기준 · '+R.P.sells.length+'종목)</div>';
   h+=R.P.sells.length?R.P.sells.map(function(x){ var hs=holdSc(x); return line({hold:true,name:x.name||x.y,us:x.us,score:hs.score,sc:hs.sc,g:hg(x,true),sub:esc(REASON[x.reason]||x.reason)+' · 내 원가 대비 '+(x.ret>=0?'+':'')+(x.ret*100).toFixed(1)+'%',right:rn(x.amt)}); }).join(''):'<div class="rc-r"><div>이달 말에 팔 종목이 없어요</div></div>';
-  if(R.P.watch.length){ h+='<div class="rc-g w">유예 중 (다음 달에도 10이평 아래면 매도)</div>'+R.P.watch.map(function(x){ var hs=holdSc(x); return line({hold:true,name:x.name||x.y,us:x.us,score:hs.score,sc:hs.sc,g:hg(x,false),sub:'지금 10이평 아래 · 이번 달 말 종가에 따라 달라져요'}); }).join(''); }
+  if(R.P.watch.length){ h+='<div class="rc-g w">유예 중 (다음 달에도 판매 기준 이평 아래면 매도)</div>'+R.P.watch.map(function(x){ var hs=holdSc(x); return line({hold:true,name:x.name||x.y,us:x.us,score:hs.score,sc:hs.sc,g:hg(x,false),sub:'지금 판매 기준 이평 아래 · 이번 달 말 종가에 따라 달라져요'}); }).join(''); }
   if(R.keep.length) h+='<div class="rc-g k">계속 보유 ('+R.keep.length+'종목)</div>'+R.keep.map(function(x){ var hs=holdSc(x); return line({hold:true,name:x.name||x.y,us:isUSy(x.y),score:hs.score,sc:hs.sc,g:hg(x,false),sub:'이번 판단에서는 팔지 않아요'}); }).join('');
   if(R.nobars.length) h+='<div class="rc-g k">판단 못 함 (월봉 자료 없음)</div><div class="rc-r"><div>'+R.nobars.map(function(p){ return esc(p.name||p.code)+' <span class="lr-sc no">-</span> <small style="display:inline">'+myNoScoreText(p.code)+'</small>'; }).join('<br>')+'<small>종목 이름을 검색해서 고르면 코드가 자동으로 채워져요</small></div></div>';
   h+='<div class="rc-g b">'+fmt(R.dnx).slice(5)+'월 1일 구매 추천 (잠정 · 후보 '+R.nc.length+'개)</div>';

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>월봉 10이평 돌파 후 +10%·정배열 매수</title>
-<meta name="description" content="한국·미국 주식: 월봉 10이평 돌파 후 돌파 다음 달 시가 대비 +10% 이상이고 5>10>20 정배열이면 매수, 10이평 아래 2개월째 매도">
+<meta name="description" content="한국·미국 주식: 월봉 10이평 돌파 후 돌파 다음 달 시가 대비 +10% 이상이고 5>10>20 정배열이면 매수, 판매 기준 이평(한국 6이평 · 미국 10이평) 아래 2개월째 매도">
 <style>
 :root{--ma:#f59e0b;--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#6b7280;--line:#e5e7eb;--seg:#e9ebef;--chip:#f0f1f3;--buy:#d9363e;--sell:#2563eb}
 @media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1e24;--fg:#e8eaed;--mut:#9aa1ab;--line:#2a2f37;--seg:#22272e;--chip:#262b33;--buy:#ff6b6b;--sell:#6ea8ff}}
@@ -187,8 +187,8 @@ a{color:inherit}
     <h2 class="inf-h"><span class="dot d2"></span>언제 파나요 <em>월말 종가 기준, 먼저 걸리는 것</em></h2>
     <div class="inf-sell">
       <div class="inf-sc c1"><div class="inf-ic">🚀</div><strong>익절 트레일</strong><p>가격이 10이평의 <b>2배</b>에 닿은 뒤 다시 내려오면 매도</p></div>
-      <div class="inf-sc c2"><div class="inf-ic">📈</div><strong>금리가 오르는 중</strong><p>미국 국채 10년 금리가 6개월 전 달말보다 높으면,<br>10이평 아래로 내려온 <b>즉시</b> 매도</p></div>
-      <div class="inf-sc c3"><div class="inf-ic">⏳</div><strong>그 외에는 유예</strong><p>10이평 아래로 내려온 첫 달은 <span class="inf-y">유예</span> → <b>2개월째</b>에도 아래면 매도 <small>(위로 올라오면 유예 초기화)</small></p></div>
+      <div class="inf-sc c2"><div class="inf-ic">📈</div><strong>금리가 오르는 중</strong><p>미국 국채 10년 금리가 6개월 전 달말보다 높으면,<br>판매 기준 이평 아래로 내려온 <b>즉시</b> 매도</p></div>
+      <div class="inf-sc c3"><div class="inf-ic">⏳</div><strong>그 외에는 유예</strong><p>판매 기준 이평(한국 <b>6이평</b> · 미국 <b>10이평</b>) 아래로 내려온 첫 달은 <span class="inf-y">유예</span> → <b>2개월째</b>에도 아래면 매도 <small>(위로 올라오면 유예 초기화)</small></p></div>
     </div>
     <div class="dq"><q>한 문이 닫히면 다른 문이 열린다.<br>그러나 우리는 닫힌 문만 오래 바라보느라<br><b>열려 있는 문</b>을 보지 못할 때가 많다</q><span class="by">— 헬렌 켈러</span>
       <div class="pts"><div class="pt"><b>닫힌 문</b>이평 아래로 내려오면 정리</div><div class="pt"><b>미련 없이</b>판 종목은 다시 사지 않음</div><div class="pt"><b>열린 문</b>판 돈은 바로 새 후보로</div></div>
@@ -229,7 +229,7 @@ function render() {
     ? '월봉 10이평을 돌파한 뒤, 돌파 다음 달 시가보다 +10% 이상 올랐고 5>10>20 이평 정배열인 종목(이번 달 처음 조건을 채운 종목, 점수 높은 순). 이번 달 말에 확정되면 다음 달 첫날 종가에 삽니다.'
     : S === '익절'
     ? '월봉 종가가 10이평의 2배 이상까지 오른 종목(도달)과, 직전 달 2배 선 위에 있다가 이번 달 그 아래로 내려온 종목(하락). 산 종목이 2배 선에 한 번 닿은 뒤 처음 그 선 아래로 내려오면 월말에 익절 매도합니다(보유 기준 규칙을 시장 전체에 적용한 목록).'
-    : '10이평 아래로 내려온 뒤 2개월째에도 아래면 매도(국채 10년 금리가 오르는 중이면 내려온 즉시 매도). 첫 달은 유예.';
+    : '판매 기준 이평(한국 6이평 · 미국 10이평) 아래로 내려온 뒤 2개월째에도 아래면 매도(국채 10년 금리가 오르는 중이면 내려온 즉시 매도). 첫 달은 유예.';
   sb.textContent = '매수 대상 ' + nb; ss.textContent = '매도 대상 ' + ns + (ny ? ' · 유예 ' + ny : ''); st.textContent = '익절 2배 ' + nt;
   var day = '';
   rows.forEach(function (r) { if (String(r['기준일']) > day) day = String(r['기준일']); });
@@ -251,7 +251,7 @@ function render() {
                 });
   var cls = S === '매수' ? 'b' : S === '익절' ? 'b' : 's';
   var h = sel.map(function (r, i) {
-    var g = (r['최근종가'] / r['10이평'] - 1) * 100;
+    var xs = (S === '매도' && +r['판매이평'] > 0), g = (r['최근종가'] / (xs ? r['판매이평'] : r['10이평']) - 1) * 100, gl = xs ? (r['시장'] === 'US' ? '10이평 ' : '6이평 ') : '10이평 ';   // 매도·유예 행은 판매 기준 이평(한국 6·미국 10) 대비
     var mk = r['시장'] === 'KOSPI' ? '코스피 · ' : r['시장'] === 'KOSDAQ' ? '코스닥 · ' : '';
     var tag = (r['종류'] && r['종류'] !== 'stock' ? '<span class="tag">' + esc(String(r['종류']).toUpperCase()) + '</span>' : '') +
               (r['신호'] === '유예' ? '<span class="tag yu">유예 1개월째</span>' : '') +
@@ -263,7 +263,7 @@ function render() {
       '<div class="nm">' + esc(r['이름']) + '<span class="cd">' + esc(r['코드']) + '</span>' + tag + '</div>' +
       '<div class="meta">' + mk + '시총 ' + cap(r) + '</div></div>' +
       '<div class="r">' + scHtml + '<div class="px">' + px(r, kr) + '</div>' +
-      '<div class="meta gap ' + cls + '">' + (S === '익절' ? '10이평의 ×' + (+r['배율']).toFixed(2) + (r['익절상태'] === '하락' ? ' (직전 달)' : '') : '10이평 ' + (g > 0 ? '+' : '') + g.toFixed(1) + '%') + '</div></div></div>';
+      '<div class="meta gap ' + cls + '">' + (S === '익절' ? '10이평의 ×' + (+r['배율']).toFixed(2) + (r['익절상태'] === '하락' ? ' (직전 달)' : '') : gl + (g > 0 ? '+' : '') + g.toFixed(1) + '%') + '</div></div></div>';
   }).join('');
   LIST = sel;
   if (!SEL || !sel.some(function (r) { return r['코드'] === SEL['코드'] && r['시장'] === SEL['시장']; })) {
@@ -301,8 +301,8 @@ function drawChart() {
   var kr = r['시장'] !== 'US';
   var ckey = r['시장'] + '|' + r['코드']; if (cv._key !== ckey) { cv._key = ckey; cv._hi = null; }
   cn.innerHTML = esc(r['이름']) + ' <span class="cd">' + esc(r['코드']) + '</span>';
-  var gp = (r['최근종가'] / r['10이평'] - 1) * 100;
-  cp.innerHTML = px(r, kr) + ' <span class="meta gap ' + (r['신호'] === '매수' || r['신호'] === '확인' ? 'b' : 's') + '">10이평 ' +
+  var xs2 = (r['신호'] === '매도' || r['신호'] === '유예') && +r['판매이평'] > 0, gp = (r['최근종가'] / (xs2 ? r['판매이평'] : r['10이평']) - 1) * 100, gl2 = xs2 ? (r['시장'] === 'US' ? '10이평 ' : '6이평 ') : '10이평 ';
+  cp.innerHTML = px(r, kr) + ' <span class="meta gap ' + (r['신호'] === '매수' || r['신호'] === '확인' ? 'b' : 's') + '">' + gl2 +
                  (gp > 0 ? '+' : '') + gp.toFixed(1) + '%</span>';
   var d = r['차트'];
   if (!d || !d.length) { g.fillStyle = css('--mut'); g.font = '13px sans-serif'; g.textAlign = 'center';
