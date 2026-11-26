@@ -39,9 +39,9 @@ hm(){ date -d @"$1" '+%H:%M'; }
 echo "시험 시작: $(date '+%H:%M') — 묶음 ${BATCHES} · 지난 $WHERE 실측 기준 전체 약 $((EXP_TOT/60))분 → 100% 예상 $(hm $((T0+EXP_TOT)))"
 for B in $BATCHES; do
   TB=$(date +%s)
-  if [ "$B" = 16 ]; then echo "── 일봉 받기(이미 받은 종목은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; node 2g_daily.js 2>&1 | tail -3; fi
-  if [ "$B" = 17 ]; then echo "── 공매도 받기(FINRA 공개 파일, 이미 받은 달은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; node 2h_short.js 2>&1 | tail -3; fi
-  if [ "$B" = 18 ]; then echo "── 업종·S&P500 자료 받기(키 불필요, 이미 받은 것은 건너뜀) $(date '+%H:%M')"; node 2j_sp500.js 2>&1 | tail -2; node 2i_sic.js 2>&1 | tail -2; fi
+  if [ "$B" = 16 ]; then echo "── 일봉 받기(이미 받은 종목은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; node 2g_daily.js 2>&1; fi
+  if [ "$B" = 17 ]; then echo "── 공매도 받기(FINRA 공개 파일, 이미 받은 달은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; CONC=${SHORT_CONC:-8} node 2h_short.js 2>&1; fi
+  if [ "$B" = 18 ]; then echo "── 업종·S&P500 자료 받기(키 불필요, 이미 받은 것은 건너뜀) $(date '+%H:%M')"; node 2j_sp500.js 2>&1; node 2i_sic.js 2>&1; fi
   echo "── 묶음 $B ${NAME[$B]} 시작 $(date '+%H:%M')"
   if { [ "$B" = 15 ] && run15; } || { [ "$B" != 15 ] && AD9="$B" node 7_backtest.js > "data/exp_run_$B.log" 2>&1; }; then
     { echo; echo "================ 묶음 $B · ${NAME[$B]} ================"; if [ "$B" = 15 ]; then cat data/bt15.txt; else awk '/^## (확인 매수 후속|9 검증|10 다른 전략|11 일관성|1[2-8] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; fi; } >> "$OUT"
