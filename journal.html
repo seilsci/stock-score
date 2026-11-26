@@ -1211,10 +1211,18 @@ function renderRetChart(){
   });
   drawLabels(g, LBL);
   cv.onclick=function(e){
+    if(cv._nav===false) return;                                                  // 터치로 처음 누르면 말풍선만, 같은 달을 한 번 더 누르면 그 달로 이동
     var i=Math.min(11,Math.max(0,Math.floor(e.offsetX/(cv.clientWidth/12)))), ym=Y+(i<9?'0':'')+(i+1);
     if(useMy||RET[ym]==null) return;
-    SEL_YM=ym; SEL_HOLD=null; renderAll();
+    yTipHide(); SEL_YM=ym; SEL_HOLD=null; renderAll();
   };
+  var tipMonth=function(e){                                                      // 그 달 전략(또는 내 수익률)·코스피·S&P500·나스닥100 수익률
+    var i=Math.min(11,Math.max(0,Math.floor(e.offsetX/(cv.clientWidth/12))));
+    var tp=document.getElementById('ytip'); if(e.type==='pointerdown') cv._nav=(e.pointerType!=='touch')||(cv._tipY===i&&!!tp&&tp.style.display==='block'); cv._tipY=i;
+    var rows=[[useMy?'내 수익률':'전략',fg,vals[i]]].concat(BENCH?BK.map(function(k){ return [BN[k],BC[k],bv[k][i]]; }):[]);
+    yTipShow(e, Y+'년 '+(i+1)+'월 수익률', rows, '', ['','수익률']);
+  };
+  cv.onpointermove=tipMonth; cv.onpointerdown=tipMonth; cv.onpointerleave=function(e){ if(e.pointerType!=='touch') yTipHide(); };
 }
 window.addEventListener('resize',function(){ if(LED && SEL_YM) renderRetChart(); });
 
@@ -1292,7 +1300,7 @@ function yTipShow(e, title, rows, note, head){                              // r
   t.style.left=x+'px'; t.style.top=y+'px';
   // 터치는 손을 떼도 유지: 다른 곳을 누를 때까지 보임(그래프 안을 다시 누르면 그 해로 바뀜)
 }
-if(!window._ytipOut){ window._ytipOut=1; document.addEventListener('pointerdown',function(e){ if(e.target&&(e.target.id==='yc'||e.target.id==='cc')) return; yTipHide(); }); }
+if(!window._ytipOut){ window._ytipOut=1; document.addEventListener('pointerdown',function(e){ if(e.target&&(e.target.id==='yc'||e.target.id==='cc'||e.target.id==='rc')) return; yTipHide(); }); }
 
 /* ── 연도별 수익률 그래프 (막대를 누르면 그 해로 이동) ── */
 function renderYearChart(){
