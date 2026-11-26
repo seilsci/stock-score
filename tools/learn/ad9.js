@@ -1259,6 +1259,50 @@ function build(c, which) {
     posts.push(() => post12('30-', '30 매수 쉼·불타기 곡선'));
   }
 
+  // ═════ 묶음 31: 마무리 점검 — (A) 한국·미국 판매 이평 × 유예 격자(72개)를 해마다 걸어가며 고르기 vs 한국6·미국10 고정, (B) 불타기 격자(33개)를 걸어가며 고르기 vs 불타기 없음, (C) 큰 수익 종목 상위 3·5·10개를 후보에서 빼고 다시 돌렸을 때 불타기 이득이 남는지
+  if (on(31)) {
+    const S = n => `31-${n}`;
+    const base = candOf(mBase), add1 = (g, f) => ({ addFn: (h, k) => { if (h.added) return 0; if (h.last >= h.buyPx * (1 + g)) { h.added = true; return f; } return 0; } });
+    const exitN = (nk, nu) => ({ exitMaFn: (h, k) => maAtN(h.px, k, isKR(h.y) ? nk : nu) });
+    // A 판매 이평 격자: 한국 {4,5,6,7,8,10} × 미국 {5,7,10,12} × 유예 {1,2,3}
+    [4, 5, 6, 7, 8, 10].forEach(nk => [5, 7, 10, 12].forEach(nu => [1, 2, 3].forEach(g => add(S('A 판매 격자'), `격자A 한국 ${nk}이평 · 미국 ${nu}이평 · 유예 ${g}달`, { cand: base, rule: { ...rule10, grace: g }, o: { ...exitN(nk, nu) }, wf: 'A' }))));
+    // B 불타기 격자(한국6·미국10 위에): 없음 + 기준 8가지 × 추가 비율 4가지
+    add(S('B 불타기 격자'), '격자B 불타기 없음', { cand: base, rule: rule10, o: { ...exitN(6, 10) }, wf: 'B' });
+    [0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.7, 1].forEach(g => [0.5, 1, 1.5, 2].forEach(f => add(S('B 불타기 격자'), `격자B 불타기 +${Math.round(g * 100)}%에 ${f}배`, { cand: base, rule: rule10, o: { ...exitN(6, 10), ...add1(g, f) }, wf: 'B' })));
+    // C 큰 수익 종목 빼기: 한국6·미국10 기준 거래에서 수익률 큰 종목(중복 없이) 상위 K개를 후보에서 제외
+    const trB = simulate(ym => base(ym).slice(0, 4), 4, C1, { ...simOpt(rule10, { ...exitN(6, 10) }), cand: base, log: true }, DEP).trades.filter(t => t.ret != null && t.y);
+    const seen = new Set(), tops = []; trB.slice().sort((a, b) => b.ret - a.ret).forEach(t => { if (!seen.has(t.y)) { seen.add(t.y); tops.push(t.y); } });
+    log(''); log('## 31-C 후보에서 뺀 큰 수익 종목(기준 거래 수익률 순): ' + tops.slice(0, 10).join(', '));
+    [0, 3, 5, 10].forEach(K => {
+      const ex = new Set(tops.slice(0, K)), cand = K ? (ym => base(ym).filter(e => !ex.has(e.r.y))) : base, tag = K ? `수익 상위 ${K}종목 뺌` : '전체 종목';
+      add(S('C 큰 수익 종목 빼기'), `${tag} · 불타기 없음`, { cand, rule: rule10, o: { ...exitN(6, 10) }, cK: K, cKind: '없음' });
+      [[0.2, 1], [0.25, 1], [0.3, 1], [0.3, 1.5]].forEach(([g, f]) => add(S('C 큰 수익 종목 빼기'), `${tag} · 불타기 +${Math.round(g * 100)}%에 ${f}배`, { cand, rule: rule10, o: { ...exitN(6, 10), ...add1(g, f) }, cK: K, cKind: g + '/' + f }));
+    });
+    posts.push(() => { post12('31-', '31 마무리 점검'); post31(); });
+    function post31() {
+      const Yrs = YEARS_ALL.filter(y => y < 2026), nY = Yrs.length, cg = a => Math.pow(a.reduce((p, x) => p * (1 + x), 1), 1 / a.length) - 1;
+      const walk = (kind, label, refName) => safe('31 걸어가며 ' + kind, () => {
+        const G = V.filter(v => v.wf === kind && v.full && v.full.yearly); if (G.length < 5) return;
+        const M = G.map(v => Yrs.map(y => v.full.yearly[y] ?? 0)), res = { e: [], r3: [] }, chosen = [], mean0 = [];
+        for (let yi = 4; yi < nY; yi++) {
+          [['e', 0], ['r3', yi - 3]].forEach(([key, lo]) => { let bi = 0, bv = -1e9; M.forEach((row, i) => { let p = 1; for (let j = lo; j < yi; j++) p *= 1 + row[j]; const sc = Math.pow(p, 1 / (yi - lo)); if (sc > bv) { bv = sc; bi = i; } }); res[key].push(M[bi][yi]); if (key === 'e') chosen.push(G[bi].name.replace('격자', '')); });
+          mean0.push(mean(M.map(r => r[yi])));
+        }
+        const ref = V.find(v => v.name === refName), rY = ref ? Yrs.slice(4).map(y => ref.full.yearly[y] ?? 0) : null;
+        log(''); log(`## 31 걸어가며 고르기 ${label} (${Yrs[4]}~${Yrs[nY - 1]}, 후보 ${G.length}개)`);
+        log(`확장 창 ${pc(cg(res.e))} · 최근 3년 ${pc(cg(res.r3))} · 후보 평균 ${pc(cg(mean0))}` + (rY ? ` · 고정(${refName.replace('격자', '')}) ${pc(cg(rY))}` : ''));
+        log('  해마다 고른 설정: ' + chosen.join(' / '));
+        const eq = res.e.filter((x, i) => rY && x >= rY[i]).length; if (rY) log(`  고정 설정보다 높았던 해: ${eq}/${res.e.length}년`);
+      });
+      walk('A', '판매 이평·유예 격자', '격자A 한국 6이평 · 미국 10이평 · 유예 2달');
+      walk('B', '불타기 격자', '격자B 불타기 없음');
+      safe('31 C 요약', () => {
+        log(''); log('## 31-C 큰 수익 종목을 빼도 불타기 이득이 남는가 (한국6·미국10, 연평균 · 불타기 없음 대비)');
+        [0, 3, 5, 10].forEach(K => { const b = V.find(v => v.cK === K && v.cKind === '없음'); if (!b) return; const cells = V.filter(v => v.cK === K && v.cKind !== '없음').map(v => `${v.cKind}: ${pc(v.full.cagr)} (${((v.full.cagr - b.full.cagr) * 100 >= 0 ? '+' : '') + ((v.full.cagr - b.full.cagr) * 100).toFixed(1)}%p)`); log(`${K ? '상위 ' + K + '종목 뺌' : '전체'}: 불타기 없음 ${pc(b.full.cagr)} | ${cells.join(' · ')}`); });
+      });
+    }
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 
