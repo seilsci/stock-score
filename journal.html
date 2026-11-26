@@ -788,7 +788,7 @@ document.addEventListener('click',function(e){
   if(!FOLD[key]&&FOLD_REDRAW[key]) FOLD_REDRAW[key]();                         // 펼칠 때 폭에 맞게 다시 그림
 },true);
 (function(){                                                                   // 그래프 카드는 다시 그려질 때마다 버튼을 다시 달아 줌
-  var map={'cum-card':'cum','yr-card':'yr','ret-card':'ret'};
+  var map={};                                                                  // 수익률 탭의 그래프(누적·연도별·월별)에는 접기 버튼을 달지 않음
   Object.keys(map).forEach(function(id){ var el=document.getElementById(id); if(!el) return; foldInit(el,map[id]); new MutationObserver(function(){ foldInit(el,map[id]); }).observe(el,{childList:true}); });
   var bx=document.getElementById('chart-box'); if(bx) foldApply(bx,'box',bx.querySelector('.fold-b'));
 })();
