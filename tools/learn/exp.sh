@@ -15,7 +15,7 @@ OUT=data/exp_result.txt
 : > "$OUT"
 RT=data/runtimes.txt; touch "$RT"
 # 지난 같은 곳($WHERE) 실행의 묶음별 실측 시간(초): 기록이 없으면 어림값 70초(클라우드에서 잰 값)
-prev_b(){ local v; v=$(grep " exp@$WHERE " "$RT" | tail -1 | tr ' ' '\n' | grep "^b$1=" | cut -d= -f2); echo "${v:-70}"; }
+prev_b(){ node eta.js exp "$WHERE" "$1"; }      # 같은 곳 최근 3번 중앙값(기록 없으면 70초)
 NB=0; EXP_TOT=0; for B in $BATCHES; do NB=$((NB+1)); EXP_TOT=$((EXP_TOT + $(prev_b $B))); done
 T0=$(date +%s); DONE_N=0; DONE_EXP=0; DONE_REAL=0; REC=""
 hm(){ date -d @"$1" '+%H:%M'; }

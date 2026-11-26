@@ -36,4 +36,5 @@ const tot = names.reduce((s, k) => s + w[k], 0);
 let acc = 1, out = { B1: 1 }, i = 2;
 acc += dl; out.B2 = acc; acc += fdShare; out.B2c = acc; acc += secShare; out.B3 = acc;
 names.forEach((k, j) => { acc += (100 - head) * w[k] / tot; out['B' + (4 + j)] = j === names.length - 1 ? 100 : Math.round(acc * 10) / 10; });
+out.NEED = need;                                   // 월봉을 새로 받아야 할 종목 수(run.sh의 실행 시간 예상에 씀)
 console.log(Object.entries(out).map(([k, v]) => `${k}=${v}`).join('\n'));
