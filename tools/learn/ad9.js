@@ -7,7 +7,7 @@
 
 function build(c, which) {
   const { V, AD8, pool, simulate, simOpt, summ, C1, DEP, mi, ymOf, px, fx, ma10, maAtN, F, fi, US, TURN, ETF, hash01, rateJ, MACRO, scored, kA, byYm, CO_NAME, chg,
-    YEARS_ALL, log, cagrOver, END, rescore, ALL, dailyOf, MK, divOf, fs, path, DATA, RAW } = c;
+    YEARS_ALL, log, cagrOver, END, rescore, ALL, dailyOf, score, z, MK, divOf, fs, path, DATA, RAW } = c;
   const want = String(which).split(',').map(s => s.trim());
   const on = n => want.includes('all') || want.includes(String(n));
   const pc = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
@@ -555,6 +555,127 @@ function build(c, which) {
         (sm.trades || []).filter(t => t.ret != null && t.buyYm).forEach(t => { const p = shPct(t.y, mi(t.buyYm) - 1); (p == null ? by['없음(한국·자료 없음)'] : p >= 0.8 ? by['상위 20%'] : p >= 0.5 ? by['중상(50~80%)'] : p >= 0.2 ? by['중하(20~50%)'] : by['하위 20%']).push(t.ret); });
         Object.entries(by).forEach(([nm, a]) => log(`${v.name.slice(0, 22).padEnd(22)} ${nm.padEnd(22)} ${String(a.length).padStart(6)}   ${a.length ? (a.filter(x => x > 0).length / a.length * 100).toFixed(0).padStart(5) + '%' : '    -'}   ${a.length ? pc(mean(a)).padStart(8) : '       -'}   ${a.length ? pc(pctl(a, 0.5)).padStart(7) : '      -'}`));
       }));
+    }
+  }
+
+
+  // ═════ 묶음 18: 남은 시험 모음 — A 지수에 같은 규칙(108) · B 판매 기준 EMA(17·18 판매 쪽) · C 쌍별 순위 학습(41) · D 확인 시점 지표 다시 계산(42) · E 업종 분산(49·86·SIC) · F S&P500 편입 전후(122)
+  //   E·F는 data/sic.json(2i_sic.js)·data/sp500.json(2j_sp500.js)가 있어야 효과가 있음(없으면 기준과 똑같이 나옴, 연결 건수를 보고에 적음). 한국 종목은 업종·편입 자료가 없어 그대로 둠.
+  if (on(18)) {
+    const S = n => `18-${n}`;
+    const r5 = { tp: 2, grace: 2, rate: true, rateFn: chg('dgs10', 6), rateName: '국채10년 6개월', exitMaN: 5 };
+    const m5 = mk({ ck: 'g5' }, r5);
+    const A5 = (sec, name, cand, o = {}) => add(S(sec), name, { cand, rule: r5, o: { exitMaN: 5, ...o } });
+    const A10 = (sec, name, cand, o = {}) => add(S(sec), name, { cand, rule: rule10, o });
+    add(S('기준'), '10이평(지금) 기준', { cand: candOf(mBase), rule: rule10 });
+    A5('기준', '5이평 기준', candOf(m5));
+    // B 판매 기준 EMA(지수이동평균): 같은 길이의 단순이평보다 최근 값에 가중
+    const emaCache = new Map();
+    const emaAt = (o, k, N) => {
+      let byN = emaCache.get(o); if (!byN) { byN = new Map(); emaCache.set(o, byN); }
+      let ser = byN.get(N);
+      if (!ser) { ser = new Map(); const keys = [...o.m.keys()].sort((a, b) => a - b), al = 2 / (N + 1); let e = null; keys.forEach((kk, i) => { const c = o.m.get(kk); e = e == null ? c : al * c + (1 - al) * e; ser.set(kk, i >= N ? e : null); }); byN.set(N, ser); }
+      return ser.get(k) ?? null;
+    };
+    [3, 4, 5, 6, 7, 9, 12].forEach(N => A10('B 판매 기준 EMA', `판매 기준 EMA ${N}(유예 2달+금리·익절 2배, 후보 풀은 10이평)`, candOf(mBase), { exitMaFn: (h, k) => emaAt(h.px, k, N) }));
+    // C 쌍별 순위 학습: 같은 달 안에서 (A가 B보다 수익이 큰) 쌍을 골라 점수 차이가 맞도록 로지스틱으로 학습(그달 순위를 직접 맞추는 방식)
+    const pairFit = (opt = {}) => (Z, T, G) => {
+      const d = Z[0].length, w = new Array(d + 1).fill(0), by = new Map();
+      G.forEach((g, i) => { (by.get(g) || by.set(g, []).get(g)).push(i); });
+      const groups = [...by.values()].filter(a => a.length >= 5), E = opt.epochs || 6, K = opt.k || 4, lam = opt.lam ?? 0.001, lr0 = opt.lr || 0.05, mg = opt.margin ?? 0.05;
+      let seed = 12345; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+      for (let ep = 0; ep < E; ep++) {
+        const lr = lr0 / (1 + ep);
+        for (const g of groups) {
+          const n = g.length;
+          for (let q = 0; q < n * K; q++) {
+            const a = g[Math.floor(rnd() * n)], b2 = g[Math.floor(rnd() * n)]; if (a === b2) continue;
+            const dt = T[a] - T[b2]; if (Math.abs(dt) < mg) continue;
+            const sg = dt > 0 ? 1 : -1; let sdiff = 0; for (let k = 0; k < d; k++) sdiff += w[k + 1] * (Z[a][k] - Z[b2][k]);
+            const gr = 1 / (1 + Math.exp(sg * sdiff));
+            for (let k = 0; k < d; k++) w[k + 1] += lr * (gr * sg * (Z[a][k] - Z[b2][k]) - lam * w[k + 1]);
+          }
+        }
+      }
+      return w;
+    };
+    const altModel = (name, opts, ck) => {
+      const m2 = rescore(opts), old = scored[kA]; scored[kA] = m2;
+      let pm, pm5; try { pm = mk({ ck: 'q' + ck }); pm5 = mk({ ck: 'q5' + ck }, r5); } finally { scored[kA] = old; }
+      A10('C 쌍별 순위 학습', '10이평 · ' + name, candOf(pm)); A5('C 쌍별 순위 학습', '5이평 · ' + name, candOf(pm5));
+    };
+    altModel('쌍별 순위 학습(기본, 벌점 0.001)', { fitFn: pairFit() }, 'pw1');
+    altModel('쌍별 순위 학습(벌점 0.01)', { fitFn: pairFit({ lam: 0.01 }) }, 'pw2');
+    altModel('쌍별 순위 학습(수익 차이 0.3 넘는 쌍만)', { fitFn: pairFit({ margin: 0.3 }) }, 'pw3');
+    altModel('쌍별 순위 학습(쌍 2배·12번 반복)', { fitFn: pairFit({ k: 8, epochs: 12 }) }, 'pw4');
+    // D 확인 시점 지표 다시 계산: 지금 점수는 돌파 달 지표인데, 확인 달(구매 결정 달)의 가격 지표로 다시 계산해 같은 모델로 점수를 냄. 월봉 가격으로 만들 수 있는 지표만 갱신(거시·지수·돌파 실패 횟수는 돌파 때 값 그대로)
+    const FI = {}; ['gap', 'slope1', 'slope3', 'cross24', 'below', 'above24', 'c_ma12', 'ma10_ma24', 'vol', 'vol3', 'body', 'upwick', 'lowwick', 'range', 'ret1', 'ret3', 'ret12', 'high24', 'dd36', 'volat12', 'turn', 'up6', 'slope6', 'c_ma60', 'hi12_break', 'vol_max36', 'ma_up6', 'close_pos', 'gap_prev'].forEach(n => { FI[n] = fi(n); });
+    const MANs = +process.env.MA_N || 10;
+    const featAt = (o, k, x0) => {
+      const c = j => o.m.get(k - j), ma = j => maAtN(o, k - j, MANs), ab = j => { const a = c(j), m = ma(j); return a > 0 && m > 0 ? a > m : null; };
+      const c0 = c(0), ma0 = ma(0); if (!(c0 > 0) || !(ma0 > 0)) return null;
+      const x = x0.slice(), set = (n, v) => { if (v != null && Number.isFinite(v)) x[FI[n]] = v; };
+      const avgC = (a, b2) => { let t = 0; for (let j = a; j <= b2; j++) { const v = c(j); if (!(v > 0)) return null; t += v; } return t / (b2 - a + 1); };
+      const maxHi = (a, b2) => { let t = -1; for (let j = a; j <= b2; j++) { const v = o.hi.get(k - j); if (v > t) t = v; } return t > 0 ? t : null; };
+      const avgV = (a, b2) => { let t = 0, n = 0; for (let j = a; j <= b2; j++) { const v = o.vol.get(k - j); if (v > 0) { t += v; n++; } } return n ? t / n : null; };
+      set('gap', c0 / ma0 - 1);
+      const m1 = ma(1), m3 = ma(3), m6 = ma(6); if (m1) set('slope1', ma0 / m1 - 1); if (m3) set('slope3', ma0 / m3 - 1); if (m6) set('slope6', ma0 / m6 - 1);
+      { let cr = 0, a24 = 0, ok = true; for (let j = 1; j <= 24; j++) { const a = ab(j), b2 = ab(j + 1); if (a == null || b2 == null) { ok = false; break; } if (a !== b2) cr++; if (a) a24++; } if (ok) { set('cross24', cr); set('above24', a24 / 24); } }
+      { let bl = 0; for (let j = 1; j < 120; j++) { const a = ab(j); if (a === false) bl++; else break; } set('below', bl); }
+      const a12 = avgC(0, 11), a24m = avgC(0, 23), a60 = avgC(0, 59); if (a12) set('c_ma12', c0 / a12 - 1); if (a24m) set('ma10_ma24', ma0 / a24m - 1); if (a60) set('c_ma60', c0 / a60 - 1);
+      const op = o.op.get(k), h = o.hi.get(k), l = o.lo.get(k);
+      if (op > 0 && h > 0 && l > 0) { const hl = h - l || 1; set('body', (c0 - op) / op); set('upwick', (h - Math.max(op, c0)) / hl); set('lowwick', (Math.min(op, c0) - l) / hl); set('range', hl / op); set('close_pos', (c0 - l) / hl); }
+      const c1 = c(1), c3 = c(3), c12 = c(12); if (c1 > 0) set('ret1', c0 / c1 - 1); if (c3 > 0) set('ret3', c0 / c3 - 1); if (c12 > 0) set('ret12', c0 / c12 - 1);
+      { const h24 = maxHi(1, 24), h36 = maxHi(1, 36), h12 = maxHi(1, 12); if (h24) set('high24', c0 / h24 - 1); if (h36) set('dd36', c0 / h36 - 1); if (h12) set('hi12_break', c0 >= h12 ? 1 : 0); }
+      { const lr = []; let ok = true; for (let j = 0; j < 12; j++) { const a = c(j), b2 = c(j + 1); if (!(a > 0 && b2 > 0)) { ok = false; break; } lr.push(Math.log(a / b2)); } if (ok) { const mu = lr.reduce((t, v) => t + v, 0) / 12; set('volat12', Math.sqrt(lr.reduce((t, v) => t + (v - mu) ** 2, 0) / 12)); } }
+      { let up = 0, mu = 0, ok = true; for (let j = 0; j < 6; j++) { const a = c(j), b2 = c(j + 1), ma1 = ma(j), ma2 = ma(j + 1); if (!(a > 0 && b2 > 0 && ma1 > 0 && ma2 > 0)) { ok = false; break; } if (a > b2) up++; if (ma1 > ma2) mu++; } if (ok) { set('up6', up); set('ma_up6', mu); } }
+      { const pg = ab(1) != null && c1 > 0 && ma(1) > 0 ? c1 / ma(1) - 1 : null; set('gap_prev', pg); }
+      { const v = o.vol.get(k), v12 = avgV(1, 12), v3 = avgV(0, 2), vb = avgV(3, 14); const v36 = (() => { let t = 0; for (let j = 1; j <= 36; j++) { const q = o.vol.get(k - j); if (q > t) t = q; } return t; })();
+        if (v > 0 && v12) { set('vol', Math.log((v + 1) / (v12 + 1))); set('turn', Math.log10(v12 * c0 + 1)); } if (v3 && vb) set('vol3', Math.log((v3 + 1) / (vb + 1))); if (v > 0 && v36 > 0) set('vol_max36', v / v36); }
+      return x;
+    };
+    { const keep = {}; rescore({ keep });
+      const sc2 = (e, avg) => { const Y = Math.floor(e.r.ym / 100), M = keep[Y]; if (!M) return e.s; const x2 = featAt(px(e.r.y), e.cj, e.r.x); if (!x2) return e.s; const s2 = score(M.w, z({ x: x2 }, M.P)); return avg ? (s2 + e.s) / 2 : s2; };
+      [[false, '확인 달 지표로 다시 계산한 점수 순'], [true, '돌파 때 점수와 확인 달 점수의 평균 순']].forEach(([avg, nm]) => {
+        A10('D 확인 시점 지표', '10이평 · ' + nm, wrap(mBase, a => [...a].sort((x, y) => sc2(y, avg) - sc2(x, avg))));
+        A5('D 확인 시점 지표', '5이평 · ' + nm, wrap(m5, a => [...a].sort((x, y) => sc2(y, avg) - sc2(x, avg)))); }); }
+    // E 업종 분산 · F S&P500 편입 전후
+    let SIC = {}, SPM = {}; try { SIC = JSON.parse(fs.readFileSync(path.join(DATA, 'sic.json'), 'utf8')); } catch (e) {} try { SPM = JSON.parse(fs.readFileSync(path.join(DATA, 'sp500.json'), 'utf8')); } catch (e) {}
+    const normSym = y => String(y).replace(/[^A-Za-z0-9]/g, '').toUpperCase(), sf = y => y.replace(/[^A-Za-z0-9.\-]/g, '_');
+    const SPN = new Map(); Object.entries(SPM).forEach(([k2, v]) => SPN.set(normSym(k2), v));
+    const sicGroup = y => { if (isKR(y)) return null; const a = SIC[sf(y)]; return a && a.sic ? String(a.sic).padStart(4, '0').slice(0, 2) : null; };
+    const spAddedYm = y => { if (isKR(y)) return undefined; const a = SPN.get(normSym(y)); if (!a) return undefined; const d = String(a.added || '').match(/^(\d{4})-(\d{2})/); return d ? +d[1] * 100 + +d[2] : 0; };    // undefined = 목록에 없음, 0 = 편입일 모름
+    let nUs = 0, nSic = 0, nSp = 0; mBase.forEach(a => a.forEach(e => { if (!isKR(e.r.y)) { nUs++; if (sicGroup(e.r.y) != null) nSic++; if (spAddedYm(e.r.y) !== undefined) nSp++; } }));
+    const diversify = (m, cap) => wrap(m, a => { const cnt = new Map(), first = [], rest = []; for (const e of a) { const g = sicGroup(e.r.y); if (g == null) { first.push(e); continue; } const c = cnt.get(g) || 0; if (c < cap) { first.push(e); cnt.set(g, c + 1); } else rest.push(e); } return first.concat(rest); });
+    [1, 2].forEach(cap => { A10('E 업종 분산', `10이평 · 같은 업종(SIC 앞 2자리)은 한 달에 ${cap}종목까지 먼저 고르고 나머지는 뒤로`, diversify(mBase, cap)); A5('E 업종 분산', `5이평 · 같은 업종(SIC 앞 2자리)은 한 달에 ${cap}종목까지 먼저 고르고 나머지는 뒤로`, diversify(m5, cap)); });
+    const spf = (m, f) => wrap(m, a => a.filter(e => f(spAddedYm(e.r.y), ymOf(e.cj))));
+    [['미래에 S&P500에 들어갈 종목은 제외(그 시점엔 편입 전)', (d, y) => !(d !== undefined && d > 0 && d > y)], ['S&P500에 이미 들어가 있던 미국 종목만(한국은 그대로, 편입 안 된 미국 종목 제외)', (d, y) => d === undefined ? false : d <= y], ['아직 S&P500 편입 전이던 종목만(대조, 한국은 그대로)', (d, y) => d !== undefined && d > y]].forEach(([nm, f], i) => {
+      const f2 = (d, y) => d === undefined && !(nm.startsWith('S&P500에 이미') || nm.startsWith('아직')) ? true : f(d, y);
+      const g2 = (m) => wrap(m, a => a.filter(e => isKR(e.r.y) ? true : f2(spAddedYm(e.r.y), ymOf(e.cj))));
+      A10('F S&P500 편입 전후', '10이평 · ' + nm, g2(mBase)); A5('F S&P500 편입 전후', '5이평 · ' + nm, g2(m5)); });
+    posts.push(() => { post12('18-', '18 남은 시험'); post18(); });
+    function post18() {
+      log(''); log(`## 18 연결 상태 — 미국 후보 ${nUs}건 중 업종(SIC) 값 ${nSic}건(${nUs ? (nSic / nUs * 100).toFixed(0) : 0}%) · S&P500 현재 편입 종목 ${nSp}건(${nUs ? (nSp / nUs * 100).toFixed(0) : 0}%)` + (nSic === 0 ? ' → 업종 자료 없음: node 2i_sic.js' : '') + (nSp === 0 ? ' → S&P500 자료 없음: node 2j_sp500.js' : ''));
+      safe('18 검산', () => {                                                 // 검산: 돌파 달에서 다시 계산한 지표가 events의 원래 값과 같아야 함(다르면 D의 결과는 믿지 말 것)
+        const rows = ALL.filter((r, i) => i % Math.max(1, Math.floor(ALL.length / 3000)) === 0), bad = {}, tot = {}; let nulls = 0;
+        rows.forEach(r => { const x2 = featAt(px(r.y), mi(r.ym), r.x); if (!x2) { nulls++; return; } Object.entries(FI).forEach(([n, j]) => { const a = r.x[j], b2 = x2[j]; if (!Number.isFinite(a)) return; tot[n] = (tot[n] || 0) + 1; if (!(Math.abs(a - b2) <= 1e-3 * Math.max(1, Math.abs(a)))) bad[n] = (bad[n] || 0) + 1; }); });
+        const worst = Object.keys(tot).map(n => [n, (bad[n] || 0) / tot[n]]).filter(x => x[1] > 0.02).sort((x, y) => y[1] - x[1]);
+        log(`## 18 검산 — 돌파 달에서 다시 계산한 가격 지표 ${Object.keys(tot).length}개 vs events 원래 값(표본 ${rows.length}행, 계산 못 한 행 ${nulls}): ` + (worst.length ? '2% 넘게 다른 지표: ' + worst.map(([n, f]) => `${n} ${(f * 100).toFixed(0)}%`).join(' · ') + ' → D 결과는 이 지표 차이를 감안해서 볼 것' : '모두 일치'));
+      });
+      log(''); log('## 18 지수에 같은 규칙(108) — 지수 이평 타이밍(10이평 위면 보유, 아래로 g달 연속 내려가면 현금, 다시 위로 오면 보유; 2012-01~2026-10, 월 수익률 복리, 왕복 비용 포함)');
+      log('지수                  이평 길이   유예 1달(즉시)         유예 2달            (연평균 · 낙폭)');
+      safe('108 지수', () => {
+        const k0 = mi(201201), k1 = mi(202610);
+        [['ks', '코스피', 0.001], ['sp', 'S&P500(원화)', 0.0035], ['nq', '나스닥100(원화)', 0.0035]].forEach(([key, nm, cost]) => {
+          const rk = k => { const a = idxAt(key, k), b2 = idxAt(key, k - 1); return a && b2 ? (key === 'ks' ? a / b2 : (a * fx(k)) / (b2 * fx(k - 1))) - 1 : 0; };
+          const bh = []; for (let k = k0; k <= k1; k++) bh.push(rk(k));
+          log(`${nm.padEnd(18)} 그냥 보유            ${pc(cagrOf(bh)).padStart(7)} · ${pc(mddOf(bh)).padStart(7)}`);
+          [3, 4, 5, 6, 7, 8, 10, 12].forEach(N => {
+            const res = [1, 2].map(g => { let pos = false, below = 0; const a = []; for (let k = k0; k <= k1; k++) { const p = idxAt(key, k - 1), mm = idxMa(key, k - 1, N); if (!p || !mm) { a.push(0); continue; } const isB = p < mm; below = isB ? below + 1 : 0; const want = !isB ? true : (pos && below < g); let r = want ? rk(k) : 0; if (want !== pos) { r -= cost; pos = want; } a.push(r); } return `${pc(cagrOf(a)).padStart(7)} · ${pc(mddOf(a)).padStart(7)}`; });
+            log(`${nm.padEnd(18)} ${String(N).padStart(2)}이평            ${res[0]}      ${res[1]}`);
+          });
+        });
+      });
     }
   }
 
