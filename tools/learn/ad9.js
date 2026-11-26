@@ -867,7 +867,7 @@ function build(c, which) {
     mine.forEach(v => { if (!v.full || !v.full.yearly) return; const w = yrs.filter(y => (v.full.yearly[y] ?? 0) > (base.full.yearly[y] ?? 0)).length;
       log(`${v.name.slice(0, 50).padEnd(50)} ${String(v === base ? '-' : w + '/' + n).padStart(7)}  ${seg(v, 2012, 2016).padStart(8)}  ${seg(v, 2017, 2021).padStart(8)}  ${seg(v, 2022, 2026).padStart(8)}  ${pc(v.full.cagr).padStart(7)}  ${pc(v.full.mdd).padStart(7)}`); });
     log(''); log(`## ${title} 어느 달에 시작해도? — 3·5년 창 연평균(최소 · 10% · 중앙, 월 수익률 창 기준; 기준 + 연평균 높은 8개)`);
-    const pickW = prefix === '12-' ? stats.filter(x => x.v === base || /^판매 기준 (3|5|7|9)이평|^5이평 · 유예 2달\+금리$|^5이평 \+ 남는 현금/.test(x.v.name)).slice(0, 8) : [stats[0], ...stats.slice(1).sort((a, b) => (b.v.full.cagr || -9) - (a.v.full.cagr || -9)).slice(0, 8)].filter(Boolean);
+    const pickW = prefix === '13-' ? [stats[0], ...stats.filter(x => /^한국 [567]이평 · 미국 10이평$|^5이평 · 12묶음|^한국 5이평\(미국 10이평\) \+ 남는 현금 S&P500$/.test(x.v.name))] : prefix === '12-' ? stats.filter(x => x.v === base || /^판매 기준 (3|5|7|9)이평|^5이평 · 유예 2달\+금리$|^5이평 \+ 남는 현금/.test(x.v.name)).slice(0, 8) : [stats[0], ...stats.slice(1).sort((a, b) => (b.v.full.cagr || -9) - (a.v.full.cagr || -9)).slice(0, 8)].filter(Boolean);
     pickW.forEach(({ v, arr }) => {
       [36, 60].forEach(L => { const a = []; for (let i = 0; i + L <= arr.length; i++) a.push(cagrOf(arr.slice(i, i + L))); if (a.length) log(`${v.name.slice(0, 42).padEnd(42)} ${L / 12}년 창 ${a.length}개: 최소 ${pc(Math.min(...a))} · 10% ${pc(pctl(a, 0.1))} · 중앙 ${pc(pctl(a, 0.5))} · 0% 미만 ${(a.filter(x => x < 0).length / a.length * 100).toFixed(0)}%`); });
     });
