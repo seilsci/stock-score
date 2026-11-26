@@ -25,7 +25,7 @@ h1{font-size:18px;margin:0 0 2px;font-weight:700}
 .my-form label,.my-form .my-sgl{font-size:11.5px;color:var(--mut);display:flex;flex-direction:column;gap:3px;min-width:0}
 .my-form input,.my-form select{font:inherit;font-size:15px;color:var(--fg);background:var(--chip);border:1px solid var(--line);border-radius:9px;padding:7px 9px;width:100%;min-width:0}
 .my-form input:focus,.my-form select:focus{outline:2px solid var(--acc);border-color:transparent}
-.my-seg{display:flex;gap:6px}.my-seg button{flex:1;padding:7px 0;border:1px solid var(--line);border-radius:9px;background:transparent;font:inherit;font-size:14px;font-weight:700;color:var(--mut);cursor:pointer}
+.my-sp{grid-column:1/-1;border:1px solid var(--line);border-radius:10px;overflow:hidden}.my-sp .t{padding:6px 10px;font-size:11.5px;color:var(--mut);background:var(--chip)}.my-sp table{width:100%;border-collapse:collapse;font-size:13px}.my-sp th{font-size:11px;font-weight:600;color:var(--mut);padding:5px 8px;text-align:right;border-bottom:1px solid var(--line)}.my-sp th:first-child,.my-sp td:first-child{text-align:left}.my-sp td{padding:8px;text-align:right;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--line);white-space:nowrap}.my-sp tr:last-child td{border-bottom:none}.my-sp tr.pk{cursor:pointer}.my-sp tr.pk:hover,.my-sp tr.pk.on{background:color-mix(in srgb,var(--sell) 12%,var(--card))}.my-sp td:first-child{white-space:normal;font-weight:600}.my-seg{display:flex;gap:6px}.my-seg button{flex:1;padding:7px 0;border:1px solid var(--line);border-radius:9px;background:transparent;font:inherit;font-size:14px;font-weight:700;color:var(--mut);cursor:pointer}
 .my-seg button.on.b{background:color-mix(in srgb,var(--buy) 14%,var(--card));color:var(--buy);border-color:var(--buy)}
 .my-seg button.on.s{background:color-mix(in srgb,var(--sell) 14%,var(--card));color:var(--sell);border-color:var(--sell)}
 .my-add{grid-column:1/-1;padding:9px 0;border:none;border-radius:10px;background:var(--acc);color:#fff;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
@@ -344,6 +344,7 @@ canvas{display:block;width:100%;height:230px}
     <div class="my-form">
       <label>날짜<input id="my-d" type="date"></label>
       <div class="my-sgl">구분<div class="my-seg"><button type="button" class="b on" data-side="B">매수</button><button type="button" class="s" data-side="S">매도</button></div></div>
+      <div id="my-sp" class="my-sp" hidden></div>
       <label style="position:relative">종목명 (검색)<input id="my-n" type="text" placeholder="예: 삼성전자, 마이크로소프트, MSFT" autocomplete="off"><div class="my-ac" id="my-ac" hidden></div></label>
       <label>종목 코드 (선택·평가용)<input id="my-k" type="text" placeholder="005930 또는 MSFT" autocomplete="off" autocapitalize="characters"></label>
       <label>수량(주)<input id="my-q" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
@@ -384,7 +385,7 @@ canvas{display:block;width:100%;height:230px}
   <div id="chart-box">
     <div class="ch-h"><div class="ch-n" id="ch-name">&nbsp;</div><div class="ch-p" id="ch-price"></div></div>
     <canvas id="cv"></canvas>
-    <div class="ch-l"><span><i style="background:var(--ma)"></i>월 10이평</span><span>월봉 캔들 (올림 <b style="color:var(--buy)">■</b> 내림 <b style="color:var(--sell)">■</b>) · 아래는 거래대금(월 거래량×종가) ·<br>옆으로 끌면 이전·이후 달</span><span style="color:var(--buy)">▲ 매수</span><span style="color:var(--sell)">▼ 매도</span></div>
+    <div class="ch-l"><span><i style="background:var(--ma)"></i><span id="ma-lg">월 10이평</span></span><span>월봉 캔들 (올림 <b style="color:var(--buy)">■</b> 내림 <b style="color:var(--sell)">■</b>) · 아래는 거래대금(월 거래량×종가) ·<br>옆으로 끌면 이전·이후 달</span><span style="color:var(--buy)">▲ 매수</span><span style="color:var(--sell)">▼ 매도</span></div>
   </div>
   <div id="hold-panel">
     <div id="hold-title">연도·월을 선택하면 그달 말 보유 종목이 표시됩니다.</div>
@@ -535,7 +536,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
   });
 }
 
-/* ── 월봉 캔들 차트 (월 10이평, 매수 ▲ · 매도 ▼, 마우스 올리면 시가·고가·저가·종가) ── */
+/* ── 월봉 캔들 차트 (월 이평선: 한국 6·미국 10, 매수 ▲ · 매도 ▼, 마우스 올리면 시가·고가·저가·종가) ── */
 var BARS = null, BARS_P = null, BARS_U = {};
 function loadBars(cb){                       // 월봉(2MB)은 차트를 처음 열 때만 받음
   if(BARS){ cb(); return; }
@@ -583,7 +584,7 @@ function chartTip(cv, ev, i){                // i = 월 위치
     '<table><tr><td>시가</td><td>'+fm(u.o[i])+'</td></tr><tr><td>고가</td><td>'+fm(u.h[i])+'</td></tr><tr><td>저가</td><td>'+fm(u.l[i])+'</td></tr><tr><td>종가</td><td><b>'+fm(u.c[i])+'</b></td></tr>'+
     (chg!=null?'<tr><td>전월 대비</td><td>'+cc(chg)+'</td></tr>':'')+
     (u.v[i]>0?'<tr><td>거래대금</td><td>≈ '+bigNum(u.v[i]*u.c[i],us)+'</td></tr><tr><td>거래량</td><td>'+Math.round(u.v[i]).toLocaleString()+'주</td></tr>':'')+
-    (m!=null?'<tr><td>10이평</td><td>'+fm(m)+' ('+cc(u.c[i]/m-1)+')</td></tr>':'')+'</table>';
+    (m!=null?'<tr><td>'+G.nMa+'이평</td><td>'+fm(m)+' ('+cc(u.c[i]/m-1)+')</td></tr>':'')+'</table>';
   t.style.display='block';
   var w=t.offsetWidth, h=t.offsetHeight, x=ev.clientX+14, yy=ev.clientY-h-14;
   if(x+w>window.innerWidth-8) x=ev.clientX-w-14;
@@ -637,10 +638,12 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
     cv._g=null; return;
   }
   var yms=u.yms, cs=u.c;
+  var nMa=/\.(KS|KQ)$/.test(y)?6:10;                                              // 차트 이동평균선: 한국 6이평(판매 기준) · 미국 10이평
   var ma=cs.map(function(x,i){
-    if(i<9) return null;
-    var t=0; for(var k=i-9;k<=i;k++) t+=cs[k]; return t/10;
+    if(i<nMa-1) return null;
+    var t=0; for(var k=i-nMa+1;k<=i;k++) t+=cs[k]; return t/nMa;
   });
+  var lgE=document.getElementById('ma-lg'); if(lgE) lgE.textContent=nMa===6?'월 6이평(한국 판매 기준)':'월 10이평';
   // 끝 = 기준 월(없으면 가장 가까운 이전 달), 시작 = 36개월 전 또는 매수 3개월 전(최대 84개월)
   var e=yms.length-1; while(e>0 && yms[e]>+endYm) e--;
   var s0=Math.max(0,e-35);
@@ -724,7 +727,7 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
     g.strokeStyle=line; g.lineWidth=3; g.lineCap='round'; g.beginPath(); g.moveTo(tl,ty); g.lineTo(tl+tw,ty); g.stroke();
     g.strokeStyle=mut; g.beginPath(); g.moveTo(tl+tw*s0/tot,ty); g.lineTo(tl+tw*(e+1)/tot,ty); g.stroke(); g.lineCap='butt';
   }
-  cv._g={y:y,u:u,ma:ma,s0:s0,e:e,L:L,pw:pw,step:step,evB:evB,evS:evS};
+  cv._g={y:y,u:u,ma:ma,nMa:nMa,s0:s0,e:e,L:L,pw:pw,step:step,evB:evB,evS:evS};
   bindChart(cv);
 }
 
@@ -1251,8 +1254,34 @@ function renderCumChart(){
     var yms=Object.keys(DATA.snapshots).sort(), first=yms.filter(function(ym){ return ym.slice(0,4)===years[i-1]; })[0];
     if(!first) return; SEL_YM=first; SEL_HOLD=null; renderAll();
   };
+  var tipCum=function(e){                                                                // 그 해 수익률과 그 해 말까지 누적
+    var i=Math.round((e.offsetX-L)/pw*(n-1)); if(i<1||i>years.length){ yTipHide(); return; }
+    var rows=keys.map(function(k){ return [k==='st'?'전략':BN[k], col(k), pts[k][i]/pts[k][i-1]-1, '', pts[k][i]-1]; });
+    yTipShow(e, years[i-1]+'년', rows, partial.indexOf(years[i-1])>=0?'12개월이 안 되는 해':'', ['','그 해','누적']);
+  };
+  cv.onpointermove=tipCum; cv.onpointerdown=tipCum; cv.onpointerleave=yTipHide;
 }
 window.addEventListener('resize',function(){ if(LED && SEL_YM) renderCumChart(); });
+
+/* ── 연도별 그래프 위에 마우스를 올리거나 누르면 그 해의 전략·코스피·S&P500·나스닥100 수치를 말풍선으로 보여 줌 ── */
+var YTIP_T=null;
+function yTipHide(){ var t=document.getElementById('ytip'); if(t) t.style.display='none'; }
+function yTipShow(e, title, rows, note, head){                              // rows: [[이름, 색, 수익률(없으면 null), 보조글, 누적(없으면 생략)]], head: 열 제목(예: ['','그 해','누적'])
+  var t=document.getElementById('ytip');
+  if(!t){ t=document.createElement('div'); t.id='ytip'; t.style.cssText='position:fixed;z-index:60;pointer-events:none;display:none;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.18)'; document.body.appendChild(t); }
+  var cum=rows.some(function(r){ return r[4]!==undefined; }), td='padding:2px 0 2px 14px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap';
+  var num=function(v){ return v==null?'<span style="color:var(--mut)">-</span>':'<b style="color:'+(v>=0?'var(--buy)':'var(--sell)')+'">'+pc(v)+'</b>'; };
+  t.innerHTML='<div style="font-weight:700;margin-bottom:3px">'+title+'</div><table style="border-collapse:collapse">'
+    +(head?'<tr style="color:var(--mut);font-size:11px"><td></td>'+head.slice(1).map(function(h){ return '<td style="'+td+'">'+h+'</td>'; }).join('')+'</tr>':'')
+    +rows.map(function(r){
+      return '<tr><td style="padding:2px 0;white-space:nowrap"><i style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:'+r[1]+'"></i>'+r[0]+(r[3]?'<span style="color:var(--mut);font-size:11px"> '+r[3]+'</span>':'')+'</td><td style="'+td+'">'+num(r[2])+'</td>'+(cum?'<td style="'+td+'">'+num(r[4])+'</td>':'')+'</tr>';
+    }).join('')+'</table>'+(note?'<div style="color:var(--mut);font-size:11px;margin-top:3px">'+note+'</div>':'');
+  t.style.display='block';
+  var w=t.offsetWidth, h=t.offsetHeight, x=e.clientX+14, y=e.clientY-h-10;
+  if(x+w>window.innerWidth-6) x=e.clientX-w-14; if(x<6) x=6; if(y<6) y=e.clientY+16;
+  t.style.left=x+'px'; t.style.top=y+'px';
+  clearTimeout(YTIP_T); if(e.pointerType==='touch') YTIP_T=setTimeout(yTipHide,2500);          // 터치는 잠깐 보여 주고 사라짐
+}
 
 /* ── 연도별 수익률 그래프 (막대를 누르면 그 해로 이동) ── */
 function renderYearChart(){
@@ -1308,6 +1337,12 @@ function renderYearChart(){
     var yms=Object.keys(DATA.snapshots).sort(), first=yms.filter(function(ym){ return ym.slice(0,4)===years[i]; })[0];
     if(!first) return; SEL_YM=first; SEL_HOLD=null; renderAll();
   };
+  var tipYear=function(e){                                                       // 그 해 전략·코스피·S&P500·나스닥100 수익률
+    var i=Math.min(years.length-1,Math.max(0,Math.floor(e.offsetX/(cv.clientWidth/years.length)))), y=years[i];
+    var rows=[['전략',fg,ys[y]-1,'']].concat(BENCH?BK.map(function(k){ return [BN[k],BC[k],bys[k][y]!=null?bys[k][y]-1:null,(bcnt[k][y]&&bcnt[k][y]<12)?bcnt[k][y]+'개월':'']; }):[]);
+    yTipShow(e, y+'년 수익률', rows, cnt[y]<12?'12개월이 안 되는 해('+cnt[y]+'개월)':'', ['','수익률']);
+  };
+  cv.onpointermove=tipYear; cv.onpointerdown=tipYear; cv.onpointerleave=yTipHide;
 }
 window.addEventListener('resize',function(){ if(LED && SEL_YM) renderYearChart(); });
 
@@ -1947,6 +1982,26 @@ function myAcRender(list){
   box._list=list;
   box.querySelectorAll('div').forEach(function(d){ d.onclick=function(){ myPick(box._list[+d.dataset.i]); }; });
 }
+function mySellPick(){                          // 구분이 '매도'일 때: 내가 보유한 종목을 표로 보여 주고, 고르면 종목·코드·통화·수량(전량)·가격(알고 있는 현재가)을 채움
+  var box=document.getElementById('my-sp'); if(!box) return;
+  if(MY_SIDE!=='S'){ box.hidden=true; return; }
+  var open=myCalc().pos.filter(function(p){ return p.qty>1e-9; });
+  box.hidden=false;
+  if(!open.length){ box.innerHTML='<div class="t">보유한 종목이 없어요. 먼저 매수 체결을 추가해 주세요.</div>'; return; }
+  var cur=document.getElementById('my-k').value.trim().toUpperCase()||document.getElementById('my-n').value.trim().toUpperCase().replace(/\s+/g,'');
+  box.innerHTML='<div class="t">팔 종목을 누르면 아래 칸이 채워져요 (수량은 전량, 줄여서 팔아도 돼요)</div><table><tr><th>보유 종목</th><th>수량</th><th>평균단가</th><th>현재가</th></tr>'+open.map(function(p,i){
+    var cc=(p.code||'').toUpperCase(), lv=MYLIVE[cc], q1=MYPX[cc], px=lv?lv.px:(q1?q1.px:null), us=p.cur==='USD', f=function(v){ return v==null?'-':us?'$'+(+v).toFixed(2):Math.round(v).toLocaleString(); };
+    var avg=p.cost/p.qty/(us&&p.fx>0?p.fx:1);
+    return '<tr class="pk'+(myKey({code:p.code,name:p.name})===cur?' on':'')+'" data-i="'+i+'"><td>'+esc(p.name||p.code)+(us?' <small style="color:var(--mut)">미국</small>':'')+'</td><td>'+(+p.qty.toFixed(4)).toLocaleString()+'</td><td>'+f(avg)+'</td><td>'+f(px)+'</td></tr>';
+  }).join('')+'</table>';
+  box.querySelectorAll('tr.pk').forEach(function(tr){ tr.onclick=function(){
+    var p=open[+tr.dataset.i], $=function(id){ return document.getElementById(id); }, cc=(p.code||'').toUpperCase(), lv=MYLIVE[cc], q1=MYPX[cc], px=lv?lv.px:(q1?q1.px:null), us=p.cur==='USD';
+    $('my-n').value=p.name||p.code; $('my-k').value=p.code||'';
+    $('my-c2').value=us?'USD':'KRW'; $('my-fxl').style.display=us?'flex':'none'; if(us&&!$('my-fx').value) $('my-fx').value=Math.round(myFxNow());
+    $('my-q').value=+p.qty.toFixed(4); $('my-p').value=px!=null?(us?(+px).toFixed(2):Math.round(px)):'';
+    $('my-q').dataset.full='1'; myAutoFee(); mySellPick(); (px!=null?$('my-q'):$('my-p')).focus();
+  }; });
+}
 function myPick(x){                           // 고른 종목의 이름·코드·통화를 채움
   var $=function(id){ return document.getElementById(id); };
   $('my-n').value=x.name; $('my-k').value=x.code;
@@ -2149,7 +2204,7 @@ function renderMy(){
   document.getElementById('my-cnt').textContent=MY.length+'건';
   document.getElementById('my-sum').innerHTML=MY.length?'<div class="my-sum"><div>보유 원가<b>'+won(cost)+'</b></div><div>보유 평가금<b>'+won(val)+'</b></div><div>평가손익<b class="'+cls(unrl)+'">'+signWon(unrl)+'</b></div><div>실현손익<b class="'+cls(R.realized)+'">'+signWon(R.realized)+'</b></div><div style="grid-column:1/-1">합계 손익<b class="'+cls(tot)+'">'+signWon(tot)+'</b></div></div>':'';
   document.getElementById('my-hold').innerHTML=open.length?'<table class="my-tb"><tr><th>보유 종목</th><th>수량</th><th>평균단가(원)</th><th>평가금(원)</th><th>평가손익</th><th></th></tr>'+rows+'</table>'+'<p class="amt-note" style="margin:0 0 8px">평가금 기준: '+(liveN?'현재가('+(liveSrc.naver?'국내 네이버 거의 실시간':'')+(liveSrc.naver&&liveSrc.yahoo?' · ':'')+(liveSrc.yahoo?'야후, 약 15분 지연':'')+', '+new Date(liveT).toTimeString().slice(0,8)+' 갱신, 장 시간에는 5초마다 자동)'+(monthly||Object.keys(pxDates).length?' · 일부는 직전 종가':''):Object.keys(pxDates).length?'직전 마감 종가('+Object.keys(pxDates).sort().join(', ')+')':'월봉 자료의 최근 종가')+(monthly&&Object.keys(pxDates).length?' · 일부는 월봉 최근 종가':'')+(unk?' · 코드를 비웠거나 시세를 못 찾은 종목('+unk+')은 매입 원가로 보여요':'')+'</p>':'';
-  myTween();
+  myTween(); mySellPick();
   document.querySelectorAll('#my-hold tr[data-hg]').forEach(function(tr){                // 보유 종목 줄: 누르면 월봉 그래프, 점수 칩을 누르면 점수 나무
     var a=MYH_G[+tr.dataset.hg], box=tr.nextElementSibling&&tr.nextElementSibling.querySelector('.lr-c'), k=a.y+'|'+a.buy;
     if(box&&MYH_OPEN[k]){ box.classList.add('open'); drawChart(box.querySelector('canvas'),a.y,a.end,a.buy,a.sell); }
@@ -2176,7 +2231,7 @@ function wireMy(){
   var card=document.getElementById('my-card'); if(!card||card._w||!XMODE) return; card._w=1;
   var $=function(id){ return document.getElementById(id); }, today=new Date(), z=function(n){ return (n<10?'0':'')+n; };
   $('my-d').value=today.getFullYear()+'-'+z(today.getMonth()+1)+'-'+z(today.getDate());
-  card.querySelectorAll('.my-seg button').forEach(function(b){ b.onclick=function(){ MY_SIDE=b.dataset.side; myAutoFee(); card.querySelectorAll('.my-seg button').forEach(function(x){ x.classList.toggle('on',x===b); }); }; });
+  card.querySelectorAll('.my-seg button').forEach(function(b){ b.onclick=function(){ MY_SIDE=b.dataset.side; mySellPick(); myAutoFee(); card.querySelectorAll('.my-seg button').forEach(function(x){ x.classList.toggle('on',x===b); }); }; });
   $('my-c2').onchange=function(){ var us=$('my-c2').value==='USD'; $('my-fxl').style.display=us?'flex':'none'; if(us&&!$('my-fx').value) $('my-fx').value=Math.round(myFxNow()); };
   $('my-sync-k').onclick=syncSetKey;
   $('my-cash-s').onclick=function(ev){ ev.stopPropagation(); var rc=this.getBoundingClientRect(); if(ev.detail>0&&(ev.clientX<rc.left||ev.clientX>rc.right||ev.clientY<rc.top||ev.clientY>rc.bottom)) return;     // 버튼 위를 누른 경우에만 부호를 바꿈(다른 곳을 눌러 대신 눌린 클릭은 무시)
