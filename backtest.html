@@ -50,7 +50,8 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 .bt-x.same{border-left-color:var(--mut)}.bt-x.same b{color:var(--mut)}
 /* 연도표 */
 .bt-oy{overflow:hidden;background:var(--card);border:1px solid var(--line);padding:10px 12px}
-.oy-t{font-weight:700;font-size:13.5px;margin-bottom:4px}.oy-t small{font-weight:400;font-size:11px;color:var(--mut);margin-left:6px}
+.oy-th{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}.oy-t{font-weight:700;font-size:13.5px}
+.oy-sw{display:flex;flex:none;border:1px solid var(--line)}.oy-sw button{border:0;background:transparent;color:var(--mut);font:inherit;font-size:12px;padding:3px 10px;cursor:pointer}.oy-sw button.on{background:var(--fg);color:var(--bg);font-weight:700}
 #oy-c{width:100%;height:auto;display:block;touch-action:pan-y;font-family:inherit}
 #oy-c text{font-size:10px;fill:var(--mut);font-variant-numeric:tabular-nums}
 .oy-lg2{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;margin-top:4px}.oy-lg2 i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}.oy-lg2 b{margin-left:3px}
@@ -174,7 +175,7 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 
   <div class="bt-h"><span class="dot" style="background:var(--sell)"></span>처음 보는 기간 시험<em>규칙을 고를 때 쓴 적 없는 2005~2011</em></div>
   <div class="bt-oy">
-    <div class="oy-t">2005~2011 누적 수익률 <small>점을 누르면 그 해 수치</small></div>
+    <div class="oy-th"><div class="oy-t" id="oy-title">2005~2011 해마다 수익률</div><div class="oy-sw" id="oy-sw"><button type="button" data-m="yr" class="on">연별</button><button type="button" data-m="cum">누적</button></div></div>
     <svg id="oy-c" viewBox="0 0 360 210" role="img" aria-label="2005~2011 누적 수익률 꺾은선"></svg>
     <div id="oy-tip"></div>
     <div class="oy-lg2" id="oy-lg"></div>
@@ -283,42 +284,56 @@ x26:{t:'ETF 빼기 · 같은 지수 ETF 하나만',w:'2026-11-26~27 · PC',r:[['
   document.addEventListener('keydown',function(e){ if(e.key==='Escape') close(); });
 })();
 
-/* 처음 보는 기간 꺾은선: 해마다 수익률(시간가중) → 누적. 점을 누르거나 마우스를 올리면 그래프 위(자리가 없으면 아래)에 수치 */
+/* 처음 보는 기간 꺾은선: 연별(기본, 해마다 수익률) / 누적 전환. 해를 짚으면 그래프 바로 아래 칸에 수치 */
 (function(){
   var sv=document.getElementById('oy-c'); if(!sv) return;
-  var YS=[2005,2006,2007,2008,2009,2010,2011];
+  var YS=[2005,2006,2007,2008,2009,2010,2011], N=YS.length;
   var S=[['지금 규칙','var(--fg)',[102.3,-5.3,14.8,-30.5,-7.3,7.5,16.2]],['코스피','#e09a3a',[54.0,4.0,32.3,-40.7,49.7,21.9,-11.0]],
          ['S&amp;P500','#4fb286',[3.0,13.6,3.5,-38.5,23.5,12.8,0.0]],['나스닥100','#8a5cf0',[1.5,6.8,18.7,-41.9,53.5,19.2,2.7]]];
   S.forEach(function(r){ var c=1; r[3]=[0].concat(r[2].map(function(v){ c*=1+v/100; return (c-1)*100; })); });
-  var lo=-40, hi=140, L=8, R=316, T=10, B=182;
-  var X=function(i){ return L+(R-L)*i/YS.length; }, Y=function(v){ return B-(B-T)*(v-lo)/(hi-lo); };
+  var L=8, R=316, T=14, B=182, mode='yr', cur=-1;
   var fmt=function(v){ return (v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1)+'%'; };
+  var fmt0=function(v){ return (v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(Math.abs(v)>=9.5?0:1); };
   var col=function(v){ return v>=0?'var(--buy)':'var(--sell)'; };
-  var h='';
-  [0,50,100].forEach(function(g){ h+='<line x1="'+L+'" x2="'+R+'" y1="'+Y(g)+'" y2="'+Y(g)+'" stroke="var(--line)" stroke-width="'+(g?0.7:1.2)+'"/><text x="'+(R+4)+'" y="'+(Y(g)+3)+'">'+(g?'+':'')+g+'%</text>'; });
-  h+='<text x="'+X(0)+'" y="200" text-anchor="middle">시작</text>';
-  YS.forEach(function(y,i){ h+='<text x="'+X(i+1)+'" y="200" text-anchor="middle"'+(y===2009?' style="font-weight:700;fill:var(--fg)"':'')+'>\''+String(y).slice(2)+'</text>'; });
-  h+='<rect id="oy-hl" x="0" y="'+T+'" width="0" height="'+(B-T)+'" fill="var(--seg)" opacity="0"/>';
-  S.slice().reverse().forEach(function(r,k){ var me=k===S.length-1;
-    h+='<polyline fill="none" stroke="'+r[1]+'" stroke-width="'+(me?2.6:1.8)+'" points="'+r[3].map(function(v,i){ return X(i)+','+Y(v); }).join(' ')+'"/>';
-    if(me) r[3].forEach(function(v,i){ h+='<circle cx="'+X(i)+'" cy="'+Y(v)+'" r="3.2" fill="var(--fg)" stroke="var(--card)" stroke-width="1.2"/>'; });
-  });
-  sv.innerHTML=h;
-  document.getElementById('oy-lg').innerHTML=S.map(function(r){ var e=r[3][7]; return '<span><i style="background:'+r[1]+'"></i>'+r[0]+'<b style="color:'+col(e)+'">'+fmt(e)+'</b></span>'; }).join('')+'<span style="color:var(--mut);margin-left:auto">2005~2011 누적</span>';
-  var tip=document.getElementById('oy-tip');
-  var hl=document.getElementById('oy-hl'), cur=-1;
-  function show(e){
-    var r=sv.getBoundingClientRect(), vx=(e.clientX-r.left)/r.width*360, i=Math.round((vx-L)/((R-L)/YS.length));
-    if(i<1) i=1; if(i>YS.length) i=YS.length; cur=i;
-    var w=(R-L)/YS.length; hl.setAttribute('x',X(i)-w/2); hl.setAttribute('width',w); hl.setAttribute('opacity',1);
+  var tip=document.getElementById('oy-tip'), lg=document.getElementById('oy-lg');
+  function cfg(){ return mode==='yr'?{lo:-55,hi:115,n:N,off:.5,ticks:[-50,0,50,100]}:{lo:-40,hi:140,n:N+1,off:0,ticks:[0,50,100]}; }
+  function draw(){
+    var c=cfg(), slot=(R-L)/(mode==='yr'?N:N), X=function(i){ return mode==='yr'?L+slot*(i+.5):L+(R-L)*i/N; }, Y=function(v){ return B-(B-T)*(v-c.lo)/(c.hi-c.lo); };
+    var h='';
+    c.ticks.forEach(function(g){ h+='<line x1="'+L+'" x2="'+R+'" y1="'+Y(g)+'" y2="'+Y(g)+'" stroke="var(--line)" stroke-width="'+(g?0.7:1.2)+'"/><text x="'+(R+4)+'" y="'+(Y(g)+3)+'">'+(g>0?'+':g<0?'−':'')+Math.abs(g)+'%</text>'; });
+    if(mode==='cum') h+='<text x="'+X(0)+'" y="200" text-anchor="middle">시작</text>';
+    YS.forEach(function(y,i){ var xi=mode==='yr'?X(i):X(i+1); h+='<text x="'+xi+'" y="200" text-anchor="middle"'+(y===2009?' style="font-weight:700;fill:var(--fg)"':'')+'>\''+String(y).slice(2)+'</text>'; });
+    h+='<rect id="oy-hl" x="0" y="'+(T-6)+'" width="0" height="'+(B-T+6)+'" fill="var(--seg)" opacity="0"/>';
+    S.slice().reverse().forEach(function(r,k){ var me=k===S.length-1, pts=mode==='yr'?r[2]:r[3];
+      h+='<polyline fill="none" stroke="'+r[1]+'" stroke-width="'+(me?2.6:1.8)+'" stroke-linejoin="round" points="'+pts.map(function(v,i){ return X(i)+','+Y(v); }).join(' ')+'"/>';
+      if(me) pts.forEach(function(v,i){ h+='<circle cx="'+X(i)+'" cy="'+Y(v)+'" r="3.2" fill="var(--fg)" stroke="var(--card)" stroke-width="1.2"/>';
+        if(mode==='yr') h+='<text x="'+X(i)+'" y="'+(v>=0?Y(v)-8:Y(v)+15)+'" text-anchor="middle" style="font-weight:700;fill:'+(v>=0?'var(--buy)':'var(--sell)')+'">'+fmt0(v)+'</text>'; });
+    });
+    sv.innerHTML=h;
+    var tot=function(r){ return mode==='yr'?null:r[3][N]; };
+    lg.innerHTML=S.map(function(r){ var e=r[3][N]; return '<span><i style="background:'+r[1]+'"></i>'+r[0]+'<b style="color:'+col(e)+'">'+fmt(e)+'</b></span>'; }).join('')+'<span style="color:var(--mut);margin-left:auto">2005~2011 누적</span>';
+    document.getElementById('oy-title').textContent=mode==='yr'?'2005~2011 해마다 수익률':'2005~2011 누적 수익률';
+    if(cur>0) mark(cur);
+  }
+  function mark(i){
+    var hl=document.getElementById('oy-hl'); if(!hl) return;
+    var slot=(R-L)/N, cx=mode==='yr'?L+slot*(i-.5):L+(R-L)*i/N;
+    hl.setAttribute('x',cx-slot/2); hl.setAttribute('width',slot); hl.setAttribute('opacity',1);
     tip.innerHTML='<div style="font-weight:700;margin-bottom:3px">'+YS[i-1]+'년'+(YS[i-1]===2009?' <span style="color:var(--mut);font-weight:400;font-size:11px">반등을 놓친 해</span>':'')+'</div><table style="border-collapse:collapse"><tr style="color:var(--mut);font-size:11px"><td></td><td>그 해</td><td>누적</td></tr>'+
       S.map(function(s2){ var a=s2[2][i-1], c=s2[3][i]; return '<tr><td><i style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:'+s2[1]+'"></i>'+s2[0]+'</td><td><b style="color:'+col(a)+'">'+fmt(a)+'</b></td><td><b style="color:'+col(c)+'">'+fmt(c)+'</b></td></tr>'; }).join('')+'</table>';
     tip.style.display='block';
   }
-  function hide(){ tip.style.display='none'; hl.setAttribute('opacity',0); cur=-1; }
+  function show(e){
+    var r=sv.getBoundingClientRect(), vx=(e.clientX-r.left)/r.width*360, slot=(R-L)/N;
+    var i=mode==='yr'?Math.floor((vx-L)/slot)+1:Math.round((vx-L)/slot);
+    if(i<1) i=1; if(i>N) i=N; cur=i; mark(i);
+  }
+  function hide(){ tip.style.display='none'; var hl=document.getElementById('oy-hl'); if(hl) hl.setAttribute('opacity',0); cur=-1; }
   sv.addEventListener('pointermove',function(e){ if(e.pointerType!=='touch') show(e); });
   sv.addEventListener('pointerdown',show);
   document.addEventListener('pointerdown',function(e){ if(!sv.contains(e.target)&&!tip.contains(e.target)) hide(); });
+  document.querySelectorAll('#oy-sw button').forEach(function(b){ b.onclick=function(){ mode=b.dataset.m; document.querySelectorAll('#oy-sw button').forEach(function(x){ x.classList.toggle('on',x===b); }); draw(); }; });
+  draw();
 })();
 </script>
 </body>
