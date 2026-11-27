@@ -1471,7 +1471,7 @@ function build(c, which) {
       posts.push(() => safe('40 전 종목', () => {
         const irr = fl => { let lo = -0.9, hi = 1; const npv = r => { let t = 0; for (const [k, v] of fl) t += v / Math.pow(1 + r, k); return t; }; for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (npv(m) > 0) lo = m; else hi = m; } return Math.pow(1 + lo, 12) - 1; };
         log(''); log('## 40 후보 전 종목 100만원씩 — 거래마다 100만원(비용·한국 거래세 포함, 미국 양도세는 매도 연도별 250만원 공제 후 22%, 환율 변동 제외), 아직 보유 중인 종목은 마지막 달 종가로 평가');
-        log('방식                                                     거래 수  보유중  이긴 거래  평균    중앙값   누적(투입 대비)  연평균(IRR)  동시 보유 최대  투입 합계');
+        log('방식                                                     거래 수  보유중  이긴 거래  평균    중앙값   누적(투입 대비)  연평균(IRR)  동시 보유 최대  투입 합계 | 같은 날짜에 지수로: 누적  연평균  지수보다 나은 거래');
         for (const [nm, cand, o, all] of V40) {
           const opt = { ...simOpt(rule10, o), cand, log: true };
           if (all) opt.perFixed = 1e6;
@@ -1486,9 +1486,16 @@ function build(c, which) {
           let tax = 0; for (const [Y, g] of Object.entries(usY)) { const tx = Math.max(0, g - 2.5e6) * 0.22; tax += tx; addF(+Y * 12 + 12, -tx); }
           const rs = rows.map(x => x.r).sort((a, b) => a - b), n = rs.length, inv = n * 1e6, prof = rs.reduce((a, b) => a + b, 0) * 1e6 - tax;
           let maxC = 0; const ev = []; rows.forEach(x => { ev.push([x.b, 1], [x.s, -1]); }); ev.sort((a, b) => a[0] - b[0] || a[1] - b[1]); let c = 0; ev.forEach(e => { c += e[1]; maxC = Math.max(maxC, c); });
-          log(`${nm.slice(0, 54).padEnd(54)} ${String(tr.length).padStart(6)}  ${String(n - tr.length).padStart(5)}  ${(rs.filter(x => x > 0).length / n * 100).toFixed(0).padStart(7)}%  ${pc(rs.reduce((a, b) => a + b, 0) / n).padStart(7)}  ${pc(rs[Math.floor(n / 2)]).padStart(7)}  ${pc(prof / inv).padStart(12)}  ${pc(irr([...fl])).padStart(10)}  ${String(maxC).padStart(10)}종목  ${(inv / 1e8).toFixed(2)}억`);
+          const ixR = x => { const key = x.us ? 'sp' : 'ks', a = idxAt(key, x.b - 1), b2 = idxAt(key, x.s); return a > 0 && b2 > 0 ? b2 / a - 1 : null; };      // 산 달 직전 달말 → 판 달 말 지수 변화(배당 미포함 가격 지수)
+          const ixRows = rows.map(x => ({ ...x, ir: ixR(x) })).filter(x => x.ir != null);
+          const fl2 = new Map(), addI = (k, v) => fl2.set(k - k0, (fl2.get(k - k0) || 0) + v); ixRows.forEach(x => { addI(x.b, -1e6); addI(x.s, 1e6 * (1 + x.ir)); });
+          const ixProf = ixRows.reduce((a, x) => a + x.ir, 0) / ixRows.length, beat = ixRows.filter(x => x.r > x.ir).length / ixRows.length;
+          log(`${nm.slice(0, 54).padEnd(54)} ${String(tr.length).padStart(6)}  ${String(n - tr.length).padStart(5)}  ${(rs.filter(x => x > 0).length / n * 100).toFixed(0).padStart(7)}%  ${pc(rs.reduce((a, b) => a + b, 0) / n).padStart(7)}  ${pc(rs[Math.floor(n / 2)]).padStart(7)}  ${pc(prof / inv).padStart(12)}  ${pc(irr([...fl])).padStart(10)}  ${String(maxC).padStart(10)}종목  ${(inv / 1e8).toFixed(2)}억 | ${pc(ixProf).padStart(7)}  ${pc(irr([...fl2])).padStart(7)}  ${(beat * 100).toFixed(0)}%`);
+          if (all) { const byY = {}; rows.forEach(x => { const Y = Math.floor((x.s - 1) / 12); const o = byY[Y] || (byY[Y] = { n: 0, r: 0, ir: 0 }); o.n++; o.r += x.r; const q = ixR(x); o.ir += q == null ? 0 : q; });
+            log('   매도 연도별 거래당 평균(전략 / 지수): ' + Object.keys(byY).sort().map(Y => `${Y} ${(byY[Y].r / byY[Y].n * 100).toFixed(0)}/${(byY[Y].ir / byY[Y].n * 100).toFixed(0)}%(${byY[Y].n})`).join(' · '));
+            const srt = rows.map(x => x.r).sort((a, b) => b - a), tot = srt.reduce((a, b) => a + b, 0); log(`   상위 10% 거래가 이익 합계에서 차지하는 몫 ${(srt.slice(0, Math.ceil(srt.length / 10)).reduce((a, b) => a + b, 0) / tot * 100).toFixed(0)}% · 상위 10종목 빼면 거래당 평균 ${pc((tot - srt.slice(0, 10).reduce((a, b) => a + b, 0)) / (srt.length - 10))}`); }
         }
-        log('※ 누적 = (번 돈 합계 − 미국 양도세) ÷ 투입 합계(거래 수 × 100만원), 재투자 없음. 연평균 = 각 거래의 사고판 달 현금흐름으로 계산한 IRR.');
+        log('※ 누적 = (번 돈 합계 − 미국 양도세) ÷ 투입 합계(거래 수 × 100만원), 재투자 없음. 연평균 = 각 거래의 사고판 달 현금흐름으로 계산한 IRR. 지수 대조 = 같은 거래를 같은 달에 코스피(한국)·S&P500(미국) 가격 지수로 했을 때(비용·세금 없음, 배당 미포함).');
       }));
     }
     if (on(37)) {                                                              // ═════ 묶음 37: 36의 '엇갈린 종목만'(외국인·기관이 같은 방향이면 제외)이 튼튼한지 — 문턱·기간 이웃, 큰 수익 종목 빼기, 같은 비율 무작위 제외 대조
