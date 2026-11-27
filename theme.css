@@ -39,3 +39,4 @@ div.navtabs:not(.tabs){margin:-16px -16px 12px !important;padding:10px 16px 0 !i
 #fab-ud button.off{opacity:.35}
 .chartbox{top:var(--nav-h,43px) !important}                       /* 고정된 탭 줄 바로 아래에 종목명·접기 줄이 붙게 */
 .jf{border-top:none !important}.jf-tl{border-top:none !important}   /* 일지 설명 제목 위·아래 굵은 검은 줄 없앰 */
+#start-card{border-top:none !important}   /* 거래내역 보기 탭 바로 아래 굵은 검은 줄 없앰 */
