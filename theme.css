@@ -42,3 +42,4 @@ div.navtabs:not(.tabs){margin:-16px -16px 12px !important;padding:10px 16px 0 !i
 #start-card{border-top:none !important}   /* 거래내역 보기 탭 바로 아래 굵은 검은 줄 없앰 */
 .jf-c,#amt-card,#pane-log .nav,#sum-card,#hold-panel,#sold-list{border-top:none !important}   /* 매매방법·거래내역·매도 거래 내역 화면의 굵은 검은 줄 없앰(탭 밑줄·제목 줄은 유지) */
 .navtabs ~ h1{margin-top:-2px !important;padding-bottom:13px !important}   /* 제목을 위 탭 줄과 아래 이중 줄 사이 가운데에 */
+.jf-foot{margin:8px 0 0 !important;padding-bottom:8px !important}   /* 맨 아래 문구를 위 줄과 아래 줄 사이 가운데로 */
