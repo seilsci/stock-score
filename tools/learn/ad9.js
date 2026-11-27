@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1457,6 +1457,39 @@ function build(c, which) {
         add(S('B 수급 규칙 없이'), N === 1 ? '한국6·미국10 · 한 번에' : `한국6·미국10 · 매도 대금 ${N}달에 나눠 넣기`, { cand: candOf(mBase), rule: rule10, o: { exitMaFn: KR6, splitN: N } });
       });
       posts.push(() => post12('39-', '39 매도 대금 나눠 넣기'));
+    }
+    if (on(40)) {                                                              // ═════ 묶음 40: 후보 전 종목에 100만원씩(점수·4종목 제한 없이) vs 지금(점수 상위 4) — 거래마다 100만원 기준 누적·연평균(IRR)
+      PFX = '40';
+      const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
+      const flowOK = drop(isSame)(mBase), allC = candOf(mBase);
+      const V40 = [
+        ['지금 규칙 · 점수 상위 4(기준, 장부와 같은 방식)', flowOK, { exitMaFn: KR6 }, false],
+        ['지금 규칙 · 후보 전부 100만원씩(한국6·미국10+수급)', flowOK, { exitMaFn: KR6 }, true],
+        ['후보 전부 100만원씩 · 수급 규칙 없이(한국6·미국10)', allC, { exitMaFn: KR6 }, true],
+        ['후보 전부 100만원씩 · 10이평 판매·수급 없이', allC, {}, true],
+      ];
+      posts.push(() => safe('40 전 종목', () => {
+        const irr = fl => { let lo = -0.9, hi = 1; const npv = r => { let t = 0; for (const [k, v] of fl) t += v / Math.pow(1 + r, k); return t; }; for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (npv(m) > 0) lo = m; else hi = m; } return Math.pow(1 + lo, 12) - 1; };
+        log(''); log('## 40 후보 전 종목 100만원씩 — 거래마다 100만원(비용·한국 거래세 포함, 미국 양도세는 매도 연도별 250만원 공제 후 22%, 환율 변동 제외), 아직 보유 중인 종목은 마지막 달 종가로 평가');
+        log('방식                                                     거래 수  보유중  이긴 거래  평균    중앙값   누적(투입 대비)  연평균(IRR)  동시 보유 최대  투입 합계');
+        for (const [nm, cand, o, all] of V40) {
+          const opt = { ...simOpt(rule10, o), cand, log: true };
+          if (all) opt.perFixed = 1e6;
+          const sm = all ? simulate(ym => cand(ym), 100000, C1, opt, 0) : simulate(ym => cand(ym).slice(0, 4), 4, C1, opt, DEP);
+          const tr = (sm.trades || []).filter(t => t.ret != null && t.buyYm && t.sellYm);
+          const last = sm.snapshots ? [...sm.snapshots.keys()].sort().pop() : null, open = last ? sm.snapshots.get(last) : [];
+          const rows = tr.map(t => ({ b: mi(t.buyYm), s: mi(t.sellYm), r: t.ret, us: !isKR(t.y), Y: Math.floor(t.sellYm / 100) }))
+            .concat((open || []).filter(h => h.buyPx > 0 && h.curPx > 0).map(h => ({ b: mi(h.buyYm), s: mi(+last) + 1, r: h.curPx / h.buyPx - 1, us: !isKR(h.y), Y: Math.floor(+last / 100), open: 1 })));
+          const usY = {}; rows.filter(x => x.us && !x.open).forEach(x => { usY[x.Y] = (usY[x.Y] || 0) + x.r * 1e6; });
+          const fl = new Map(), k0 = Math.min(...rows.map(x => x.b)), addF = (k, v) => fl.set(k - k0, (fl.get(k - k0) || 0) + v);
+          rows.forEach(x => { addF(x.b, -1e6); addF(x.s, 1e6 * (1 + x.r)); });
+          let tax = 0; for (const [Y, g] of Object.entries(usY)) { const tx = Math.max(0, g - 2.5e6) * 0.22; tax += tx; addF(+Y * 12 + 12, -tx); }
+          const rs = rows.map(x => x.r).sort((a, b) => a - b), n = rs.length, inv = n * 1e6, prof = rs.reduce((a, b) => a + b, 0) * 1e6 - tax;
+          let maxC = 0; const ev = []; rows.forEach(x => { ev.push([x.b, 1], [x.s, -1]); }); ev.sort((a, b) => a[0] - b[0] || a[1] - b[1]); let c = 0; ev.forEach(e => { c += e[1]; maxC = Math.max(maxC, c); });
+          log(`${nm.slice(0, 54).padEnd(54)} ${String(tr.length).padStart(6)}  ${String(n - tr.length).padStart(5)}  ${(rs.filter(x => x > 0).length / n * 100).toFixed(0).padStart(7)}%  ${pc(rs.reduce((a, b) => a + b, 0) / n).padStart(7)}  ${pc(rs[Math.floor(n / 2)]).padStart(7)}  ${pc(prof / inv).padStart(12)}  ${pc(irr([...fl])).padStart(10)}  ${String(maxC).padStart(10)}종목  ${(inv / 1e8).toFixed(2)}억`);
+        }
+        log('※ 누적 = (번 돈 합계 − 미국 양도세) ÷ 투입 합계(거래 수 × 100만원), 재투자 없음. 연평균 = 각 거래의 사고판 달 현금흐름으로 계산한 IRR.');
+      }));
     }
     if (on(37)) {                                                              // ═════ 묶음 37: 36의 '엇갈린 종목만'(외국인·기관이 같은 방향이면 제외)이 튼튼한지 — 문턱·기간 이웃, 큰 수익 종목 빼기, 같은 비율 무작위 제외 대조
       PFX = '37';

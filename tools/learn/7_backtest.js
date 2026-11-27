@@ -241,7 +241,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (opt.splitN > 1) soldAt.set(k, (soldAt.get(k) || 0) + got);           // 나눠 넣기 시험: 그달 판 돈 기록
     return got;
   };
-  const soldAt = new Map();
+  const soldAt = new Map(); let injected = 0;
   const lockedAt = b => {                                  // 나눠 넣기(opt.splitN=N): s달 말에 판 돈은 b달 구매 때 min(N, b−s)/N만 쓸 수 있음 → 아직 못 쓰는 몫
     let L = 0; const N = opt.splitN; for (const [sk, v] of soldAt) { const d = b - sk; if (d >= 1 && d < N) L += v * (1 - d / N); } return L;
   };
@@ -296,6 +296,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
         if (opt.failP && hash01(r.y + '|' + k + '|' + (opt.failSeed || 1)) < opt.failP) continue;      // 주문 실패 시험: 확률로 이 종목은 못 사고 다음 순위로
         if (opt.oneCo !== false) { const ckf = opt.coKeyFn || coKey, ck = ckf(r.y); if (pickedCo.has(ck) || holds.some(h => ckf(h.y) === ck)) { coSkipN++; continue; } }      // 같은 회사(우선주·Class A/B 등)는 하나만
         let per = fill ? cash / Math.min(slots, opt.minDiv ? Math.max(list.length - li, opt.minDiv) : list.length - li) : per0;      // minDiv: 남은 후보가 적어도 최소 minDiv개 몫으로 나눔(나머지는 현금으로 둠)      // fill: 남은 현금 ÷ (남은 자리, 남은 후보 중 작은 쪽)
+        if (opt.perFixed) { per = opt.perFixed; if (cash < per) { injected += per - cash; cash = per; } }      // 시험용: 후보마다 고정 금액(모자라면 바깥에서 넣은 것으로 침)
         if (fill && opt.wRank) { const nn = Math.min(slots, list.length - li); if (nn > 1) per = opt.wRank > 0 ? cash * 2 / (nn + 1) : cash * 2 / (nn * (nn + 1)); }   // wRank: 순위 비례 비중(+1: 앞순위에 더, −1: 뒷순위에 더(대조)). 남은 nn자리에 nn, nn−1, … 1 (또는 반대) 몫
         if (fill && opt.wFn) { const nn = Math.min(slots, list.length - li); if (nn > 1) { let sw = 0, w0 = 0; for (let q = li, c = 0; q < list.length && c < nn; q++, c++) { const ww = opt.wFn(list[q].r, k) || 1; sw += ww; if (q === li) w0 = ww; } per = cash * w0 / sw; } }      // wFn: 종목별 비중 가중치(남은 후보 몫에서 나눔)
         if (opt.firstFrac) per *= opt.firstFrac;                // 분할 매수: 첫 몫만 먼저
@@ -503,7 +504,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   }
   liq -= C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, cfs, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN, divTotal };
+  return { rets, cfs, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN, divTotal, injected };
 }
 function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };
