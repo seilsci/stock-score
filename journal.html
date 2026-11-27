@@ -498,6 +498,10 @@ function renderNav(){
 }
 
 /* ── 보유 종목 ── */
+function hAlign(list){                      // 보유 종목 줄마다 오른쪽 칸(매수·평가·단가 / 수익률·점수·지금) 너비를 가장 넓은 줄에 맞춰 세로로 줄을 맞춤
+  ['.h-px','.h-rs'].forEach(function(sel){ var a=list.querySelectorAll(sel), m=0; a.forEach(function(e){ e.style.minWidth=''; }); a.forEach(function(e){ m=Math.max(m,e.offsetWidth); }); if(m) a.forEach(function(e){ e.style.minWidth=m+'px'; }); });
+}
+window.addEventListener('resize',function(){ var l=document.getElementById('hold-list'); if(l) hAlign(l); });
 function renderHoldings(over){            // over: 예정 달의 예상 보유 {holds, fx}
   var ym = SEL_YM;
   var title = document.getElementById('hold-title');
@@ -531,6 +535,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
         :'<div class="h-ret '+cls+'">'+pc(ret)+'</div><div class="h-sc" data-sc-i="'+i+'" title="점수 기준 보기">'+(sc==null?'-':sc+'점')+'</div>')
       +'</div><div class="h-cv"><div class="fold-bar"><button type="button" class="fold-b" data-fold="row">그래프 접기</button></div><canvas></canvas></div></div>';
   }).join('');
+  hAlign(list);
   list.querySelectorAll('.h-row').forEach(function(row){
     row.onclick=function(e){
       if(e.target.classList.contains('h-sc')) return;
