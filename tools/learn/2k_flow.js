@@ -36,7 +36,7 @@ async function call(inv, strt, end, mkt) {                 // → {ok:true,rows}
       if (r.status === 400 || r.status === 401 || r.status === 403) return { ok: false, why: 'HTTP ' + r.status + ' — 로그인(KRX_COOKIE)이 없거나 만료됐을 수 있음' };
       const text = await r.text(); let j; try { j = JSON.parse(text); } catch (e) { return { ok: false, why: '응답이 JSON이 아님(로그인 만료·점검 중일 수 있음): ' + text.slice(0, 80).replace(/\s+/g, ' ') }; }
       const rows = parseRows(j); if (!rows.length) return { ok: false, why: '응답에 종목 줄이 없음(키 ' + Object.keys(j).join(',') + ')' };
-      return { ok: true, rows, sample: (j.OutBlock_1 || [])[0] };
+      return { ok: true, rows, sample: (j.OutBlock_1 || j.output || j.block1 || [])[0] };
     } catch (e) { bump('오류'); await sleep(wait * 2); }
   }
   return { ok: false, why: '여러 번 실패(네트워크·차단)' };

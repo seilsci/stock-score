@@ -1358,6 +1358,77 @@ function build(c, which) {
     posts.push(() => post12('34-', '34 같은 지수 ETF 하나만'));
   }
 
+  // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
+  //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
+  //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
+  if (on(35)) {
+    const S = n => `35-${n}`;
+    const FL = new Map();
+    const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
+      if (FL.has(k)) return FL.get(k);
+      let v = null;
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(DATA, 'krx_flow', ymOf(k) + '.json'), 'utf8'));
+        if (j && j._done) { const f = new Map(Object.entries(j.f || {})), i = new Map(Object.entries(j.i || {})), rt = a => a && (a[2] + a[3]) > 0 ? a[1] / (a[2] + a[3]) : null;
+          const pf = [], pfi = []; for (const [c, a] of f) { const r = rt(a); if (r != null) pf.push(r); const b = i.get(c), s2 = a[2] + a[3] + (b ? b[2] + b[3] : 0); if (s2 > 0) pfi.push((a[1] + (b ? b[1] : 0)) / s2); }
+          pf.sort((x, y) => x - y); pfi.sort((x, y) => x - y); if (f.size > 200) v = { f, i, pf, pfi }; }
+      } catch (e) {}
+      FL.set(k, v); return v;
+    };
+    const code = y => (isKR(y) ? String(y).slice(0, 6) : null);
+    const rowOf = (y, k, who) => { const c = code(y); if (!c) return null; const v = flMonth(k); return v ? v[who].get(c) || null : null; };
+    const has = (y, k) => !!(code(y) && flMonth(k) && (rowOf(y, k, 'f') || rowOf(y, k, 'i')));
+    const net = (y, k, who, n = 1) => { if (!code(y)) return null; let t = 0, ok = 0; for (let q = 0; q < n; q++) { if (!flMonth(k - q)) return null; const a = rowOf(y, k - q, who); if (a) { t += a[1]; ok++; } } return ok ? t : (has(y, k) ? 0 : null); };   // 순매수대금 합(그 투자자 거래가 없으면 0)
+    const both = (y, k, n = 1) => { const a = net(y, k, 'f', n), b = net(y, k, 'i', n); return a == null && b == null ? null : (a || 0) + (b || 0); };
+    const pOf = (arr, r) => { let lo = 0, hi = arr.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < r) lo = mid + 1; else hi = mid; } return lo / arr.length; };
+    const fRatio = (y, k) => { const a = rowOf(y, k, 'f'); return a && a[2] + a[3] > 0 ? a[1] / (a[2] + a[3]) : null; };
+    const fPct = (y, k) => { const r = fRatio(y, k); return r == null ? null : pOf(flMonth(k).pf, r); };
+    const fiPct = (y, k) => { const a = rowOf(y, k, 'f'), b = rowOf(y, k, 'i'); if (!a && !b) return null; const s2 = (a ? a[2] + a[3] : 0) + (b ? b[2] + b[3] : 0); return s2 > 0 ? pOf(flMonth(k).pfi, ((a ? a[1] : 0) + (b ? b[1] : 0)) / s2) : null; };
+    const X = (sec, name, cand) => { add(S(sec), '10이평 · ' + name, { cand: cand(mBase), rule: rule10 }); add(S(sec), '한국6·미국10 · ' + name, { cand: cand(mBase), rule: rule10, o: { exitMaFn: KR6 } }); };
+    const drop = f => m => wrap(m, a => a.filter(e => { const v = f(e.r.y, e.cj); return v == null || !v; }));        // f가 참인 한국 종목을 뺌(자료 없음·미국은 그대로)
+    const only = f => m => wrap(m, a => a.filter(e => { if (!isKR(e.r.y)) return true; const v = f(e.r.y, e.cj); return v == null || v; }));   // 한국 종목은 f가 참인 것만
+    const mixBy = g => m => wrap(m, a => { const rk = f => { const r = new Map(); [...a].sort((x, y) => f(y) - f(x)).forEach((e, i) => r.set(e, i)); return r; }; const r1 = rk(e => e.s), r2 = rk(e => g(e.r.y, e.cj) ?? 0.5); return [...a].sort((x, y) => (r1.get(x) + r2.get(x)) - (r1.get(y) + r2.get(y))); });
+    let have = 0, total = 0; mBase.forEach(a => a.forEach(e => { if (isKR(e.r.y)) { total++; if (has(e.r.y, e.cj)) have++; } }));
+    X('기준', '기준', m => candOf(m));
+    X('A 순매도 제외', '확인 달 외국인 순매도인 한국 종목 제외', drop((y, k) => { const v = net(y, k, 'f'); return v == null ? null : v < 0; }));
+    X('A 순매도 제외', '확인 달 기관 순매도인 한국 종목 제외', drop((y, k) => { const v = net(y, k, 'i'); return v == null ? null : v < 0; }));
+    X('A 순매도 제외', '확인 달 외국인·기관 모두 순매도면 제외', drop((y, k) => { const a = net(y, k, 'f'), b = net(y, k, 'i'); return a == null || b == null ? null : a < 0 && b < 0; }));
+    X('A 순매도 제외', '확인 달 외국인+기관 합이 순매도면 제외(개인 순매수)', drop((y, k) => { const v = both(y, k); return v == null ? null : v < 0; }));
+    X('B 3개월 합', '최근 3개월 외국인 순매수 합이 마이너스면 제외', drop((y, k) => { const v = net(y, k, 'f', 3); return v == null ? null : v < 0; }));
+    X('B 3개월 합', '최근 3개월 외국인+기관 합이 마이너스면 제외', drop((y, k) => { const v = both(y, k, 3); return v == null ? null : v < 0; }));
+    X('C 매수 쪽만', '외국인·기관 모두 순매수인 한국 종목만', only((y, k) => { const a = net(y, k, 'f'), b = net(y, k, 'i'); return a == null || b == null ? null : a > 0 && b > 0; }));
+    [0.5, 0.7].forEach(q => X('C 매수 쪽만', `외국인 매수 우위 비율이 그달 전 종목 중 상위 ${Math.round((1 - q) * 100)}%인 한국 종목만`, only((y, k) => { const p = fPct(y, k); return p == null ? null : p >= q; })));
+    X('D 대조', '외국인 순매도인 한국 종목만(대조)', only((y, k) => { const v = net(y, k, 'f'); return v == null ? null : v < 0; }));
+    X('D 대조', '외국인·기관 모두 순매도인 한국 종목만(대조)', only((y, k) => { const a = net(y, k, 'f'), b = net(y, k, 'i'); return a == null || b == null ? null : a < 0 && b < 0; }));
+    X('E 점수와 섞기', '점수 순위와 외국인 매수 우위 순위의 평균', mixBy(fPct));
+    X('E 점수와 섞기', '점수 순위와 외국인+기관 매수 우위 순위의 평균', mixBy(fiPct));
+    posts.push(() => { post35(); post12('35-', '35 한국 수급'); });
+    function post35() {
+      log(''); log(`## 35 한국 수급 — 자료 연결: 한국 후보 ${total}건 중 수급 값이 있는 것 ${have}건(${total ? (have / total * 100).toFixed(0) : 0}%)` + (have === 0 ? ' → 수급 자료가 없음: tools/learn/2k_flow.js 먼저 실행(KRX_COOKIE 필요)' : ''));
+      safe('35 검산', () => {                                                    // KRX 화면과 맞춰 볼 숫자(삼성전자·SK하이닉스, 최근 두 달). 투자자 코드(외국인 9000·기관합계 7050)가 맞는지 여기서 확인
+        const jo = x => (x / 1e12).toFixed(2) + '조';
+        const ks = []; for (let k = END + 1; ks.length < 2 && k > END - 6; k--) if (flMonth(k)) ks.push(k);
+        ks.forEach(k => ['005930', '000660'].forEach(c => { const v = flMonth(k), f = v.f.get(c), i = v.i.get(c); log(`## 35 검산 ${ymOf(k)} ${c} — 외국인 순매수 ${f ? jo(f[1]) : '-'}(매수 ${f ? jo(f[2]) : '-'}/매도 ${f ? jo(f[3]) : '-'}) · 기관합계 순매수 ${i ? jo(i[1]) : '-'}(매수 ${i ? jo(i[2]) : '-'}/매도 ${i ? jo(i[3]) : '-'})`); }));
+      });
+      safe('35 연결 진단', () => {
+        const byY = {}; mBase.forEach(arr => arr.forEach(e => { if (!isKR(e.r.y)) return; const Y = Math.floor(e.r.ym / 100), o = byY[Y] || (byY[Y] = { n: 0, h: 0 }); o.n++; if (has(e.r.y, e.cj)) o.h++; }));
+        log('## 35 연결 진단 — ' + Object.keys(byY).sort().map(Y => `${Y}: ${byY[Y].h}/${byY[Y].n}`).join(' | '));
+      });
+      log('## 35 한국 수급 — 실제 한국 거래를 확인 달(구매 전달) 수급으로 나눈 성과(전체 기간)');
+      log('방식                   구간                              거래 수   이긴 거래   평균 수익   중앙값');
+      V.filter(v => String(v.sec).startsWith('35-기준')).forEach(v => safe('35 구간', () => {
+        const sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...simOpt(v.rule, v.o || {}), cand: v.cand, log: true }, DEP);
+        const by = { '자료 없음': [], '외국인 매수·기관 매수': [], '외국인 매수·기관 매도': [], '외국인 매도·기관 매수': [], '외국인 매도·기관 매도': [], '외국인 우위 상위 20%': [], '외국인 우위 20~50%': [], '외국인 우위 50~80%': [], '외국인 우위 하위 20%': [] };
+        (sm.trades || []).filter(t => t.ret != null && t.buyYm && isKR(t.y)).forEach(t => {
+          const k = mi(t.buyYm) - 1; if (!has(t.y, k)) { by['자료 없음'].push(t.ret); return; }
+          const a = net(t.y, k, 'f') || 0, b = net(t.y, k, 'i') || 0; by[`외국인 ${a > 0 ? '매수' : '매도'}·기관 ${b > 0 ? '매수' : '매도'}`].push(t.ret);
+          const p = fPct(t.y, k); if (p != null) by[p >= 0.8 ? '외국인 우위 상위 20%' : p >= 0.5 ? '외국인 우위 20~50%' : p >= 0.2 ? '외국인 우위 50~80%' : '외국인 우위 하위 20%'].push(t.ret);
+        });
+        Object.entries(by).forEach(([nm, a]) => log(`${v.name.slice(0, 20).padEnd(20)} ${nm.padEnd(30)} ${String(a.length).padStart(6)}   ${a.length ? (a.filter(x => x > 0).length / a.length * 100).toFixed(0).padStart(5) + '%' : '    -'}   ${a.length ? pc(mean(a)).padStart(8) : '       -'}   ${a.length ? pc(pctl(a, 0.5)).padStart(7) : '      -'}`));
+      }));
+    }
+  }
+
   if (posts.length) AD8.ad9post = () => posts.forEach(f => f());
 
 
