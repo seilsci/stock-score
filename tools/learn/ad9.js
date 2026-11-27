@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1457,6 +1457,40 @@ function build(c, which) {
         add(S('B 수급 규칙 없이'), N === 1 ? '한국6·미국10 · 한 번에' : `한국6·미국10 · 매도 대금 ${N}달에 나눠 넣기`, { cand: candOf(mBase), rule: rule10, o: { exitMaFn: KR6, splitN: N } });
       });
       posts.push(() => post12('39-', '39 매도 대금 나눠 넣기'));
+    }
+    if (on(43)) {                                                              // ═════ 묶음 43: 점수 강화 — ① 수급 지표를 점수 모델에 넣기(한국만, 돌파 달 값) ② 정답을 '손실 피하기'로 바꿔 학습 (모두 지금 규칙: 한국6·미국10 + 수급 거르기)
+      PFX = '43';
+      const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
+      const LN = v => Math.max(-1, Math.min(1, v));
+      const turnK = (y, k) => { const o = px(y); if (!o) return null; const v = o.vol.get(k), p = o.m.get(k); return v > 0 && p > 0 ? v * p : null; };      // 그달 거래대금 근사(월 거래량 × 종가)
+      const flowX = r => { const b0 = r.x; if (!isKR(r.y)) return b0.concat([0, 0, 0, 0, 0]); const k = mi(r.ym); if (!has(r.y, k)) return b0.concat([0, 0, 0, 0, 0]);
+        const f = net(r.y, k, 'f') || 0, i = net(r.y, k, 'i') || 0, T = turnK(r.y, k);
+        return b0.concat([T ? LN(f / T * 10) : 0, T ? LN(i / T * 10) : 0, f > 0 && i > 0 ? 1 : 0, f < 0 && i < 0 ? 1 : 0, 1]); };       // 외국인·기관 순매수 ÷ 거래대금(×10, ±1로 자름), 둘 다 매수, 둘 다 매도, 수급 자료 있음
+      const nX = (ALL[0] && ALL[0].x.length) || F.length, xCols = [nX, nX + 1, nX + 2, nX + 3, nX + 4];
+      const L20 = Math.log(0.8), L10 = Math.log(0.9);
+      const tgt = f => ({ fitFn: (Z, t, ym, lam) => fitRidge(Z, t.map(f), lam) });
+      const V43 = [];
+      const alt = (sec, name, opts, ck) => {
+        let pm; if (opts) { const m2 = rescore(opts), old = scored[kA]; scored[kA] = m2; try { pm = mk({ ck: 'q43' + ck }); } finally { scored[kA] = old; } } else pm = mBase;
+        const cand = drop(isSame)(pm); add(S(sec), name, { cand, rule: rule10, o: { exitMaFn: KR6 }, t43: 1 }); V43.push({ name, cand });
+      };
+      alt('기준', '지금 점수(기준)', null, 'b0');
+      alt('기준', '지금 점수 다시 학습(같은 방식, 확인용)', {}, 'b1');
+      alt('1 수급 지표', '+ 수급 지표 5개(외국인·기관 순매수 비율, 둘 다 매수/매도, 자료 있음)', { xFn: flowX, extraCols: xCols }, 'f1');
+      alt('2 손실 피하기 정답', '정답 = −20% 이하로 끝나면 −1, 아니면 0(손실 확률을 낮게)', tgt(t => (t <= L20 ? -1 : 0)), 'l20');
+      alt('2 손실 피하기 정답', '정답 = −10% 이하로 끝나면 −1, 아니면 0', tgt(t => (t <= L10 ? -1 : 0)), 'l10');
+      alt('2 손실 피하기 정답', '정답 = 손실만(이익은 0으로 자름)', tgt(t => Math.min(t, 0)), 'dn');
+      alt('2 손실 피하기 정답', '정답 = 이익은 절반만 반영(손실을 더 크게 봄)', tgt(t => (t > 0 ? t * 0.5 : t)), 'half');
+      alt('1+2', '+ 수급 지표 · 정답 −20% 이하 −1', { xFn: flowX, extraCols: xCols, ...tgt(t => (t <= L20 ? -1 : 0)) }, 'fl20');
+      alt('1+2', '+ 수급 지표 · 정답 이익 절반', { xFn: flowX, extraCols: xCols, ...tgt(t => (t > 0 ? t * 0.5 : t)) }, 'fhalf');
+      posts.push(() => { post12('43-', '43 점수 강화');
+        safe('43 거래 위험', () => {
+          log(''); log('## 43 점수 강화 — 실제 거래(점수 상위 4)의 큰 손실·대박 비율과 상위 10종목 뺀 평균');
+          log('방식                                                    거래 수  큰 손실(−20%↓)  대박(+100%↑)  평균     중앙값   상위 10거래 뺀 평균');
+          for (const v of V43) { const sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...simOpt(rule10, { exitMaFn: KR6 }), cand: v.cand, log: true }, DEP), r = (sm.trades || []).filter(t => t.ret != null).map(t => t.ret).sort((a, b) => b - a), n = r.length;
+            log(`${v.name.slice(0, 54).padEnd(54)} ${String(n).padStart(6)}  ${(r.filter(x => x <= -0.2).length / n * 100).toFixed(1).padStart(10)}%  ${(r.filter(x => x >= 1).length / n * 100).toFixed(1).padStart(9)}%  ${pc(mean(r)).padStart(7)}  ${pc(r[Math.floor(n / 2)]).padStart(7)}  ${pc(mean(r.slice(10))).padStart(10)}`); }
+        });
+      });
     }
     if (on(42)) {                                                              // ═════ 묶음 42: 주 수 제한 없이(소수점 주) 점수 상위 4를 늘 같은 금액으로 — 지금은 정수 주라 비싼 종목은 1주도 못 사서 다음 순위로 넘어감
       PFX = '42';
