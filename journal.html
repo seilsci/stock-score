@@ -609,7 +609,7 @@ function chartTip(cv, ev, i){                // i = 월 위치
   if(ns) tags.push('<span style="color:var(--sell)">▼ 판매'+(ns>1?' ×'+ns:'')+'</span>');
   var cc=function(v){ return v==null?'':'<span style="color:'+(v>=0?'var(--buy)':'var(--sell)')+'">'+pc(v)+'</span>'; };
   var R3=function(l,a,p){ return '<tr><td>'+l+'</td><td>'+a+'</td><td>'+(p||'')+'</td></tr>'; };       // 라벨 | 금액 | 대비(%) 세 칸으로 맞춤
-  if(ev.pointerType==='touch'){                // 폰: 그래프를 가리지 않게 그래프 바로 아래 정보칸(2열)에 표시 — 다른 그래프를 짚으면 이전 칸은 닫음
+  {                                            // 폰·PC 모두: 그래프를 가리지 않게 그래프 바로 아래 정보칸(2열)에 표시 — 다른 그래프를 짚으면 이전 칸은 닫음
     document.querySelectorAll('.cinfo').forEach(function(e2){ if(e2!==cv._info) e2.style.display='none'; });
     document.querySelectorAll('canvas').forEach(function(c2){ if(c2!==cv && c2._hi!=null){ c2._hi=null; if(c2._args) drawChart.apply(null,c2._args); } });
     if(!cv._info){ cv._info=document.createElement('div'); cv._info.className='cinfo'; cv.insertAdjacentElement('afterend',cv._info); }
@@ -2189,7 +2189,7 @@ function korSigned(n){ return n<0?'−'+korMan(-n):korMan(n); }            // �
 function myThisYm(){ var k=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'})); return k.getFullYear()*100+k.getMonth()+1; }
 function myPrevYm(y){ return y%100===1?y-89:y-1; }
 function myRecLoad(keys){                     // 후보(시트 '확인' 행)·금리 판단·보유 종목의 최신 월봉을 받아 둠(10분마다 새로)
-  if(MYREC.busy||(MYREC.api&&Date.now()-MYREC.t<600000)) return; MYREC.busy=true;
+  if(MYREC.busy||(MYREC.t&&Date.now()-MYREC.t<600000)) return; MYREC.busy=true;     // 받기에 실패(api=null)해도 10분은 다시 안 받음(예전엔 실패하면 화면을 계속 다시 그림)
   var ps=[new Promise(function(r){ loadBars(r); }),new Promise(function(r){ loadCosts(r); }),fetch(API).then(function(r){ return r.json(); }).catch(function(){ return null; }),
     keys.length?fetch(API+'?hold='+encodeURIComponent(keys.join(','))).then(function(r){ return r.json(); }).catch(function(){ return null; }):Promise.resolve(null)];
   Promise.all(ps).then(function(r){ if(r[3]) mergeLiveBars(r[3]); MYREC.api=r[2]; MYREC.t=Date.now(); MYREC.busy=false; renderMy(); });
