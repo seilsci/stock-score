@@ -2295,7 +2295,7 @@ function renderMy(){
   });
   var unrl=val-cost, tot=unrl+R.realized, cls=function(x){ return x>=0?'p':'n'; };
   document.getElementById('my-cnt').textContent=MY.length+'건';
-  document.getElementById('my-sum').innerHTML=MY.length?'<div class="my-sum"><div>보유 원가<b>'+won(cost)+'</b></div><div>보유 평가금<b>'+won(val)+'</b></div><div>평가손익<b class="'+cls(unrl)+'">'+signWon(unrl)+'</b></div><div>실현손익<b class="'+cls(R.realized)+'">'+signWon(R.realized)+'</b></div><div style="grid-column:1/-1">합계 손익<b class="'+cls(tot)+'">'+signWon(tot)+'</b></div></div>':'';
+  document.getElementById('my-sum').innerHTML=MY.length?'<div class="my-sum"><div>보유 원가<b>'+won(cost)+'</b></div><div>보유 평가금<b>'+won(val)+'</b></div><div>평가손익<b class="'+cls(unrl)+'">'+signWon(unrl)+'</b></div><div>실현손익<b class="'+cls(R.realized)+'">'+signWon(R.realized)+'</b></div><div style="grid-column:2">합계손익<b class="'+cls(tot)+'">'+signWon(tot)+'</b></div></div>':'';
   document.getElementById('my-hold').innerHTML=open.length?'<table class="my-tb"><tr><th>보유 종목</th><th>수량</th><th>평균단가(원)</th><th>평가금(원)</th><th>평가손익</th><th></th></tr>'+rows+'</table>'+'<p class="amt-note" style="margin:0 0 8px">평가금 기준: '+(liveN?'현재가('+(liveSrc.naver?'국내 네이버 거의 실시간':'')+(liveSrc.naver&&liveSrc.yahoo?' · ':'')+(liveSrc.yahoo?'야후, 약 15분 지연':'')+', '+new Date(liveT).toTimeString().slice(0,8)+' 갱신, 장 시간에는 5초마다 자동)'+(monthly||Object.keys(pxDates).length?' · 일부는 직전 종가':''):Object.keys(pxDates).length?'직전 마감 종가('+Object.keys(pxDates).sort().join(', ')+')':'월봉 자료의 최근 종가')+(monthly&&Object.keys(pxDates).length?' · 일부는 월봉 최근 종가':'')+(unk?' · 코드를 비웠거나 시세를 못 찾은 종목('+unk+')은 매입 원가로 보여요':'')+'</p>':'';
   myDock(open.length>0, open.length, val, unrl, cost);
   myTween(); mySellPick();
