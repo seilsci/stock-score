@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1457,6 +1457,17 @@ function build(c, which) {
         add(S('B 수급 규칙 없이'), N === 1 ? '한국6·미국10 · 한 번에' : `한국6·미국10 · 매도 대금 ${N}달에 나눠 넣기`, { cand: candOf(mBase), rule: rule10, o: { exitMaFn: KR6, splitN: N } });
       });
       posts.push(() => post12('39-', '39 매도 대금 나눠 넣기'));
+    }
+    if (on(42)) {                                                              // ═════ 묶음 42: 주 수 제한 없이(소수점 주) 점수 상위 4를 늘 같은 금액으로 — 지금은 정수 주라 비싼 종목은 1주도 못 사서 다음 순위로 넘어감
+      PFX = '42';
+      const flowOK = drop((y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); })(mBase);
+      const X42 = (nm, o, dep) => add(S('A 주 수'), nm, { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, ...o }, ...(dep ? { dep } : {}) });
+      X42('지금: 정수 주 · 못 사면 다음 순위(월 100만원)', {});
+      X42('소수점 주: 점수 상위 4를 늘 같은 금액으로(월 100만원)', { lotSize: false, lotAll: false });
+      X42('소수점 주 · 다음 순위로 채우기 없음(상위 4만, 월 100만원)', { lotSize: false, lotAll: false, fill: false });
+      X42('참고: 정수 주 · 월 1000만원', {}, 1e7);
+      X42('참고: 소수점 주 · 월 1000만원', { lotSize: false, lotAll: false }, 1e7);
+      posts.push(() => post12('42-', '42 주 수 제한 없이'));
     }
     if (on(40) || on(41)) {                                                    // ═════ 묶음 40: 후보 전 종목에 100만원씩(점수·4종목 제한 없이) vs 지금(점수 상위 4) — 거래마다 100만원 기준 누적·연평균(IRR)
       PFX = on(41) ? '41' : '40'; const B41 = on(41);
