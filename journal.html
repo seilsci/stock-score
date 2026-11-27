@@ -1163,6 +1163,7 @@ function renderLedger(){
       buyRows(NX,NX.ym);
       if(!NX.buys.length&&!(NX.skipped||[]).length) html+='<div class="empty" style="padding:8px 4px">첫날 구매할 확정 후보가 없었습니다.</div>';
       html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">첫날 구매 후 현금</div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
+      if(+NX.ym%100===12&&NX.tax>0) html+=rsvNote(NX.tax,NX.tax/COSTS.us.cg_tax_rate+COSTS.us.cg_exemption_krw,bal);
     }
   }
   list.innerHTML=html;
@@ -1474,12 +1475,17 @@ function coKeyN(name, y){                     // 같은 회사 판별(백테스�
   if(/[가-힣]/.test(n)) n=n.replace(/(우선주|2우B|3우B|우B|우C|우)$/,'');
   n=n.trim(); return n||y;
 }
+function rsvNote(rsv,gain,bal){                                            // 12월 첫날 구매 뒤 남는 현금 중 양도세 몫 설명
+  if(!(rsv>0)) return '';
+  var ex=COSTS.us.cg_exemption_krw, rt=COSTS.us.cg_tax_rate;
+  return '<div class="sum-note" style="margin:6px 4px 0">🧾 이 중 <b>'+won(rsv)+'</b>은 <b>12월 말 미국 주식 양도세 몫</b>으로 남겨 둔 돈이에요. (올해 미국 실현이익 '+won(gain)+' − 공제 '+won(ex)+') × '+(rt*100).toFixed(0)+'%. 12월 말 세금이 모자라 보유 종목을 억지로 팔지 않게 먼저 떼어 두고, 나머지 돈으로만 4종목을 나눠 삽니다.'+(bal-rsv>1000?' 그 밖의 '+won(bal-rsv)+'은 정수 주로 딱 맞게 못 쓴 잔돈이에요.':'')+'</div>';
+}
 function planCore(o){
   var C=COSTS, usFee=C.us.commission+C.us.fx_spread, krFee=C.kr.commission, year=Math.floor(+o.nowYm/100);
-  var sells=[], watch=[], cash=o.cash, fdBuys=[], fdSkipped=[], holdsAll=o.holds;
+  var sells=[], watch=[], cash=o.cash, fdBuys=[], fdSkipped=[], holdsAll=o.holds, fdRsv=0, fdGain=0;
   if(o.fd){                                                                                // 첫날 구매: 이번 달 첫날에 지난달 말 확정 후보를 지난달 말 현금으로 이미 샀다(가격은 첫날 종가)
     var heldF={}; o.holds.forEach(function(h){ heldF[coKeyN(h.name,h.y)]=1; });
-    var rsvF=(+o.nowYm%100===12)?Math.min(Math.max(0,o.cash),C.us.cg_tax_rate*Math.max(0,(o.usGainYtd||0)-C.us.cg_exemption_krw)):0;   // 12월 첫날 구매: 나올 양도세를 먼저 떼어 둠
+    var rsvF=(+o.nowYm%100===12)?Math.min(Math.max(0,o.cash),C.us.cg_tax_rate*Math.max(0,(o.usGainYtd||0)-C.us.cg_exemption_krw)):0; fdRsv=rsvF; fdGain=o.usGainYtd||0;   // 12월 첫날 구매: 나올 양도세를 먼저 떼어 둠
     var cF=o.cash-rsvF, slotsF=o.N||4, listF=o.cands||[];
     for(var lf=0; lf<listF.length && slotsF>0; lf++){
       var rf=listF[lf]; if(heldF[coKeyN(rf.name,rf.y)]) continue;
@@ -1531,7 +1537,7 @@ function planCore(o){
     buys.push({y:r.y,name:r.name,us:r.us,sh:lots,px:r.px,fxUsed:r.us?o.fx:null,gross:a*(1-fee),fee:a*fee,feeRate:fee,amt:a,score:r.score,row:r.row});
   }
   }
-  return {sells:sells,watch:watch,buys:buys,skipped:skipped,tax:taxPaid,cash0:o.cash,cashAfterSell:cash,cash1:cash1,cashEnd:c};
+  return {sells:sells,watch:watch,buys:buys,skipped:skipped,tax:taxPaid,cash0:o.cash,cashAfterSell:cash,cash1:cash1,cashEnd:c,fdRsv:fdRsv,fdGain:fdGain};
 }
 
 function usGainYtdOf(nowYm){            // 그해 1월~지난달 미국 주식 실현 이익(판매금 - 구매금액)
@@ -1731,6 +1737,7 @@ function renderPlanView(){
     });
     if(!p2.buys.length&&!p2.skipped.length) html+='<div class="empty" style="padding:8px 4px">지금 확정된 후보가 없습니다.</div>';
     html+='<div class="lr end"><div class="lr-h"><div><div class="lr-n">첫날 구매 후 현금 <span class="meta">(잠정)</span></div></div><div class="lr-a">'+won(bal)+'</div></div></div>';
+    html+=rsvNote(p2.fdRsv,p2.fdGain,bal);
   }
   if(P.fd){
     var DC=decPlanOf(P), NC=DC&&DC.nc?DC.nc:[];
