@@ -38,3 +38,4 @@ div.navtabs:not(.tabs){margin:-16px -16px 12px !important;padding:10px 16px 0 !i
 #fab-ud button{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:15px;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.18);opacity:.92;padding:0;cursor:pointer}
 #fab-ud button.off{opacity:.35}
 .chartbox{top:var(--nav-h,43px) !important}                       /* 고정된 탭 줄 바로 아래에 종목명·접기 줄이 붙게 */
+.jf{border-top:none !important}.jf-tl{border-top:none !important}   /* 일지 설명 제목 위·아래 굵은 검은 줄 없앰 */
