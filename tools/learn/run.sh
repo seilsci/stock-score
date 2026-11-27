@@ -40,6 +40,7 @@ PFROM=$B2 PTO=$B2c node 2c_firstday.js | tee -a $LOG || true
 PFROM=$B2c PTO=$B3 node 2d_sec.js | tee -a $LOG || true      # 미국 재무 공시(SEC) → data/sec (실패해도 계속: 재무 지표 실험만 빠짐)
 PFROM=$B2c PTO=$B3 node 2b_macro.js | tee -a $LOG || true
 PFROM=$B2c PTO=$B3 node 2e_rates.js | tee -a $LOG || true      # 미국 금리 하루 단위(FRED) → data/rates.json: 일지의 금리 판단(국채 10년 6개월 변화)에 씀. Node에서 FRED가 막히면 NODE_USE_ENV_PROXY=1
+PFROM=$B2c PTO=$B3 node 2m_flow_naver.js | tee -a $LOG || true      # 한국 수급(외국인·기관 순매수) 최근 달을 네이버로 채움 → data/nv_flow: 일지의 '외국인·기관 같은 방향이면 안 삼' 규칙에 씀(과거 달은 data/krx_flow, 2k_flow.js)
 done_ "월봉·첫날 가격·거시 지표 받기 (2/8)"
 LAST=$(date +%s)
 PFROM=$B3 PTO=$B4 node 3_build.js | tee -a $LOG

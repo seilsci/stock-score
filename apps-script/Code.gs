@@ -5,6 +5,7 @@
  * 유예: 이번 달 처음 판매 기준 이평 아래로 내려옴(하향 돌파 1개월째). 다음 달에도 아래면 매도. 판매 기준 이평 = 미국 10이평 · 한국 6이평(2026-11-27 변경, 매수 돌파와 익절 2배 기준은 10이평 그대로)
  * 매도: 하향 돌파 후 2개월째까지 계속 판매 기준 이평 아래(전전달 위 → 전달·이번 달 아래).
  *       단, 미국 국채 10년 금리가 6개월 전 달말보다 올라 있으면(FRED DGS10) 유예 없이 하향 돌파 즉시 매도
+ * 수급: 확인 매수 후보 중 한국 종목은 확인 달 외국인·기관 순매수가 같은 방향(둘 다 매수 또는 둘 다 매도)이면 후보에서 뺌(네이버 일별 투자자 매매, flowCheck_)
  * 10이평 = 최근 10개월 월말 종가 평균(이번 달은 최근 종가를 그 달 종가로 씀)
  *
  * 대상: 코스피 시총 상위 300(ETF·ETN·우선주 포함, 채권·금리·레버리지·인버스형은 제외) + 코스닥 상위 200 + 미국 상위 500 (오늘 시총 순 = 구매 시점의 시총 기준)
@@ -100,6 +101,9 @@ function updateKR() {
   var rows = [];
   list.forEach(function (s, i) { if (mons[i]) { var r = makeRow_(s, mons[i], liq); if (r) rows.push(r); } });
   T.lap('계산·점수', t);
+  t = new Date();
+  var fl = flowCheck_(rows);                                              // 수급 규칙: 확인 후보 중 외국인·기관 같은 방향인 종목은 후보에서 뺌
+  T.lap('수급확인', t); T.note(fl);
   rows.sort(function (a, b) { return b[4] - a[4]; });
   t = new Date();
   var wd = writeRows_('한국', rows);
@@ -435,6 +439,29 @@ function confirmInfo_(s, mon, liq) {
     }
   }
   return best ? best.ym + '|' + best.sc : '';
+}
+
+/* ───────── 수급 규칙(2026-11-27 채택) ─────────
+ * 확인 매수 후보(한국)의 확인 달(= 이번 달, 월 중에는 오늘까지) 외국인·기관 순매수 금액이 같은 방향(둘 다 순매수 또는 둘 다 순매도)이면 후보에서 뺌.
+ * 금액 = 네이버 일별 순매수 수량 × 그날 종가의 합(KRX 금액과 판단 일치 97~99%, tools/learn/2l_flow_naver.js). 자료를 못 받으면 그대로 둠.
+ * tools/learn/flow.js · 7_backtest.js(JOURNAL_FLOW)와 같은 규칙으로 유지할 것. 돌려주는 값: 로그용 요약 */
+function flowCheck_(rows) {
+  var idx = [];
+  rows.forEach(function (r, i) { if (r[15]) idx.push(i); });
+  if (!idx.length) return '수급: 후보 없음';
+  var bodies = fetchAll_(idx.map(function (i) { return 'https://m.stock.naver.com/api/stock/' + rows[i][1] + '/trend?pageSize=30'; }));
+  var out = [], miss = 0;
+  idx.forEach(function (i, k) {
+    var r = rows[i], ym = '';
+    try { var ch = JSON.parse(r[13]); ym = String(ch[ch.length - 1][0]); } catch (e) {}
+    var a = null; try { a = JSON.parse(bodies[k]); } catch (e) {}
+    if (!ym || !a || !a.length) { miss++; return; }
+    var fv = 0, iv = 0, days = 0;
+    a.forEach(function (x) { if (String(x.bizdate).indexOf(ym) !== 0) return; var p = num_(x.closePrice); fv += num_(x.foreignerPureBuyQuant) * p; iv += num_(x.organPureBuyQuant) * p; days++; });
+    if (!days) { miss++; return; }
+    if ((fv > 0 && iv > 0) || (fv < 0 && iv < 0)) { out.push(r[2] + '(외 ' + Math.round(fv / 1e8) + '억/기 ' + Math.round(iv / 1e8) + '억)'); r[15] = ''; }
+  });
+  return '수급: 후보 ' + idx.length + '개 중 같은 방향 ' + out.length + '개 제외' + (miss ? ', 자료 없음 ' + miss : '') + (out.length ? ' — ' + out.join(', ') : '');
 }
 
 /* 익절(2배) 상태: 월 종가가 10이평의 2배 이상이면 '도달'(트레일 중), 직전 달에 2배 이상이었는데 이번 달 2배 선 아래로 내려오면 '하락'(이번 달 말 익절 매도 신호).

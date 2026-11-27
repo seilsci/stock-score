@@ -2343,7 +2343,7 @@ function showPane(p){                          // 위쪽 탭: 매매일지(거�
 }
 document.querySelectorAll('.navtabs .ntab[data-p]').forEach(function(b){ b.onclick=function(ev){ ev.preventDefault(); showPane(b.dataset.p); }; });
 function renderAll(){
-  try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) { var fd=!!DATA.meta.firstDay; sl.textContent=fd?'이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매)':DATA.meta.strategy; var sx=document.getElementById('sell-label'); if(sx) sx.style.display=fd?'':'none'; } }catch(e){}
+  try{ var sl=document.getElementById('strat-label'); if(sl&&DATA&&DATA.meta&&DATA.meta.strategy) { var fd=!!DATA.meta.firstDay; sl.textContent=fd?('이평 돌파 후 +10%·정배열 매수'+(DATA.meta.flowRule?'(한국은 외국인·기관 같은 방향이면 제외)':'')+'(다음 달 첫날 구매)'):DATA.meta.strategy; var sx=document.getElementById('sell-label'); if(sx) sx.style.display=fd?'':'none'; } }catch(e){}
   wireMy(); if(XMODE&&!window._myb){ window._myb=1; loadBars(renderMy); } renderMy(); wireAmtInputs(); syncAmtInputs(); renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();

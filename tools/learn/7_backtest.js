@@ -2076,6 +2076,11 @@ if (JOURNAL_STRAT === 'confirm') {
   scored[kA].forEach(list => list.forEach(e => { const t = confirmTrig(e.r); if (!t) return; const ym = ymOf(t.j), r2 = Object.assign({}, e.r, { ym, exoff: null }), a = confirmMap.get(ym) || []; a.push({ r: r2, s: e.s, pnl: t.pnl, brk: e.r.ym }); confirmMap.set(ym, a); }));
   confirmMap.forEach(a => a.sort((x, y) => y.s - x.s));
 }
+// 수급 규칙(2026-11-27 채택, 묶음 35~38): 확인 달에 외국인·기관이 같은 방향(둘 다 순매수 또는 둘 다 순매도)인 한국 종목은 후보에서 뺌. 자료 없음은 그대로. 끄려면 JOURNAL_FLOW=0
+const JOURNAL_FLOW = process.env.JOURNAL_FLOW !== '0', FLOW = JOURNAL_FLOW ? require('./flow').load(DATA) : null, flowOut = new Map();
+const flowSame = (y, ym) => FLOW && /\.(KS|KQ)$/.test(y) ? FLOW.same(y.slice(0, 6), ym) : null;
+if (FLOW) confirmMap.forEach((a, ym) => { const kept = a.filter(e => flowSame(e.r.y, ym) !== true); if (kept.length < a.length) flowOut.set(ym, a.length - kept.length); confirmMap.set(ym, kept); });
+if (FLOW) { let tot = 0, nvM = 0; flowOut.forEach(v => { tot += v; }); confirmMap.forEach((a, ym) => { if (FLOW.src(ym) === 'naver') nvM++; }); console.log(`\n수급 규칙: 외국인·기관 같은 방향인 한국 후보 ${tot}건 제외(${flowOut.size}개월) · 네이버 자료로 판단한 달 ${nvM}개`); }
 const jCand = JOURNAL_STRAT === 'confirm' ? (ym => confirmMap.get(ym) || []) : (ym => scored[kA].get(ym) || []);
 const JOURNAL_EXIT_MA = process.env.JOURNAL_EXIT_MA || 'kr6us10';        // 판매 기준 이평: kr6us10 = 한국 6이평 · 미국 10이평(2026-11-27 채택, 익절 트레일·후보 풀은 10이평 그대로), ma10 = 예전 방식
 const journalExitMa = JOURNAL_EXIT_MA === 'kr6us10' ? { exitMaFn: (h, k) => maAtJ(h.px, k, /\.(KS|KQ)$/.test(h.y) ? 6 : 10) } : {};
@@ -2083,7 +2088,7 @@ const journalSim = simulate(ym => jCand(ym).slice(0, 4), 4, C1, { tpTrail: 2, gr
 const listData = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const nameMap = new Map(listData.map(s => [s.y, { name: s.name, market: s.mk, code: s.code }]));
 const journal = {
-  meta: { strategy: JOURNAL_STRAT === 'confirm' ? '10이평 돌파 후 +10% 이상 + 5>10>20 정배열 매수 · tp2x트레일 · 한국 6이평/미국 10이평 이탈 금리유예2달 · 다음 달 첫날 구매' : 'A4 tp2x트레일+금리유예2달', firstDay: JOURNAL_STRAT === 'confirm', dep: 1000000, made: new Date().toISOString() },
+  meta: { flowRule: JOURNAL_FLOW, strategy: JOURNAL_STRAT === 'confirm' ? '10이평 돌파 후 +10% 이상 + 5>10>20 정배열 매수' + (JOURNAL_FLOW ? '(외국인·기관 같은 방향인 한국 종목 제외)' : '') + ' · tp2x트레일 · 한국 6이평/미국 10이평 이탈 금리유예2달 · 다음 달 첫날 구매' : 'A4 tp2x트레일+금리유예2달', firstDay: JOURNAL_STRAT === 'confirm', dep: 1000000, made: new Date().toISOString() },
   features: F,
   trades: (journalSim.trades || []).map(t => ({
     y: t.y, name: nameMap.get(t.y)?.name || t.y, market: nameMap.get(t.y)?.market || '',
