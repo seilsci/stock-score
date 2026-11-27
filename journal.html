@@ -1748,7 +1748,7 @@ function renderPlanView(){
         html+='<div class="lr cand clk"><div class="lr-h" data-g="'+gi+'"><span class="lr-k">후보</span><div style="min-width:0"><div class="lr-n">'+esc(c.name)+(c.us?' <span class="lr-b">미국</span>':'')+'</div></div><div class="lr-a">'+pxS(c.px,c.us)+'</div></div>'
           +'<div class="lr-s lr-d" data-g="'+gi+'">점수 <span class="lr-sc" data-candsc="'+esc(c.y)+'">'+sc+'</span> <span class="meta">'+(c.brk?'돌파 '+fmt(c.brk)+' · ':'')+'눌러서 이유 보기</span></div><div class="lr-c"><div class="fold-bar"><button type="button" class="fold-b" data-fold="row">그래프 접기</button></div><canvas></canvas></div></div>';
       });
-    } else html+='<div class="sum-note" style="margin:8px 4px 0"><b>다음 달 첫날 구매 후보</b> (이번 달 말에 확정되면 삽니다): 시트(Apps Script)가 확인 매수 후보를 아직 내려주지 않아 표시할 수 없습니다. 최신 Apps Script로 업데이트하면 여기에 나옵니다.</div>';
+    } else html+='<div class="sum-note" style="margin:8px 4px 0"><b>다음 달 첫날 구매 후보</b> (이번 달 말에 확정되면 삽니다): 시트(Apps Script)가 매수 후보를 아직 내려주지 않아 표시할 수 없습니다. 최신 Apps Script로 업데이트하면 여기에 나옵니다.</div>';
   }
   if(P.watch.length) html+='<div class="sum-note" style="margin:6px 4px 0">유예 중: '+P.watch.map(function(w){ return esc(w.name); }).join(', ')+' — 이번 달 처음 판매 기준 이평(한국 6·미국 10) 아래로 내려왔고, 월말에도 아래면 다음 달에 판매됩니다.</div>';
   list.innerHTML=html;
