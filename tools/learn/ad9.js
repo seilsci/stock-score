@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36)) {
+  if (on(35) || on(36) || on(37)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1446,6 +1446,36 @@ function build(c, which) {
       const PRI = { SB: 0, BS: 1, SS: 2, BB: 3 };
       X('C 순서', '같은 점수 순 안에서 외국인 매도·기관 매수 > 외국인 매수·기관 매도 > 둘 다 매도 > 둘 다 매수 순(미국·자료 없음은 가운데)', m => wrap(m, a => a.map((e, i) => [e, i, (() => { const g = grp(e.r.y, e.cj); return g == null ? 1.5 : PRI[g]; })()]).sort((x, y) => x[2] - y[2] || x[1] - y[1]).map(x => x[0])));
       posts.push(() => { post35('36'); post12('36-', '36 수급 확인'); });
+    }
+    if (on(37)) {                                                              // ═════ 묶음 37: 36의 '엇갈린 종목만'(외국인·기관이 같은 방향이면 제외)이 튼튼한지 — 문턱·기간 이웃, 큰 수익 종목 빼기, 같은 비율 무작위 제외 대조
+      PFX = '37';
+      const rI = (y, k, who, n) => { let t = 0, d = 0; for (let q = 0; q < n; q++) { const a = rowOf(y, k - q, who); if (a) { t += a[1]; d += a[2] + a[3]; } } return d > 0 ? t / d : 0; };     // n개월 매수 우위 비율(거래 없으면 0)
+      const same = (t, n = 1) => (y, k) => { if (!has(y, k)) return null; const a = rI(y, k, 'f', n), b = rI(y, k, 'i', n); return (a > t && b > t) || (a < -t && b < -t); };   // 외국인·기관이 같은 방향(문턱 t 넘게)
+      const two = (name, cand, o = {}) => { add(S(o.sec || '기준'), '10이평 · ' + name, { cand, rule: rule10, ...(o.tag || {}) }); add(S(o.sec || '기준'), '한국6·미국10 · ' + name, { cand, rule: rule10, o: { exitMaFn: KR6 }, ...(o.tag ? { ...o.tag, k6: 1 } : {}) }); };
+      two('기준', candOf(mBase));
+      [0, 0.01, 0.02, 0.05, 0.1].forEach(t => two(`같은 방향(둘 다 매수 우위 비율 ±${t * 100}% 넘게)이면 제외 · 1개월`, drop(same(t))(mBase), { sec: 'A 문턱' }));
+      [2, 3].forEach(n => two(`같은 방향이면 제외 · 최근 ${n}개월 합`, drop(same(0, n))(mBase), { sec: 'B 기간' }));
+      // C 큰 수익 종목 빼기(규칙마다 기준 거래 수익 상위 K종목을 후보에서 뺀 뒤 기준 vs 엇갈린 종목만)
+      [['10이평', {}], ['한국6·미국10', { exitMaFn: KR6 }]].forEach(([rn, eo]) => {
+        const base = candOf(mBase), tr = simulate(ym => base(ym).slice(0, 4), 4, C1, { ...simOpt(rule10, eo), cand: base, log: true }, DEP).trades.filter(t => t.ret != null && t.y);
+        const seen = new Set(), tops = []; tr.slice().sort((a, b) => b.ret - a.ret).forEach(t => { if (!seen.has(t.y)) { seen.add(t.y); tops.push(t.y); } });
+        posts.push(() => { log(''); log(`## 37-C ${rn} 기준 거래 수익 상위 종목: ` + tops.slice(0, 10).join(', ')); });
+        [0, 3, 5, 10].forEach(K => { const ex = new Set(tops.slice(0, K)), f = c => ym => c(ym).filter(e => !ex.has(e.r.y)), tg = K ? `수익 상위 ${K}종목 뺌` : '전체 종목';
+          add(S('C 큰 수익 종목 빼기'), `${rn} · ${tg} · 기준`, { cand: f(base), rule: rule10, o: eo, cK: K, cR: rn, cKind: 'b' });
+          add(S('C 큰 수익 종목 빼기'), `${rn} · ${tg} · 엇갈린 종목만`, { cand: f(drop(same(0))(mBase)), rule: rule10, o: eo, cK: K, cR: rn, cKind: 'x' }); });
+      });
+      // D 대조: 같은 비율의 한국 후보를 무작위로 빼면?(빼는 것 자체의 효과인지 확인) — 씨앗 5개
+      let nK = 0, nX = 0; mBase.forEach(a => a.forEach(e => { if (isKR(e.r.y) && has(e.r.y, e.cj)) { nK++; if (same(0)(e.r.y, e.cj)) nX++; } }));
+      const frac = nK ? nX / nK : 0;
+      posts.push(() => { log(''); log(`## 37-D 같은 방향(제외 대상) 비율: 수급 있는 한국 후보 ${nK}건 중 ${nX}건(${(frac * 100).toFixed(0)}%) → 같은 비율로 무작위 제외`); });
+      [1, 2, 3, 4, 5].forEach(sd => two(`무작위로 한국 후보 ${(frac * 100).toFixed(0)}% 제외(씨앗 ${sd})`, drop((y, k) => has(y, k) ? hash01(y + '|' + k + '|r' + sd) < frac : null)(mBase), { sec: 'D 무작위 대조', tag: { rnd: 1 } }));
+      posts.push(() => { post12('37-', '37 엇갈린 종목 튼튼한가');
+        safe('37 요약', () => {
+          log(''); log('## 37-C 큰 수익 종목을 빼도 엇갈린 종목만의 이득이 남는가 (연평균 · 기준 대비)');
+          ['10이평', '한국6·미국10'].forEach(rn => log(rn + ': ' + [0, 3, 5, 10].map(K => { const b = V.find(v => v.cR === rn && v.cK === K && v.cKind === 'b'), x = V.find(v => v.cR === rn && v.cK === K && v.cKind === 'x'); return b && x ? `${K ? K + '종목 뺌' : '전체'} 기준 ${pc(b.full.cagr)} → ${pc(x.full.cagr)} (${((x.full.cagr - b.full.cagr) * 100 >= 0 ? '+' : '') + ((x.full.cagr - b.full.cagr) * 100).toFixed(1)}%p)` : '-'; }).join(' · ')));
+          const rs = V.filter(v => v.rnd && v.full); ['10이평', '한국6·미국10'].forEach(rn => { const a = rs.filter(v => v.name.startsWith(rn + ' ')).map(v => v.full.cagr); if (a.length) log(`## 37-D ${rn} 무작위 제외 ${a.length}번: 평균 ${pc(mean(a))} · 최소 ${pc(Math.min(...a))} · 최대 ${pc(Math.max(...a))}`); });
+        });
+      });
     }
   }
 
