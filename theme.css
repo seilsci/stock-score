@@ -34,3 +34,6 @@ h1.one{display:table;margin-left:auto;margin-right:auto;text-align:center}
 /* 맨 위 탭 줄(종목·매매일지·수익률·백테스트): 스크롤해도 화면 맨 위에 고정 */
 .navtabs{position:sticky;top:0;z-index:40;background:var(--bg) !important}
 div.navtabs:not(.tabs){margin:-16px -16px 12px !important;padding:10px 16px 0 !important;border-bottom:1px solid var(--line)}
+#fab-ud{position:fixed;right:12px;z-index:45;display:flex;flex-direction:column;gap:8px}
+#fab-ud button{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:15px;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.18);opacity:.92;padding:0;cursor:pointer}
+#fab-ud button.off{opacity:.35}
