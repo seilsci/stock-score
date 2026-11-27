@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39) || on(40)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1458,19 +1458,26 @@ function build(c, which) {
       });
       posts.push(() => post12('39-', '39 매도 대금 나눠 넣기'));
     }
-    if (on(40)) {                                                              // ═════ 묶음 40: 후보 전 종목에 100만원씩(점수·4종목 제한 없이) vs 지금(점수 상위 4) — 거래마다 100만원 기준 누적·연평균(IRR)
-      PFX = '40';
+    if (on(40) || on(41)) {                                                    // ═════ 묶음 40: 후보 전 종목에 100만원씩(점수·4종목 제한 없이) vs 지금(점수 상위 4) — 거래마다 100만원 기준 누적·연평균(IRR)
+      PFX = on(41) ? '41' : '40'; const B41 = on(41);
       const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
       const flowOK = drop(isSame)(mBase), allC = candOf(mBase);
       const V40 = [
         ['지금 규칙 · 점수 상위 4(기준, 장부와 같은 방식)', flowOK, { exitMaFn: KR6 }, false],
         ['지금 규칙 · 후보 전부 100만원씩(한국6·미국10+수급)', flowOK, { exitMaFn: KR6 }, true],
-        ['후보 전부 100만원씩 · 수급 규칙 없이(한국6·미국10)', allC, { exitMaFn: KR6 }, true],
-        ['후보 전부 100만원씩 · 10이평 판매·수급 없이', allC, {}, true],
       ];
+      if (!B41) V40.push(['후보 전부 100만원씩 · 수급 규칙 없이(한국6·미국10)', allC, { exitMaFn: KR6 }, true], ['후보 전부 100만원씩 · 10이평 판매·수급 없이', allC, {}, true]);
+      if (B41) {                                                               // 묶음 41: 점수 하위를 빼고 나머지 후보 전부 100만원씩(점수는 손실 피하기에 일한다는 묶음 40 결과 확인)
+        const byRank = q => ym => { const a = [...flowOK(ym)].sort((x, y) => y.s - x.s); return a.slice(0, Math.ceil(a.length * (1 - q))); };
+        const allS = []; for (const [ym] of mBase) for (const e of flowOK(ym)) allS.push(e.s); allS.sort((a, b) => a - b);
+        const byAbs = q => { const th = allS[Math.floor(allS.length * q)]; return ym => flowOK(ym).filter(e => e.s >= th); };
+        [0.1, 0.2, 0.3, 0.5, 0.7].forEach(q => V40.push([`그달 후보 중 점수 하위 ${q * 100}% 빼고 전부 100만원씩`, byRank(q), { exitMaFn: KR6 }, true]));
+        [0.2, 0.3, 0.5].forEach(q => V40.push([`전체 기간 점수 분포 하위 ${q * 100}% 빼고 전부 100만원씩`, byAbs(q), { exitMaFn: KR6 }, true]));
+        V40.push(['대조: 그달 후보 중 점수 상위 50% 빼고(하위만) 전부 100만원씩', ym => { const a = [...flowOK(ym)].sort((x, y) => x.s - y.s); return a.slice(0, Math.ceil(a.length * 0.5)); }, { exitMaFn: KR6 }, true]);
+      }
       posts.push(() => safe('40 전 종목', () => {
         const irr = fl => { let lo = -0.9, hi = 1; const npv = r => { let t = 0; for (const [k, v] of fl) t += v / Math.pow(1 + r, k); return t; }; for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (npv(m) > 0) lo = m; else hi = m; } return Math.pow(1 + lo, 12) - 1; };
-        log(''); log('## 40 후보 전 종목 100만원씩 — 거래마다 100만원(비용·한국 거래세 포함, 미국 양도세는 매도 연도별 250만원 공제 후 22%, 환율 변동 제외), 아직 보유 중인 종목은 마지막 달 종가로 평가');
+        log(''); log('## ' + PFX + ' 후보 전 종목 100만원씩 — 거래마다 100만원(비용·한국 거래세 포함, 미국 양도세는 매도 연도별 250만원 공제 후 22%, 환율 변동 제외), 아직 보유 중인 종목은 마지막 달 종가로 평가');
         log('방식                                                     거래 수  보유중  이긴 거래  평균    중앙값   누적(투입 대비)  연평균(IRR)  동시 보유 최대  투입 합계 | 같은 날짜에 지수로: 누적  연평균  지수보다 나은 거래');
         const RES40 = [];
         for (const [nm, cand, o, all] of V40) {
@@ -1493,14 +1500,15 @@ function build(c, which) {
           const fl2 = new Map(), addI = (k, v) => fl2.set(k - k0, (fl2.get(k - k0) || 0) + v); ixRows.forEach(x => { addI(x.b, -1e6); addI(x.s, 1e6 * (1 + x.ir)); });
           const ixProf = ixRows.reduce((a, x) => a + x.ir, 0) / ixRows.length, beat = ixRows.filter(x => x.r > x.ir).length / ixRows.length;
           log(`${nm.slice(0, 54).padEnd(54)} ${String(tr.length).padStart(6)}  ${String(n - tr.length).padStart(5)}  ${(rs.filter(x => x > 0).length / n * 100).toFixed(0).padStart(7)}%  ${pc(rs.reduce((a, b) => a + b, 0) / n).padStart(7)}  ${pc(rs[Math.floor(n / 2)]).padStart(7)}  ${pc(prof / inv).padStart(12)}  ${pc(irr([...fl])).padStart(10)}  ${String(maxC).padStart(10)}종목  ${(inv / 1e8).toFixed(2)}억 | ${pc(ixProf).padStart(7)}  ${pc(irr([...fl2])).padStart(7)}  ${(beat * 100).toFixed(0)}%`);
-          if (all) { const byY = {}; rows.forEach(x => { const Y = Math.floor((x.s - 1) / 12); const o = byY[Y] || (byY[Y] = { n: 0, r: 0, ir: 0 }); o.n++; o.r += x.r; const q = ixR(x); o.ir += q == null ? 0 : q; });
+          { const big = rows.filter(x => x.r >= 1).length, loss = rows.filter(x => x.r <= -0.2).length; log(`   큰 손실(−20% 이하) ${(loss / n * 100).toFixed(1)}% · 대박(+100% 이상) ${(big / n * 100).toFixed(1)}% · 지수 대비 연 ${((irr([...fl]) - irr([...fl2])) * 100).toFixed(1)}%p`); }
+          if (all && !B41) { const byY = {}; rows.forEach(x => { const Y = Math.floor((x.s - 1) / 12); const o = byY[Y] || (byY[Y] = { n: 0, r: 0, ir: 0 }); o.n++; o.r += x.r; const q = ixR(x); o.ir += q == null ? 0 : q; });
             log('   매도 연도별 거래당 평균(전략 / 지수): ' + Object.keys(byY).sort().map(Y => `${Y} ${(byY[Y].r / byY[Y].n * 100).toFixed(0)}/${(byY[Y].ir / byY[Y].n * 100).toFixed(0)}%(${byY[Y].n})`).join(' · '));
             { const bg = {}; rows.forEach(x => { const Y = Math.floor((x.s - 1) / 12); const o = bg[Y] || (bg[Y] = { n: 0, b50: 0, b100: 0, rest: [] }); o.n++; if (x.r >= 1) o.b100++; if (x.r >= 0.5) o.b50++; else o.rest.push(x.r); });
               log('   매도 연도별 대박(+50%↑/+100%↑ 거래 수) · 대박 뺀 거래 평균: ' + Object.keys(bg).sort().map(Y => `${Y} ${bg[Y].b50}/${bg[Y].b100} · ${bg[Y].rest.length ? (bg[Y].rest.reduce((a, b) => a + b, 0) / bg[Y].rest.length * 100).toFixed(0) : '-'}%`).join(' | '));
               const yrs = Object.keys(bg); log(`   +100% 거래가 있었던 해 ${yrs.filter(Y => bg[Y].b100 > 0).length}/${yrs.length}년 · +50% 거래가 있었던 해 ${yrs.filter(Y => bg[Y].b50 > 0).length}/${yrs.length}년`); }
             const srt = rows.map(x => x.r).sort((a, b) => b - a), tot = srt.reduce((a, b) => a + b, 0); log(`   상위 10% 거래가 이익 합계에서 차지하는 몫 ${(srt.slice(0, Math.ceil(srt.length / 10)).reduce((a, b) => a + b, 0) / tot * 100).toFixed(0)}% · 상위 10종목 빼면 거래당 평균 ${pc((tot - srt.slice(0, 10).reduce((a, b) => a + b, 0)) / (srt.length - 10))}`); }
         }
-        safe('40 놓친 대박', () => {                                          // ① 점수가 놓친 대박: 후보 전부(지금 규칙)의 +100% 거래 중 상위 4가 같은 종목을 같은 달에 산 비율 ② 규칙이 놓친 대박: 한 해 2배 넘게 오른 종목(돌파 신호가 있던 종목) 중 그해 +50% 넘게 잡은 비율
+        if (!B41) safe('40 놓친 대박', () => {                                          // ① 점수가 놓친 대박: 후보 전부(지금 규칙)의 +100% 거래 중 상위 4가 같은 종목을 같은 달에 산 비율 ② 규칙이 놓친 대박: 한 해 2배 넘게 오른 종목(돌파 신호가 있던 종목) 중 그해 +50% 넘게 잡은 비율
           const top = RES40[0], allR = RES40[1]; if (!top || !allR) return;
           const key = x => x.y + '|' + x.b, topSet = new Set(top.rows.map(key));
           const big = allR.rows.filter(x => x.r >= 1), got = big.filter(x => topSet.has(key(x)));
