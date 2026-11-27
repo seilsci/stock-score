@@ -1310,7 +1310,7 @@ function renderRetChart(){
     var rows=[[useMy?'내 수익률':'전략',fg,vals[i]]].concat(BENCH?BK.map(function(k){ return [BN[k],BC[k],bv[k][i]]; }):[]);
     yTipShow(e, Y+'년 '+(i+1)+'월 수익률', rows, '', ['','수익률']);
   };
-  cv.onpointermove=tipMonth; cv.onpointerdown=tipMonth; cv.onpointerleave=function(e){ if(e.pointerType!=='touch') yTipHide(); };
+  cv.onpointermove=tipMonth; cv.onpointerdown=tipMonth; 
 }
 window.addEventListener('resize',function(){ if(LED && SEL_YM) renderRetChart(); });
 
@@ -1363,32 +1363,27 @@ function renderCumChart(){
     var rows=keys.map(function(k){ return [k==='st'?'전략':BN[k], col(k), pts[k][i]/pts[k][i-1]-1, '', pts[k][i]-1]; });
     yTipShow(e, years[i-1]+'년', rows, partial.indexOf(years[i-1])>=0?'12개월이 안 되는 해':'', ['','그 해','누적']);
   };
-  cv.onpointermove=tipCum; cv.onpointerdown=tipCum; cv.onpointerleave=function(e){ if(e.pointerType!=='touch') yTipHide(); };
+  cv.onpointermove=tipCum; cv.onpointerdown=tipCum; 
 }
 window.addEventListener('resize',function(){ if(LED && SEL_YM) renderCumChart(); });
 
 /* ── 연도별 그래프 위에 마우스를 올리거나 누르면 그 해의 전략·코스피·S&P500·나스닥100 수치를 말풍선으로 보여 줌 ── */
 var YTIP_T=null;
-function yTipHide(){ var t=document.getElementById('ytip'); if(t) t.style.display='none'; }
+function yTipHide(){ document.querySelectorAll('.yinfo').forEach(function(d){ d.style.display='none'; }); }
 function yTipShow(e, title, rows, note, head){                              // rows: [[이름, 색, 수익률(없으면 null), 보조글, 누적(없으면 생략)]], head: 열 제목(예: ['','그 해','누적'])
-  var t=document.getElementById('ytip');
-  if(!t){ t=document.createElement('div'); t.id='ytip'; t.style.cssText='position:fixed;z-index:60;pointer-events:none;display:none;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.18)'; document.body.appendChild(t); }
+  // 그래프를 가리지 않게 그래프 바로 아래 정보칸에 표시(종목 차트와 같은 방식) — 다른 그래프를 짚으면 이전 칸은 닫음
+  var cv=(e.target&&e.target.tagName==='CANVAS')?e.target:document.getElementById('yc');
+  document.querySelectorAll('.yinfo').forEach(function(d){ if(d!==cv._yinfo) d.style.display='none'; });
+  if(!cv._yinfo||!cv._yinfo.isConnected){ cv._yinfo=document.createElement('div'); cv._yinfo.className='cinfo yinfo'; cv.insertAdjacentElement('afterend',cv._yinfo); }
+  var t=cv._yinfo;
   var cum=rows.some(function(r){ return r[4]!==undefined; }), td='padding:2px 0 2px 14px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap';
   var num=function(v){ return v==null?'<span style="color:var(--mut)">-</span>':'<b style="color:'+(v>=0?'var(--buy)':'var(--sell)')+'">'+pc(v)+'</b>'; };
-  t.innerHTML='<div style="font-weight:700;margin-bottom:3px">'+title+'</div><table style="border-collapse:collapse">'
+  t.innerHTML='<div style="font-weight:700;margin-bottom:3px">'+title+'</div><table style="border-collapse:collapse;width:100%">'
     +(head?'<tr style="color:var(--mut);font-size:11px"><td></td>'+head.slice(1).map(function(h){ return '<td style="'+td+'">'+h+'</td>'; }).join('')+'</tr>':'')
     +rows.map(function(r){
       return '<tr><td style="padding:2px 0;white-space:nowrap"><i style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:'+r[1]+'"></i>'+r[0]+(r[3]?'<span style="color:var(--mut);font-size:11px"> '+r[3]+'</span>':'')+'</td><td style="'+td+'">'+num(r[2])+'</td>'+(cum?'<td style="'+td+'">'+num(r[4])+'</td>':'')+'</tr>';
     }).join('')+'</table>'+(note?'<div style="color:var(--mut);font-size:11px;margin-top:3px">'+note+'</div>':'');
   t.style.display='block';
-  var vw=Math.min(window.innerWidth, document.documentElement.clientWidth||window.innerWidth, window.visualViewport?window.visualViewport.width:9999), vh=window.innerHeight;
-  var w=t.offsetWidth, h=t.offsetHeight, touch=e.pointerType==='touch';
-  var cr=(e.target&&e.target.tagName==='CANVAS'?e.target:document.getElementById('yc')).getBoundingClientRect();
-  var x=Math.max(6,Math.min(vw-w-6,e.clientX-w/2)), y=cr.top-h-6;        // 그래프 위에(선·막대를 가리지 않게), 자리가 없으면 그래프 아래에
-  if(y<6) y=cr.bottom+6;
-  if(y+h>vh-6) y=Math.max(6,cr.top-h-6);
-  t.style.left=x+'px'; t.style.top=y+'px';
-  // 터치는 손을 떼도 유지: 다른 곳을 누를 때까지 보임(그래프 안을 다시 누르면 그 해로 바뀜)
 }
 if(!window._ytipOut){ window._ytipOut=1; document.addEventListener('pointerdown',function(e){ if(e.target&&(e.target.id==='yc'||e.target.id==='cc'||e.target.id==='rc')) return; yTipHide(); }); }
 
@@ -1453,7 +1448,7 @@ function renderYearChart(){
     var rows=[['전략',fg,ys[y]-1,'']].concat(BENCH?BK.map(function(k){ return [BN[k],BC[k],bys[k][y]!=null?bys[k][y]-1:null,(bcnt[k][y]&&bcnt[k][y]<12)?bcnt[k][y]+'개월':'']; }):[]);
     yTipShow(e, y+'년 수익률', rows, cnt[y]<12?'12개월이 안 되는 해('+cnt[y]+'개월)':'', ['','수익률']);
   };
-  cv.onpointermove=tipYear; cv.onpointerdown=tipYear; cv.onpointerleave=function(e){ if(e.pointerType!=='touch') yTipHide(); };
+  cv.onpointermove=tipYear; cv.onpointerdown=tipYear; 
 }
 window.addEventListener('resize',function(){ if(LED && SEL_YM) renderYearChart(); });
 

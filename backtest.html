@@ -54,7 +54,7 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 #oy-c{width:100%;height:auto;display:block;touch-action:pan-y;font-family:inherit}
 #oy-c text{font-size:10px;fill:var(--mut);font-variant-numeric:tabular-nums}
 .oy-lg2{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;margin-top:4px}.oy-lg2 i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}.oy-lg2 b{margin-left:3px}
-#oy-tip{position:fixed;z-index:60;pointer-events:none;display:none;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+#oy-tip{display:none;margin-top:6px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.5}#oy-tip table{width:100%}
 #oy-tip td{padding:2px 0 2px 14px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}#oy-tip td:first-child{padding-left:0;text-align:left}
 .oy-s{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 .oy-s div{border:1px solid var(--line);padding:8px}.oy-s span{display:block;font-size:11px;color:var(--mut)}
@@ -176,6 +176,7 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
   <div class="bt-oy">
     <div class="oy-t">2005~2011 누적 수익률 <small>점을 누르면 그 해 수치</small></div>
     <svg id="oy-c" viewBox="0 0 360 210" role="img" aria-label="2005~2011 누적 수익률 꺾은선"></svg>
+    <div id="oy-tip"></div>
     <div class="oy-lg2" id="oy-lg"></div>
     <div class="oy-s">
       <div><span>연평균 2005~2011</span><b>+8.5%</b><small>코스피 +10.7 · S&amp;P +0.5 · 나스닥 +5.0</small></div>
@@ -304,7 +305,7 @@ x26:{t:'ETF 빼기 · 같은 지수 ETF 하나만',w:'2026-11-26~27 · PC',r:[['
   });
   sv.innerHTML=h;
   document.getElementById('oy-lg').innerHTML=S.map(function(r){ var e=r[3][7]; return '<span><i style="background:'+r[1]+'"></i>'+r[0]+'<b style="color:'+col(e)+'">'+fmt(e)+'</b></span>'; }).join('')+'<span style="color:var(--mut);margin-left:auto">2005~2011 누적</span>';
-  var tip=document.createElement('div'); tip.id='oy-tip'; document.body.appendChild(tip);
+  var tip=document.getElementById('oy-tip');
   var hl=document.getElementById('oy-hl'), cur=-1;
   function show(e){
     var r=sv.getBoundingClientRect(), vx=(e.clientX-r.left)/r.width*360, i=Math.round((vx-L)/((R-L)/YS.length));
@@ -313,18 +314,11 @@ x26:{t:'ETF 빼기 · 같은 지수 ETF 하나만',w:'2026-11-26~27 · PC',r:[['
     tip.innerHTML='<div style="font-weight:700;margin-bottom:3px">'+YS[i-1]+'년'+(YS[i-1]===2009?' <span style="color:var(--mut);font-weight:400;font-size:11px">반등을 놓친 해</span>':'')+'</div><table style="border-collapse:collapse"><tr style="color:var(--mut);font-size:11px"><td></td><td>그 해</td><td>누적</td></tr>'+
       S.map(function(s2){ var a=s2[2][i-1], c=s2[3][i]; return '<tr><td><i style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:'+s2[1]+'"></i>'+s2[0]+'</td><td><b style="color:'+col(a)+'">'+fmt(a)+'</b></td><td><b style="color:'+col(c)+'">'+fmt(c)+'</b></td></tr>'; }).join('')+'</table>';
     tip.style.display='block';
-    var vw=document.documentElement.clientWidth, tw=tip.offsetWidth, th=tip.offsetHeight;
-    var x=Math.max(6,Math.min(vw-tw-6,e.clientX-tw/2)), y=r.top-th-6;           // 그래프 위에 — 자리가 없으면 그래프 아래에(선을 가리지 않게)
-    if(y<6) y=r.bottom+6;
-    if(y+th>window.innerHeight-6) y=Math.max(6,r.top-th-6);
-    tip.style.left=x+'px'; tip.style.top=y+'px';
   }
   function hide(){ tip.style.display='none'; hl.setAttribute('opacity',0); cur=-1; }
   sv.addEventListener('pointermove',function(e){ if(e.pointerType!=='touch') show(e); });
   sv.addEventListener('pointerdown',show);
-  sv.addEventListener('pointerleave',function(e){ if(e.pointerType!=='touch') hide(); });
-  document.addEventListener('pointerdown',function(e){ if(!sv.contains(e.target)) hide(); });
-  window.addEventListener('scroll',function(){ if(cur>0) hide(); },{passive:true});
+  document.addEventListener('pointerdown',function(e){ if(!sv.contains(e.target)&&!tip.contains(e.target)) hide(); });
 })();
 </script>
 </body>
