@@ -59,6 +59,16 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 .bt-ls{margin:0;padding:0;list-style:none}
 .bt-ls li{background:var(--card);border:1px solid var(--line);padding:9px 12px;margin:0 0 6px;font-size:13px;line-height:1.6}
 .bt-ls li b{color:var(--acc)}
+.bt-ev,.bt-x{cursor:pointer}.bt-ev:hover,.bt-x:hover{outline:1px solid var(--fg)}
+.bt-ev:after,.bt-x:after{content:'자세히 ›';position:absolute;right:10px;bottom:8px;font-size:10.5px;color:var(--mut)}.bt-x{position:relative;padding-bottom:20px}
+#bt-m{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:none;align-items:flex-end;justify-content:center}
+#bt-m.on{display:flex}
+#bt-b{background:var(--card);width:100%;max-width:680px;max-height:82vh;overflow:auto;padding:14px 16px 20px;border-top:3px solid var(--fg)}
+#bt-b h2{font-size:16px;margin:0 28px 2px 0}#bt-b .w{font-size:11.5px;color:var(--mut);margin-bottom:10px}
+#bt-x{position:sticky;top:0;float:right;border:none;background:none;font-size:20px;cursor:pointer;color:var(--fg)}
+.bt-dt{width:100%;border-collapse:collapse;font-size:12.5px}.bt-dt th,.bt-dt td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.bt-dt th{font-size:11px;color:var(--mut);font-weight:600}.bt-dt td:nth-child(2){font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}.bt-dt td:nth-child(3){color:var(--mut);font-size:11.5px}
+#bt-b .c{margin:12px 0 0;padding:10px 12px;background:var(--chip);font-size:13px;line-height:1.6}
 .bt-foot{text-align:center;font-size:11.5px;color:var(--mut);margin:20px 0 0}
 @media(max-width:380px){.bt-grid{grid-template-columns:minmax(0,1fr)}.bt-bar{grid-template-columns:96px 1fr 48px}}
 </style>
@@ -69,7 +79,7 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 <main>
   <div class="navtabs"><a class="ntab" href="index.html">📈 종목</a><a class="ntab" href="journal.html#log">📒 매매일지</a><a class="ntab" href="journal.html#ret">📊 수익률</a><a class="ntab on" href="backtest.html">🧪 백테스트</a></div>
   <h1>백테스트 일지</h1>
-  <div class="bt-sub">2026년 11월까지 · 시험 약 300번 · <b style="color:var(--ok)">채택 8</b> · <b style="color:var(--no)">탈락 40여 가지</b> · 월 100만원 적립 시뮬레이션(비용·세금 반영)</div>
+  <div class="bt-sub">2026년 11월까지 · 시험 약 300번 · <b style="color:var(--ok)">채택 8</b> · <b style="color:var(--no)">탈락 40여 가지</b> · 카드를 누르면 자세한 기록 · 월 100만원 적립 시뮬레이션(비용·세금 반영)</div>
 
   <div class="bt-h"><span class="dot" style="background:var(--fg)"></span>한눈에 보기</div>
   <div class="bt-kpi">
@@ -90,50 +100,50 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 
   <div class="bt-h"><span class="dot" style="background:var(--ok)"></span>채택한 것<em>지금 규칙에 들어간 변경</em></div>
   <div class="bt-tl">
-    <div class="bt-ev"><div class="d">2026-11-25</div><strong>돌파 후 +10%·정배열에 산다</strong><p>돌파하자마자 사지 않고, 돌파 다음 달 시가보다 +10% 오르고 5&gt;10&gt;20 정배열이 될 때 다음 달 첫날 삼.</p><span class="ef">두 종목 범위 모두에서 기존보다 나음</span></div>
-    <div class="bt-ev"><div class="d">2026-11-25</div><strong>금리가 오르면 바로 판다</strong><p>미국 국채 10년 금리가 6개월 전보다 높으면 이평 아래로 내려온 즉시 매도(유예 없음).</p><span class="ef">+2.5~4.1%p · 절반씩 나눈 종목에서도 100% 우위</span></div>
-    <div class="bt-ev"><div class="d">2026-11-25</div><strong>그 시점 시총 상위만 본다</strong><p>매달 그때의 시총 상위(코스피 300·코스닥 200·미국 500)만 후보. 사이트 목록과 같은 기준.</p><span class="ef">오늘 목록으로 과거를 보는 착시 제거</span></div>
-    <div class="bt-ev"><div class="d">2026-11-26</div><strong>같은 회사는 하나만</strong><p>보통주·우선주, Class A/B, 한국 원주·미국 ADR은 한 번에 하나만.</p><span class="ef">현실과 맞추기(성과 영향 작음)</span></div>
-    <div class="bt-ev"><div class="d">2026-11-26</div><strong>12월 구매 전 양도세를 떼어 둔다</strong><p>그해 미국 주식 이익의 양도세를 먼저 빼 두고 남은 돈으로 12월 1일 구매.</p><span class="ef">연말에 억지로 팔 일 없음</span></div>
-    <div class="bt-ev"><div class="d">2026-11-26</div><strong>이상한 첫날 가격은 건너뛴다</strong><p>첫날 가격이 그달 월봉 범위를 벗어나면(액면 조정 어긋남) 다음 순위 종목을 삼.</p><span class="ef">가짜 −85% 거래 제거</span></div>
-    <div class="bt-ev"><div class="d">2026-11-27</div><strong>판매 기준: 한국 6이평 · 미국 10이평</strong><p>매수 돌파는 10이평 그대로, 팔 때만 한국은 더 빠른 6이평.</p><span class="ef">+23.5% → +25.9% · 14년 중 14년 우위</span></div>
-    <div class="bt-ev"><div class="d">2026-11-27</div><strong>🇰🇷 외국인·기관 수급이 엇갈릴 때만 산다</strong><p>확인 달에 외국인·기관이 둘 다 샀거나 둘 다 팔았으면 제외(한국만, 네이버 자료로 매일 확인).</p><span class="ef">+2.6%p · 같은 비율 무작위 제외는 −6%p</span></div>
+    <div class="bt-ev" data-k="a1"><div class="d">2026-11-25</div><strong>돌파 후 +10%·정배열에 산다</strong><p>돌파하자마자 사지 않고, 돌파 다음 달 시가보다 +10% 오르고 5&gt;10&gt;20 정배열이 될 때 다음 달 첫날 삼.</p><span class="ef">두 종목 범위 모두에서 기존보다 나음</span></div>
+    <div class="bt-ev" data-k="a2"><div class="d">2026-11-25</div><strong>금리가 오르면 바로 판다</strong><p>미국 국채 10년 금리가 6개월 전보다 높으면 이평 아래로 내려온 즉시 매도(유예 없음).</p><span class="ef">+2.5~4.1%p · 절반씩 나눈 종목에서도 100% 우위</span></div>
+    <div class="bt-ev" data-k="a3"><div class="d">2026-11-25</div><strong>그 시점 시총 상위만 본다</strong><p>매달 그때의 시총 상위(코스피 300·코스닥 200·미국 500)만 후보. 사이트 목록과 같은 기준.</p><span class="ef">오늘 목록으로 과거를 보는 착시 제거</span></div>
+    <div class="bt-ev" data-k="a4"><div class="d">2026-11-26</div><strong>같은 회사는 하나만</strong><p>보통주·우선주, Class A/B, 한국 원주·미국 ADR은 한 번에 하나만.</p><span class="ef">현실과 맞추기(성과 영향 작음)</span></div>
+    <div class="bt-ev" data-k="a5"><div class="d">2026-11-26</div><strong>12월 구매 전 양도세를 떼어 둔다</strong><p>그해 미국 주식 이익의 양도세를 먼저 빼 두고 남은 돈으로 12월 1일 구매.</p><span class="ef">연말에 억지로 팔 일 없음</span></div>
+    <div class="bt-ev" data-k="a6"><div class="d">2026-11-26</div><strong>이상한 첫날 가격은 건너뛴다</strong><p>첫날 가격이 그달 월봉 범위를 벗어나면(액면 조정 어긋남) 다음 순위 종목을 삼.</p><span class="ef">가짜 −85% 거래 제거</span></div>
+    <div class="bt-ev" data-k="a7"><div class="d">2026-11-27</div><strong>판매 기준: 한국 6이평 · 미국 10이평</strong><p>매수 돌파는 10이평 그대로, 팔 때만 한국은 더 빠른 6이평.</p><span class="ef">+23.5% → +25.9% · 14년 중 14년 우위</span></div>
+    <div class="bt-ev" data-k="a8"><div class="d">2026-11-27</div><strong>🇰🇷 외국인·기관 수급이 엇갈릴 때만 산다</strong><p>확인 달에 외국인·기관이 둘 다 샀거나 둘 다 팔았으면 제외(한국만, 네이버 자료로 매일 확인).</p><span class="ef">+2.6%p · 같은 비율 무작위 제외는 −6%p</span></div>
   </div>
 
   <div class="bt-h"><span class="dot" style="background:var(--no)"></span>탈락한 것<em>다시 하지 않음</em></div>
   <div class="bt-grp"><h3>사는 조건</h3><div class="bt-grid">
-    <div class="bt-x"><strong>양봉일 때만</strong><span>낙폭만 줄고 수익은 일관되지 않음</span><b>±1%p</b></div>
-    <div class="bt-x"><strong>꼬리 없는 짧은 양봉</strong><span>큰 수익 종목은 대개 긴 봉이라 놓침</span><b>−10~20%p</b></div>
-    <div class="bt-x"><strong>신호 이평 5·7·15·20</strong><span>10이평보다 모두 낮음</span><b>−5%p 안팎</b></div>
-    <div class="bt-x"><strong>돌파만 한 종목도 후보에</strong><span>점수순으로 섞으면 오히려 나빠짐</span><b>−5%p</b></div>
-    <div class="bt-x"><strong>지수가 약하면 쉬기</strong><span>코스피·S&amp;P500 이평 아래면 신규 매수 쉼</span><b>−10~15%p</b></div>
-    <div class="bt-x"><strong>시장 상태 필터</strong><span>시장 폭·변동성·RSI·MACD·계절·VIX</span><b>−5~20%p</b></div>
+    <div class="bt-x" data-k="x1"><strong>양봉일 때만</strong><span>낙폭만 줄고 수익은 일관되지 않음</span><b>±1%p</b></div>
+    <div class="bt-x" data-k="x2"><strong>꼬리 없는 짧은 양봉</strong><span>큰 수익 종목은 대개 긴 봉이라 놓침</span><b>−10~20%p</b></div>
+    <div class="bt-x" data-k="x3"><strong>신호 이평 5·7·15·20</strong><span>10이평보다 모두 낮음</span><b>−5%p 안팎</b></div>
+    <div class="bt-x" data-k="x4"><strong>돌파만 한 종목도 후보에</strong><span>점수순으로 섞으면 오히려 나빠짐</span><b>−5%p</b></div>
+    <div class="bt-x" data-k="x5"><strong>지수가 약하면 쉬기</strong><span>코스피·S&amp;P500 이평 아래면 신규 매수 쉼</span><b>−10~15%p</b></div>
+    <div class="bt-x" data-k="x6"><strong>시장 상태 필터</strong><span>시장 폭·변동성·RSI·MACD·계절·VIX</span><b>−5~20%p</b></div>
   </div></div>
   <div class="bt-grp"><h3>파는 조건</h3><div class="bt-grid">
-    <div class="bt-x"><strong>이탈 즉시 팔기(유예 없음)</strong><span>반등을 놓침</span><b>−4.5%p</b></div>
-    <div class="bt-x"><strong>역배열이면 바로 팔기</strong><span>거의 일어나지 않거나 나빠짐</span><b>−0.1~2.3%p</b></div>
-    <div class="bt-x"><strong>일봉 손절(고점·매수가 −15~40%)</strong><span>큰 상승 종목을 일찍 팖</span><b>최대 −18%p</b></div>
-    <div class="bt-x"><strong>익절 1.5·3·4배·없음</strong><span>2배가 가장 안정, 차이는 소수 거래 탓</span><b>−1~7%p</b></div>
-    <div class="bt-x"><strong>지친 말 점수로 미리 팔기</strong><span>지친 말과 대박 말이 같이 걸림</span><b>−6~13%p</b></div>
-    <div class="bt-x hold"><strong>판매 5이평(전체)</strong><span>4→5에서 벼랑, 최악 구간 악화 → 한국 6이평으로 대신</span><b>보류</b></div>
+    <div class="bt-x" data-k="x7"><strong>이탈 즉시 팔기(유예 없음)</strong><span>반등을 놓침</span><b>−4.5%p</b></div>
+    <div class="bt-x" data-k="x8"><strong>역배열이면 바로 팔기</strong><span>거의 일어나지 않거나 나빠짐</span><b>−0.1~2.3%p</b></div>
+    <div class="bt-x" data-k="x9"><strong>일봉 손절(고점·매수가 −15~40%)</strong><span>큰 상승 종목을 일찍 팖</span><b>최대 −18%p</b></div>
+    <div class="bt-x" data-k="x10"><strong>익절 1.5·3·4배·없음</strong><span>2배가 가장 안정, 차이는 소수 거래 탓</span><b>−1~7%p</b></div>
+    <div class="bt-x" data-k="x11"><strong>지친 말 점수로 미리 팔기</strong><span>지친 말과 대박 말이 같이 걸림</span><b>−6~13%p</b></div>
+    <div class="bt-x hold" data-k="x12"><strong>판매 5이평(전체)</strong><span>4→5에서 벼랑, 최악 구간 악화 → 한국 6이평으로 대신</span><b>보류</b></div>
   </div></div>
   <div class="bt-grp"><h3>점수 모델</h3><div class="bt-grid">
-    <div class="bt-x"><strong>트리 모델(GBM·LightGBM)</strong><span>보유 제외 후 이득 사라짐</span><b>±0</b></div>
-    <div class="bt-x"><strong>재무 지표(영업이익·배당)</strong><span>씨앗 5개 평균으로 다시 보니 차이 없음</span><b>±1%p</b></div>
-    <div class="bt-x"><strong>공매도 비율</strong><span>규칙마다 방향이 갈림</span><b>−5~+4%p</b></div>
-    <div class="bt-x"><strong>수급을 점수 안에</strong><span>거르기로 쓸 때만 효과</span><b>−1.5%p</b></div>
-    <div class="bt-x"><strong>손실 피하기 정답</strong><span>연평균↑처럼 보여도 대박 몇 건 덕</span><b>낙폭 −40%</b></div>
-    <div class="bt-x"><strong>대박 예측 칸(바벨)</strong><span>무작위 칸보다도 나쁨</span><b>−7%p</b></div>
+    <div class="bt-x" data-k="x13"><strong>트리 모델(GBM·LightGBM)</strong><span>보유 제외 후 이득 사라짐</span><b>±0</b></div>
+    <div class="bt-x" data-k="x14"><strong>재무 지표(영업이익·배당)</strong><span>씨앗 5개 평균으로 다시 보니 차이 없음</span><b>±1%p</b></div>
+    <div class="bt-x" data-k="x15"><strong>공매도 비율</strong><span>규칙마다 방향이 갈림</span><b>−5~+4%p</b></div>
+    <div class="bt-x" data-k="x16"><strong>수급을 점수 안에</strong><span>거르기로 쓸 때만 효과</span><b>−1.5%p</b></div>
+    <div class="bt-x" data-k="x17"><strong>손실 피하기 정답</strong><span>연평균↑처럼 보여도 대박 몇 건 덕</span><b>낙폭 −40%</b></div>
+    <div class="bt-x" data-k="x18"><strong>대박 예측 칸(바벨)</strong><span>무작위 칸보다도 나쁨</span><b>−7%p</b></div>
   </div></div>
   <div class="bt-grp"><h3>돈 넣고 빼는 방식</h3><div class="bt-grid">
-    <div class="bt-x"><strong>매도 대금 2~12달 나눠 넣기</strong><span>현금이 놀아서 꾸준히 낮아짐</span><b>−5~11%p</b></div>
-    <div class="bt-x"><strong>불타기(오르면 더 사기)</strong><span>대박 종목을 빼면 이득이 사라짐</span><b>±0</b></div>
-    <div class="bt-x"><strong>비중 한도·리밸런싱</strong><span>커지는 대박을 깎음</span><b>같거나 −</b></div>
-    <div class="bt-x"><strong>한·미 비율 고정</strong><span>점수 순으로 두는 게 최선</span><b>−1~11%p</b></div>
-    <div class="bt-x"><strong>점수 하위 빼고 전부 사기</strong><span>손실과 대박이 같이 빠짐</span><b>지수 −1%p</b></div>
-    <div class="bt-x"><strong>손실 종목 미리 팔아 절세</strong><span>세금 절감 ≈ 반등 놓침</span><b>±1%p</b></div>
-    <div class="bt-x same"><strong>소수점 주로 사기</strong><span>정수 주 제한은 영향 없음</span><b>차이 0</b></div>
-    <div class="bt-x same"><strong>ETF 빼기 · 같은 지수 ETF 하나만</strong><span>영향 미미</span><b>−0.5%p</b></div>
+    <div class="bt-x" data-k="x19"><strong>매도 대금 2~12달 나눠 넣기</strong><span>현금이 놀아서 꾸준히 낮아짐</span><b>−5~11%p</b></div>
+    <div class="bt-x" data-k="x20"><strong>불타기(오르면 더 사기)</strong><span>대박 종목을 빼면 이득이 사라짐</span><b>±0</b></div>
+    <div class="bt-x" data-k="x21"><strong>비중 한도·리밸런싱</strong><span>커지는 대박을 깎음</span><b>같거나 −</b></div>
+    <div class="bt-x" data-k="x22"><strong>한·미 비율 고정</strong><span>점수 순으로 두는 게 최선</span><b>−1~11%p</b></div>
+    <div class="bt-x" data-k="x23"><strong>점수 하위 빼고 전부 사기</strong><span>손실과 대박이 같이 빠짐</span><b>지수 −1%p</b></div>
+    <div class="bt-x" data-k="x24"><strong>손실 종목 미리 팔아 절세</strong><span>세금 절감 ≈ 반등 놓침</span><b>±1%p</b></div>
+    <div class="bt-x same" data-k="x25"><strong>소수점 주로 사기</strong><span>정수 주 제한은 영향 없음</span><b>차이 0</b></div>
+    <div class="bt-x same" data-k="x26"><strong>ETF 빼기 · 같은 지수 ETF 하나만</strong><span>영향 미미</span><b>−0.5%p</b></div>
   </div></div>
 
   <div class="bt-h"><span class="dot" style="background:var(--sell)"></span>처음 보는 기간 시험<em>규칙을 고를 때 쓴 적 없는 2005~2011</em></div>
@@ -160,5 +170,77 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
   </ul>
   <p class="bt-foot">숫자는 시험마다 쓴 자료(PC·클라우드)가 달라 서로 조금씩 다를 수 있어요 · 과거 성적은 앞으로를 보장하지 않으며 투자 판단의 책임은 본인에게 있습니다.</p>
 </main>
+<div id="bt-m"><div id="bt-b"><button id="bt-x" aria-label="닫기">✕</button><div id="bt-c"></div></div></div>
+<script>
+// 카드별 상세: t 제목, w 언제·어떤 자료, r [이름, 연평균, 메모], c 결론
+var DET = {
+a1:{t:'돌파 후 +10%·정배열에 산다',w:'2026-11-25 · 클라우드(시총·거래대금 두 범위) → PC 장부로 확인',r:[
+ ['돌파 달 바로 사기(예전)','기준',''],['확인 문턱 +1~19%','모두 즉시보다 ↑','곡선이 들쭉날쭉해 +10% 유지'],
+ ['걸어가며 고르기: 즉시만','+8.3%','시총 기준, 해마다 그 전 자료로 고름'],['걸어가며 고르기: 확인만','+14.2%','같은 조건'],
+ ['후보: 확인만(지금)','+17.4%','시총 기준'],['후보: 돌파만','+14.2%',''],['후보: 둘 다 점수순','+10.9%','섞으면 손해']],
+ c:'시총·거래대금 두 범위에서 모두 기존보다 나았던 첫 변경. 정배열 조건을 빼면 +19.4%, 5>10만 보면 +9.4%로 크게 나빠짐.'},
+a2:{t:'금리가 오르면 바로 판다',w:'2026-11-25 · 클라우드(시총·거래대금) · 이후 PC 재현',r:[
+ ['금리 판단 없음','−3.7%p','지금 대비'],['국채10년 6개월 상승 → 즉시 매도','기준 +2.5%p(시총)','거래대금 기준 +4.1%p, 절반 되풀이 100%'],
+ ['한국 종목은 한국 금리로','−0.3%p','한국만 보면 −1.7%p'],['판단 기간 3개월','+25.0%','5이평 규칙에서 6개월 +28.7% 대비'],
+ ['판단 기간 9·12개월','+13.8·+16.1%','6개월만 좋음(주의할 점)']],
+ c:'두 종목 범위 모두에서 같은 방향으로 나은 유일한 판매 요소. 다만 6개월 칸에서만 좋아 "칼날"일 가능성은 남음.'},
+a3:{t:'그 시점 시총 상위만 본다',w:'2026-11-24~25 · 클라우드',r:[
+ ['오늘 시총 상위 목록으로 과거 보기','+35.8%','오늘 살아남은 큰 회사만 → 부풀림'],['그때 거래대금 상위 500','+11.2%','같은 규칙(그 당시)'],
+ ['그때 시총 상위(지금 방식)','+17.3%','확인 매수·금리 포함 장부'],['거래대금 기준 +20%대','2020 한 해 의존','2020 +154.8%']],
+ c:'사이트 목록이 시총 순이라 백테스트도 같은 기준으로. 확인 매수의 우위가 시총 기준에서만 남음.'},
+a4:{t:'같은 회사는 하나만',w:'2026-11-26 · 클라우드',r:[['같은 달 같은 회사 2종목 구매','15년 중 2번','GOOG+GOOGL 2012-01·2017-03'],['하나만 사기','+17.3% → +18.0%','2건 차이, 우연 범위']],c:'성과보다 현실과 맞추려는 변경. 보통주·우선주, Class A/B, 한국 원주·미국 ADR을 한 회사로 봄.'},
+a5:{t:'12월 구매 전 양도세를 떼어 둔다',w:'2026-11-26 · 사용자 제안',r:[['예전','12월 말 세금이 모자라면 억지로 판매',''],['지금','11월까지 미국 이익의 양도세(250만원 공제 후 22%)를 먼저 빼고 12월 1일 구매','']],c:'성과를 올리는 변경이 아니라 연말에 억지로 팔지 않게 하는 운영 규칙.'},
+a6:{t:'이상한 첫날 가격은 건너뛴다',w:'2026-11-26 · 674건 전수 검사',r:[['첫날 종가가 그달 월봉 범위(±3%) 밖','1건','루멘스바이오스 2014-03: 일봉 112,000원 vs 월봉 2.2~2.9만원'],['그대로 두면','가짜 −85% 거래','']],c:'자료 오류(액면 조정 어긋남) 하나를 막는 안전장치. 다음 순위 종목을 삼.'},
+a7:{t:'판매 기준: 한국 6이평 · 미국 10이평',w:'2026-11-26~27 · PC 묶음 12·13·27·31',r:[
+ ['판매 3이평','+14.8%',''],['4이평','+16.0%','4→5에서 벼랑'],['5이평(전체)','+28.9%','3년 최악 +0.7%로 악화'],['6이평','+25.9%',''],['7이평','+26.4%',''],['10이평(예전)','+23.5%',''],['12·15이평','+21.6·+19.0%',''],
+ ['한국 6 · 미국 10','+25.9%','14년 중 14년 우위, 3년 최악 +4.7→+7.5%'],['판매 이평 ±1% 잡음','+26.3~26.4%','10이평은 +21.3~24.5%'],['걸어가며 고르기(격자 72개)','+15.5% vs 고정 +29.8%','고르는 효과 약 10%p, PBO 45%']],
+ c:'한국은 빠르게(5~7이평 고원), 미국은 느리게 파는 게 나음. 5이평 전체는 벼랑과 최악 구간 악화로 대신 한국만 6이평.'},
+a8:{t:'외국인·기관 수급이 엇갈릴 때만 산다',w:'2026-11-27 · PC 묶음 35~38(KRX 자료 2011-12~)',r:[
+ ['지금(수급 없음)','+25.7%',''],['외국인 순매도면 제외','+19.5%','거르면 대박을 놓침'],['둘 다 순매수만','+12.0%',''],
+ ['둘 다 같은 방향이면 제외(채택)','+28.4%','낙폭 −22.9%, 3년 최악 +11.4%'],['같은 방향 판단 문턱 ±1~10%','+26.0~29.0%','모두 기준 위'],['3개월 합으로 판단','+18.9%','한 달 값만 의미'],
+ ['상위 10종목 빼고도','+2.1%p','대박 몇 개 덕이 아님'],['같은 비율 무작위 제외','−5.5~−6.3%p','빼는 효과가 아니라 신호'],['네이버 자료로 대신','99.4% 일치','실제 거래 확인 달 기준']],
+ c:'외국인·기관이 둘 다 사는 종목은 이미 오른 뒤(늦은 매수)일 가능성. 한국 종목만 적용.'},
+x1:{t:'양봉일 때만 사기',w:'2026-11-27 · 클라우드·PC 묶음 32',r:[['기준(10이평 / 한국6)','+23.7 / +25.7%','PC'],['확인 달 양봉','+23.8 / +23.8%','낙폭 오히려 커짐'],['몸통 +3% 이상','+28.4 / +28.8%','+5%에선 +23.3/+26.4 → 칼날'],['2개월 연속 양봉','+28.7 / +28.1%','클라우드에선 −3.2%p, 방향 엇갈림'],['음봉만(대조)','+10.7 / +12.9%','']],c:'확인 조건이 이미 양봉을 대부분 포함. 이웃 설정·자료마다 결과가 달라 우연 가능성.'},
+x2:{t:'꼬리 없는 짧은 양봉',w:'2026-11-27 · 클라우드·PC 묶음 33',r:[['몸통 60%↑','+19.4%',''],['몸통 70%↑','+26.2%','2017~21 +69%, 2022~ +4.7%로 대박 의존'],['몸통 80%↑','+13.7%',''],['위아래 꼬리 10% 이하','+8.2%',''],['짧은 봉(고저폭 10~20%)','+7.7~10.6%','']],c:'큰 수익 종목은 대개 변동폭이 큰 긴 봉이라 놓침. 낙폭은 줄지만 수익을 너무 잃음.'},
+x3:{t:'신호 이평 5·7·15·20',w:'2026-11-26~27 · PC 묶음 15(종목 범위 맞춰 다시)',r:[['10이평(지금)','기준',''],['5·7이평','지금 이하','낙폭 −47~−54%'],['15이평','지금 이하','낙폭 −34%'],['20이평','지금 이하','']],c:'매수 신호는 10이평이 가장 나음. 판매 이평과 달리 바꿀 이유 없음.'},
+x4:{t:'돌파만 한 종목도 후보에',w:'2026-11-25 · 클라우드',r:[['확인만(지금)','+17.4%','시총'],['돌파만','+14.2%',''],['둘 다 점수순','+10.9%',''],['확인 먼저 + 돌파로 채움','+17.3%','같음']],c:'돌파만 한 종목은 점수가 높아도 확인 종목보다 못함.'},
+x5:{t:'지수가 약하면 쉬기',w:'2026-11-25 · PC',r:[['기준','+17.6%','낙폭 −32.9%'],['코스피·S&P500 6·10·12개월 이평 아래면 신규 매수 쉼','+7.8~10.8%','낙폭 −20%대'],['절반 되풀이 이긴 비율','0%','']],c:'낙폭은 줄지만 수익을 훨씬 많이 잃음. 수익 대비 낙폭도 나아지지 않음.'},
+x6:{t:'시장 상태 필터',w:'2026-11-26 · PC 묶음 22~30',r:[['시장 폭·변동성·압축·거래량','−5~−20%p',''],['RSI·MACD·볼린저·ADX·일목','−5~−20%p',''],['월/연 건너뛰기·대선 주기·VIX','−5~−20%p','']],c:'시장 상황을 보고 쉬는 방법은 모두 손해. 종목 선택이 성과의 원천.'},
+x7:{t:'이탈 즉시 팔기(유예 없음)',w:'2026-11-26 · AD9·묶음 12',r:[['유예 2달(지금)','기준',''],['유예 없이 즉시','−4.5%p','반등을 놓침'],['5이평 + 즉시','+13.0%','5이평 유예 2달 +28.9% 대비'],['유예 3달','+26.5%','5이평 기준'],['유예 4달','+19.6%','']],c:'유예 2달이 고원. 너무 빨리 팔면 반등을, 너무 늦으면 손실을 키움.'},
+x8:{t:'역배열이면 바로 팔기',w:'2026-11-26 · 클라우드',r:[['지금','+21.0%','낙폭 −30.5%'],['5<10<20 완전 역배열','+20.6%','1건뿐'],['5이평<10이평','+20.9%','낙폭 −34.8%'],['종가<20이평','+18.0%','일찍 팔아 반등 놓침'],['10이평<20이평','+20.9%','3건']],c:'역배열은 거의 일어나지 않거나, 일어나면 반등 직전이라 손해.'},
+x9:{t:'일봉 손절',w:'2026-11-26 · PC 묶음 16(일봉 자료)',r:[['고점 종가 −15~40%','10이평 +5.5~22.4%','기준 +24.0%'],['익절 뒤 −15~25%','+10~23%',''],['일봉 50·100일선 이탈','+9.8~19.6%',''],['매수가 −15~30% 손절','+24.1~24.4%','+0.4%p, 최악 구간 악화'],['일봉 200일선 5일 연속','+26.5%','길수록 좋아짐 = 느리게 팔기 효과']],c:'큰 상승 종목을 일찍 팔아 손해. 월봉 판단 유지.'},
+x10:{t:'익절 1.5·3·4배·없음',w:'2026-11-25 · PC',r:[['2배(지금)','+23.2%','낙폭 −25.0%'],['2.5배','+24.5%','곡선 들쭉날쭉'],['3배·4배','+21.8%','낙폭 −34%'],['익절 없음','+20.3%','낙폭 −35.8%'],['1.5배','+16.8%','5이평 기준'],['차이 큰 3종목 빼면','+1.3→+0.3%p','소수 거래 탓 확정']],c:'2배가 가장 안정. 2.5배가 나아 보이는 건 소수 대박 거래 때문.'},
+x11:{t:'지친 말 점수로 미리 팔기',w:'2026-11-26 · PC 묶음 20',r:[['기준','+24.0% / 5이평 +28.7%',''],['이평 위여도 지쳤으면 판매','+9.8~14.9% / +8.3~16.3%','크게 나쁨'],['안 지쳤으면 유예 3달','+29.4%(5이평)','반대 규칙에선 나빠짐'],['지쳤으면 즉시','+26.3%(10이평)','중간 속도로 보내는 효과일 뿐']],c:'하락 위험 점수는 맞히지만 지친 말과 대박 말(변동성 큰 종목)이 같이 걸림.'},
+x12:{t:'판매 5이평(전체)',w:'2026-11-26 · PC 묶음 12·13',r:[['5이평','+28.9%','기준 +23.5% 대비 +5.4%p'],['4이평','+16.0%','4→5 벼랑'],['3년 최악 창','+0.7%','10이평 +4.7%보다 나쁨'],['작은 종목 범위','악화','']],c:'보류. 대신 한국만 6이평으로(고원이 넓고 최악 구간도 개선).'},
+x13:{t:'트리 모델(GBM·LightGBM)',w:'2026-11-24 · 클라우드 → 정정',r:[['처음 결과','+13.2% vs 기준 +10.4%','보유 종목 중복 포함'],['보유 제외 후','+11.7%(씨앗 1) / +11.0%(3개 평균)','기준 +11.0%'],['뒤쪽(2020~)','8.4% vs 9.8%','트리가 오히려 낮음'],['월별 IC','0.18/0.20 vs 0.22/0.30','']],c:'처음의 +2.5%p는 시뮬레이션 잡음. 선형(릿지) 유지.'},
+x14:{t:'재무 지표(영업이익·배당)',w:'2026-11-25 · PC(SEC 자료)',r:[['기준','+10.3%','씨앗 5개 평균'],['+영업이익·순이익 흑자','+11.4%','앞 +11.7 / 뒤 +10.9, 미국 변화 없음'],['+영업이익 마진·증가율','+9.1%',''],['씨앗 1개일 때','뒤쪽 +14.2%','우연']],c:'앞뒤 방향이 갈리고 미국 열 변화 없음. 채택 근거 없음.'},
+x15:{t:'공매도 비율',w:'2026-11-26 · PC 묶음 17(FINRA 2018-08~)',r:[['높은 종목 제외','−1.3~−4.5%p','10이평'],['낮은 종목만·낮은 순','−3.1~−5.0%p','두 규칙 모두'],['높은 순(대조)','+3.1 / −5.8%p','규칙마다 반대'],['표본','약 264거래','2019~']],c:'일관된 신호 없음. 공매도 많음 = 위험이라는 근거도 없음.'},
+x16:{t:'수급을 점수 안에',w:'2026-11-28 · 클라우드 묶음 43',r:[['지금 점수','+21.8%','낙폭 −31.5%'],['+수급 지표 5개','+20.3%','낙폭 −34.2%'],['+수급·손실 정답','+19.9~20.8%','']],c:'수급은 "같은 방향이면 제외"로 거를 때만 효과.'},
+x17:{t:'손실 피하기 정답으로 학습',w:'2026-11-28 · 클라우드 묶음 43',r:[['지금 점수','+21.8%','거래 평균 +14.6%, 상위 10 뺀 +8.3%'],['−20% 이하면 −1','+21.0%','낙폭 −28.0%'],['−10% 이하면 −1','+23.1%','낙폭 −41.1%, 상위 10 뺀 +6.1%'],['손실만 반영','+23.3%','낙폭 −39.9%, 2017~21에 몰림'],['이익 절반만','+20.1%','']],c:'연평균이 오른 변형은 대박 몇 건 덕. 거래 평균·낙폭 모두 나빠짐.'},
+x18:{t:'대박 예측 칸(바벨)',w:'2026-11-26 · PC 묶음 21',r:[['점수 3 + 대박 예측 1','+17.2%','10이평'],['점수 3 + 무작위 1(대조)','+24.7%',''],['대박 2칸','+16.4%',''],['변동성·봉 길이 순','+11.0~16.1%','']],c:'대박 예측 점수는 대박을 못 찾고 오히려 나쁜 종목을 고름.'},
+x19:{t:'매도 대금 2~12달 나눠 넣기',w:'2026-11-27 · 클라우드 묶음 39',r:[['한 번에(지금)','+21.8%','낙폭 −31.5%'],['2달','+16.2%',''],['3달','+15.1%',''],['6달','+12.8%',''],['12달','+10.3%','낙폭 −14.4%']],c:'나눌수록 쉬는 현금이 늘어 꾸준히 낮아짐. 거래당 평균은 같음.'},
+x20:{t:'불타기(오르면 더 사기)',w:'2026-11-27 · PC 묶음 25·29~31',r:[['불타기 없음','+25.6%',''],['+15~100%에서 0.25~2배 추가','+26.0~33.2%','곡선은 매끄러움'],['상위 3종목 빼면','−0.1~−0.4%p','이득 사라짐'],['낙폭','+2%p 커짐','']],c:'대박 종목에 더 싣는 효과일 뿐 새 우위가 아님.'},
+x21:{t:'비중 한도·리밸런싱',w:'2026-11-26 · AD9 묶음 4',r:[['한 종목 15·20·30% 한도','같거나 나쁨',''],['12월 평균으로 줄이기','같거나 나쁨',''],['분기마다 1.5배 넘으면 줄이기','같거나 나쁨','']],c:'커지는 대박 종목을 깎아 손해. 이 전략은 끝까지 들고 가는 구조.'},
+x22:{t:'한·미 비율 고정',w:'2026-11-26 · 클라우드',r:[['점수 순(지금, 한국 16%·미국 84%)','+21.0%','낙폭 −30.5%'],['미국 3 : 한국 1','+19.7%','낙폭 −39.0%'],['2 : 2','+14.9%',''],['한국 4','+11.5%','낙폭 −45.8%'],['미국 4','+16.3%','낙폭 −44.9%']],c:'점수 순으로 두면 한·미가 알아서 섞임.'},
+x23:{t:'점수 하위 빼고 전부 사기',w:'2026-11-27 · 클라우드 묶음 41',r:[['후보 전부','+11.4%','지수 대비 −1.2%p'],['하위 10~70% 빼기','+11.1~11.2%','큰 손실 9.5→4.1%, 대박도 줄어'],['무작위 4개','+10.0~11.2%','가장 나쁨'],['점수 하위 4개','+14.2%','큰 손실 22%·대박 5.5%'],['점수 상위 4개','+14.9%','큰 손실 3.9%']],c:'점수는 조용함–요동 축. 하위를 빼면 손실과 대박이 같이 빠짐.'},
+x24:{t:'손실 종목 미리 팔아 절세',w:'2026-11-26 · PC',r:[['기준','+23.3%','양도세 92.7백만원'],['11월 말 손실 판매','+23.4%','37건'],['12월 말','+22.1%',''],['10월 말','+24.2%',''],['손실 20%↑ 매달 정리','0~12건','기존 규칙이 이미 팖']],c:'세금 절감과 반등을 놓치는 손해가 비슷해 상쇄.'},
+x25:{t:'소수점 주로 사기',w:'2026-11-27 · 클라우드 묶음 42',r:[['정수 주(지금)','+21.8%',''],['소수점 주','+21.8%','낙폭·3·5년 창도 같음'],['월 1000만원','+21.6% / +21.6%','정수/소수점']],c:'1주 단위 제한은 성과에 영향 없음. 성과 차이는 달마다 들어가는 금액에서 생김.'},
+x26:{t:'ETF 빼기 · 같은 지수 ETF 하나만',w:'2026-11-26~27 · PC',r:[['ETF 포함(지금)','+23.0%',''],['ETF 제외','+22.4%','−0.5%p'],['ETF만(대조)','+4.9%',''],['같은 지수 ETF 하나만','−0.3~−0.4%p','179개월 중 2번']],c:'ETF는 안정적 보조 역할. 영향 미미.'}
+};
+
+(function(){
+  var m=document.getElementById('bt-m'), c=document.getElementById('bt-c');
+  function esc(t){ return String(t).replace(/[&<>]/g,function(ch){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]; }); }
+  function open(k){ var d=DET[k]; if(!d) return;
+    c.innerHTML='<h2>'+esc(d.t)+'</h2><div class="w">'+esc(d.w)+'</div><table class="bt-dt"><tr><th>시험한 것</th><th>결과</th><th>메모</th></tr>'
+      +d.r.map(function(r){ return '<tr><td>'+esc(r[0])+'</td><td>'+esc(r[1])+'</td><td>'+esc(r[2]||'')+'</td></tr>'; }).join('')+'</table><div class="c">'+esc(d.c)+'</div>';
+    m.classList.add('on'); document.getElementById('bt-b').scrollTop=0; }
+  function close(){ m.classList.remove('on'); }
+  document.querySelectorAll('[data-k]').forEach(function(el){ el.addEventListener('click',function(){ open(el.dataset.k); }); });
+  document.getElementById('bt-x').onclick=close;
+  m.addEventListener('click',function(e){ if(e.target===m) close(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') close(); });
+})();
+</script>
 </body>
 </html>
