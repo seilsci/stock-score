@@ -1029,7 +1029,7 @@ function showScoreTree(y,buyYm,name,oldPred,live){
   var bar=function(x,m){ var w=Math.min(50,Math.abs(x)/m*50); return '<div class="tr-bar"><i class="'+(x>=0?'pos':'neg')+'" style="width:'+w+'%"></i></div>'; };
   var total=e.score-Math.round(e.base);
   var h='<h2 style="margin:0 0 4px;font-size:16px">'+esc(name)+' · '+fmt(buyYm)+(live?(live.label||' 구매 예정, '):' 매수, ')+e.score+'점은 왜?</h2>'
-    +'<div class="sc-sub" style="color:var(--fg);background:var(--chip);border-radius:8px;padding:8px 10px"><b>참고용입니다.</b> 점수는 돌파한 달 시점의 "예상 수익의 순위"이며 올라갈 확률이 아닙니다. 과거 시험에서 점수 상위를 고른 결과가 무작위와 뚜렷하게 구분되지 않는 경우가 많았고(시장·기간에 따라 다름), 상장폐지 종목이 빠진 자료라 과거 성적이 유리하게 나왔을 수 있으며 앞으로를 보장하지 않습니다.</div><div class="sc-sub">평범한 신호의 점수(기준)에서 시작해, 항목마다 점수를 올리고 내려서 최종 점수가 됩니다. 아래 숫자가 <b>그 항목이 점수를 몇 점 올리거나 내렸는지</b>예요. 항목을 눌러 펼쳐 보세요.</div>'
+    +'<div class="sc-sub" style="color:var(--fg);background:var(--chip);border-radius:8px;padding:8px 10px"><b>참고용입니다.</b> 점수는 돌파한 달 시점의 "예상 수익의 순위"이며 올라갈 확률이 아닙니다. 백테스트에서 점수 상위 4는 같은 날 지수보다 연 약 +4%p 나았는데, 대박을 더 잘 찾아서가 아니라 −20% 이하 큰 손실을 무작위의 0.42배로 피해서였어요. 다만 성적은 소수의 대박 거래에 크게 기대고, 상장폐지 종목이 빠진 자료(영향은 연 1%p 안팎)라 앞으로를 보장하지 않습니다.</div><div class="sc-sub">평범한 신호의 점수(기준)에서 시작해, 항목마다 점수를 올리고 내려서 최종 점수가 됩니다. 아래 숫자가 <b>그 항목이 점수를 몇 점 올리거나 내렸는지</b>예요. 항목을 눌러 펼쳐 보세요.</div>'
     +'<div class="tr-root"><span class="big">'+e.score+'점</span><span>= 기본점수 '+Math.round(e.base)+'점 '+(total>=0?'+ ':'− ')+Math.abs(total)+'점<br><span class="meta">학습 때 신호 중 상위 '+Math.max(1,100-e.score)+'%</span></span></div>'
     +'<div class="tr-kids"><div class="tr-node"><div class="tr-base"><span><b>기본점수</b> <span class="meta">(평균적인 매수 신호, 예측 수익 '+sgn(e.b)+'%)</span></span><b>'+Math.round(e.base)+'점</b></div></div>';
   gs.forEach(function(g,gi){
