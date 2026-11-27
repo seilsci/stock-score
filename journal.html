@@ -291,6 +291,7 @@ canvas{display:block;width:100%;height:230px}
 .amt-kor{font-style:normal;font-size:12.5px;font-weight:700;color:var(--acc);text-align:right;min-height:1.2em}
 .amt-note{grid-column:1/-1;margin:0;font-size:11px;color:var(--mut);line-height:1.5}
 .nw{white-space:nowrap}#my-sync-t{white-space:pre-line}
+.x-exit{display:flex;width:fit-content;align-items:center;gap:6px;margin:6px auto 4px;padding:5px 11px;border-radius:999px;background:var(--chip);border:1px solid var(--line);color:var(--mut);font-size:12px;text-decoration:none}.x-exit b{color:var(--acc);font-weight:700}.x-exit[hidden]{display:none}
 #amt-note{text-align:left}.amt-tb{border:none;border-collapse:collapse;margin:0 auto}.amt-tb td{border:none;padding:0;text-align:left;font-size:11.5px;line-height:1.7;color:var(--mut)}
 </style>
 <link rel="stylesheet" href="theme.css">
@@ -299,6 +300,7 @@ canvas{display:block;width:100%;height:230px}
 <main>
   <div class="navtabs"><a class="ntab" href="index.html">📈 종목</a><a class="ntab on" href="#" data-p="log">📒 매매일지</a><a class="ntab" href="#" data-p="ret">📊 수익률</a></div>
   <h1 id="pg-title">매매일지</h1>
+  <a id="x-exit" class="x-exit" href="journal.html?x=0" hidden>👤 내 일지 보는 중 <b>나가기 ✕</b></a>
   <div class="sub"><div><span id="dep-label">첫달 100만원 · 월 100만원</span> · <span id="sell-label">매수 10이평 돌파 · 매도 한국 6이평·미국 10이평 이탈 · tp2x트레일 · 국채10년 금리 유예2달</span> ·</div><div><span id="strat-label">이평 돌파 후 +10%·정배열 매수(다음 달 첫날 구매)</span> · 비용·세금 반영</div></div>
 
   <div class="subtabs" id="subtabs"><button type="button" data-v="how">📖 매매방법</button><button type="button" data-v="hist" class="on">🧾 거래내역 보기</button><button type="button" data-v="sold">💰 매도 거래 내역</button></div>
@@ -1740,6 +1742,7 @@ function renderPlanView(){
 /* ── 시작 시점 바꾸기: 그 달부터 같은 규칙으로 월 100만원씩 투자했다면 (브라우저에서 다시 계산) ──
    매달 무엇을 사는지(점수 상위 4)와 언제 파는지는 현금과 무관하게 정해지므로, 현금·수량·세금만 다시 계산한다. */
 var XMODE=/[?&]x=1(&|$)/.test(location.search); try{ if(XMODE) localStorage.setItem('jx','1'); else if(/[?&]x=0(&|$)/.test(location.search)) localStorage.removeItem('jx'); else if(localStorage.getItem('jx')==='1') XMODE=true; }catch(e){}         // ?x=1: 내 일지 — 시작 시점을 기억하고, 처음 들어가면 2026-11부터 시작으로 열림
+try{ var xe=document.getElementById('x-exit'); if(xe&&XMODE){ xe.hidden=false; xe.addEventListener('click',function(ev){ ev.preventDefault(); try{ localStorage.removeItem('jx'); }catch(e){} location.href='journal.html?x=0'+location.hash; }); } }catch(e){}          // 내 일지(?x=1)에서 빠져나가기: 기억한 x 모드를 지우고 일반 일지로
 var LED0=null, SNAP0=null, START_YM=null, START_Y=null, FIRST_YM=null, EXIT_C=null;
 var AMT={dep:null,init:null};               // 사용자가 입력한 월 불입금·초기 자금(원). null이면 장부 기본값(100만원). 초기 자금 = 첫 달에 쓸 돈(그 달 월 불입금은 따로 안 더함)
 try{ var _d=localStorage.getItem('jdep'), _i=localStorage.getItem('jinit'); if(_d!==null&&_d!=='') AMT.dep=+_d; if(_i!==null&&_i!==''&&+_i>0) AMT.init=+_i; }catch(e){}
