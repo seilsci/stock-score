@@ -307,7 +307,9 @@ x26:{t:'ETF 빼기 · 같은 지수 ETF 하나만',w:'2026-11-26~27 · PC',r:[['
     S.slice().reverse().forEach(function(r,k){ var me=k===S.length-1, pts=mode==='yr'?r[2]:r[3];
       h+='<polyline fill="none" stroke="'+r[1]+'" stroke-width="'+(me?2.6:1.8)+'" stroke-linejoin="round" points="'+pts.map(function(v,i){ return X(i)+','+Y(v); }).join(' ')+'"/>';
       if(me) pts.forEach(function(v,i){ h+='<circle cx="'+X(i)+'" cy="'+Y(v)+'" r="3.2" fill="var(--fg)" stroke="var(--card)" stroke-width="1.2"/>';
-        if(mode==='yr') h+='<text x="'+X(i)+'" y="'+(v>=0?Y(v)-8:Y(v)+15)+'" text-anchor="middle" style="font-weight:700;fill:'+(v>=0?'var(--buy)':'var(--sell)')+'">'+fmt0(v)+'</text>'; });
+        if(mode==='yr'){ var oth=S.slice(1).map(function(o){ return Y(o[2][i]); }), up=Y(v)-9, dn=Y(v)+16, dd=function(yy){ return Math.min.apply(null,oth.map(function(o){ return Math.abs(o-yy); })); };   // 위·아래 중 다른 선 점과 덜 겹치는 쪽(위 우선)
+          var ty=(v>=0?dd(up)>=dd(dn)-4:dd(up)>dd(dn)+4)?up:dn;
+          h+='<text x="'+X(i)+'" y="'+ty+'" text-anchor="middle" stroke="var(--card)" stroke-width="3.2" paint-order="stroke" style="font-weight:700;fill:'+(v>=0?'var(--buy)':'var(--sell)')+'">'+fmt0(v)+'</text>'; } });
     });
     sv.innerHTML=h;
     var tot=function(r){ return mode==='yr'?null:r[3][N]; };
