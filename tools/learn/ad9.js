@@ -1473,6 +1473,8 @@ function build(c, which) {
         const byAbs = q => { const th = allS[Math.floor(allS.length * q)]; return ym => flowOK(ym).filter(e => e.s >= th); };
         [0.1, 0.2, 0.3, 0.5, 0.7].forEach(q => V40.push([`그달 후보 중 점수 하위 ${q * 100}% 빼고 전부 100만원씩`, byRank(q), { exitMaFn: KR6 }, true]));
         [0.2, 0.3, 0.5].forEach(q => V40.push([`전체 기간 점수 분포 하위 ${q * 100}% 빼고 전부 100만원씩`, byAbs(q), { exitMaFn: KR6 }, true]));
+        [1, 2, 3, 4, 5].forEach(sd => V40.push([`대조: 매달 후보 중 무작위 4개(씨앗 ${sd}, 장부와 같은 방식)`, ym => [...flowOK(ym)].sort((x, y) => hash01(x.r.y + '|' + ym + '|' + sd) - hash01(y.r.y + '|' + ym + '|' + sd)), { exitMaFn: KR6 }, false]));
+        V40.push(['대조: 매달 점수 하위 4개(장부와 같은 방식)', ym => [...flowOK(ym)].sort((x, y) => x.s - y.s), { exitMaFn: KR6 }, false]);
         V40.push(['대조: 그달 후보 중 점수 상위 50% 빼고(하위만) 전부 100만원씩', ym => { const a = [...flowOK(ym)].sort((x, y) => x.s - y.s); return a.slice(0, Math.ceil(a.length * 0.5)); }, { exitMaFn: KR6 }, true]);
       }
       posts.push(() => safe('40 전 종목', () => {
