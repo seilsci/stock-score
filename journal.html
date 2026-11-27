@@ -1823,6 +1823,7 @@ function simulateFrom(S){
 function userStart(S){ if(XMODE){ stampSettings(); } applyStart(S); if(XMODE) syncSoon(); }
 function applyStart(S){
   if(XMODE){ try{ localStorage.setItem('jstart',S); }catch(e){} }
+  else { try{ document.cookie='jstartS='+S+';path=/;SameSite=Lax'; }catch(e){} }      // 일반 일지: 고른 시작 연월을 브라우저를 닫을 때까지 기억(만료 없는 세션 쿠키)
   START_YM=S; START_Y=S.slice(0,4); PLAN=null; PLAN_BUSY=false; PLAN_ERR=null;
   var done=function(){
     if(S===PLAN_YM){                                                             // 이번 달(예정 달)부터 시작: 아직 장부에 없는 달 → 빈손(전달 현금 0·보유 없음)으로 예정 주문 화면만 계산
@@ -2371,6 +2372,7 @@ fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).th
   var yms=Object.keys(d.snapshots).sort();
   SEL_YM=yms[yms.length-1]||null;
   var S0=null; if(XMODE){ try{ S0=localStorage.getItem('jstart'); }catch(e){} if(!S0) S0='202611'; if(!(S0===PLAN_YM || (LED0&&LED0.months[S0]))) S0=null; }
+  else { try{ var mS=document.cookie.match(/(?:^|;\s*)jstartS=(\d{6})/); if(mS&&(mS[1]===PLAN_YM||(LED0&&LED0.months[mS[1]]))) S0=mS[1]; }catch(e){} }
   if(S0) applyStart(S0);
   else if(!isDefaultAmt() && START_YM) applyStart(START_YM); else renderAll();                      // 저장해 둔 금액이 기본값이 아니면 그 금액으로 다시 계산
   if(XMODE) syncPull();
