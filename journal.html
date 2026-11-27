@@ -99,6 +99,11 @@ h1{font-size:18px;margin:0 0 2px;font-weight:700}
 canvas{display:block;width:100%;height:230px}
 #ctip{position:fixed;z-index:300;display:none;pointer-events:none;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-variant-numeric:tabular-nums}
 #ctip table{border-collapse:collapse;margin-top:4px}
+.cinfo{display:none;margin-top:6px;padding:6px 10px;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;font-size:12px;font-variant-numeric:tabular-nums}
+.cinfo .ci-h{margin-bottom:3px}
+.cinfo .ci-g{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}
+.cinfo .ci-g>div{display:flex;justify-content:space-between;gap:6px;white-space:nowrap}
+.cinfo .ci-g>div>span:first-child{color:var(--mut)}
 #ctip td{padding:1px 0}
 #ctip td:first-child{color:var(--mut);padding-right:14px}
 #ctip td+td{text-align:right;padding-left:10px;white-space:nowrap}
@@ -592,7 +597,7 @@ function bigNum(v, us){                      // 거래대금 표시: 한국 원(
 var CTIP=null;
 function ctip(){
   if(!CTIP){ CTIP=document.createElement('div'); CTIP.id='ctip'; document.body.appendChild(CTIP);
-    document.addEventListener('pointerdown',function(e){ if(e.target.tagName!=='CANVAS') hideTip(); }); }
+    document.addEventListener('pointerdown',function(e){ if(e.target.tagName!=='CANVAS' && e.pointerType!=='touch') hideTip(); }); }
   return CTIP;
 }
 function hideTip(){ if(CTIP) CTIP.style.display='none'; document.querySelectorAll('canvas').forEach(function(c){ if(c._hi!=null){ c._hi=null; if(c._args) drawChart.apply(null,c._args); } }); }
@@ -604,6 +609,20 @@ function chartTip(cv, ev, i){                // i = 월 위치
   if(ns) tags.push('<span style="color:var(--sell)">▼ 판매'+(ns>1?' ×'+ns:'')+'</span>');
   var cc=function(v){ return v==null?'':'<span style="color:'+(v>=0?'var(--buy)':'var(--sell)')+'">'+pc(v)+'</span>'; };
   var R3=function(l,a,p){ return '<tr><td>'+l+'</td><td>'+a+'</td><td>'+(p||'')+'</td></tr>'; };       // 라벨 | 금액 | 대비(%) 세 칸으로 맞춤
+  if(ev.pointerType==='touch'){                // 폰: 그래프를 가리지 않게 그래프 바로 아래 정보칸(2열)에 표시 — 다른 그래프를 짚으면 이전 칸은 닫음
+    document.querySelectorAll('.cinfo').forEach(function(e2){ if(e2!==cv._info) e2.style.display='none'; });
+    document.querySelectorAll('canvas').forEach(function(c2){ if(c2!==cv && c2._hi!=null){ c2._hi=null; if(c2._args) drawChart.apply(null,c2._args); } });
+    if(!cv._info){ cv._info=document.createElement('div'); cv._info.className='cinfo'; cv.insertAdjacentElement('afterend',cv._info); }
+    var C2=function(l,a,p){ return '<div><span>'+l+'</span><span>'+a+(p?' '+p:'')+'</span></div>'; };
+    cv._info.innerHTML='<div class="ci-h"><b>'+fmt(ym)+'</b> '+tags.join(' ')+'</div><div class="ci-g">'+
+      C2('시가',fm(u.o[i]))+C2('종가','<b>'+fm(u.c[i])+'</b>')+C2('고가',fm(u.h[i]))+C2('저가',fm(u.l[i]))+
+      (chg!=null?C2('전월 대비','',cc(chg)):'')+(u.v[i]>0?C2('거래대금','≈ '+bigNum(u.v[i]*u.c[i],us)):'')+
+      (u.v[i]>0?C2('거래량',Math.round(u.v[i]).toLocaleString()+'주'):'')+
+      (G.ma6&&G.ma6[i]!=null?C2('6이평',fm(G.ma6[i]),cc(u.c[i]/G.ma6[i]-1)):'')+
+      (m!=null?C2('10이평',fm(m),cc(u.c[i]/m-1)):'')+'</div>';
+    cv._info.style.display='block'; if(CTIP) CTIP.style.display='none';
+    return;
+  }
   var t=ctip();
   t.innerHTML='<b>'+fmt(ym)+'</b> '+tags.join(' ')+
     '<table>'+R3('시가',fm(u.o[i]))+R3('고가',fm(u.h[i]))+R3('저가',fm(u.l[i]))+R3('종가','<b>'+fm(u.c[i])+'</b>')+
@@ -1565,7 +1584,7 @@ function mergeLiveBars(live){                // 저장된 월봉(bars.json)에 �
   });
 }
 function loadPlan(){
-  if(PLAN_BUSY||PLAN) return; PLAN_BUSY=true; PLAN_ERR=null;
+  if(PLAN_BUSY||PLAN||PLAN_ERR) return; PLAN_BUSY=true; PLAN_ERR=null;     // 실패(PLAN_ERR)한 뒤에는 다시 안 불러옴 — 예전에는 실패하면 화면을 계속 다시 그리는 반복이 생겼음
   var ps=[
     new Promise(function(res){ loadBars(res); }),
     fetch('tools/learn/costs.json').then(function(r){ return r.json(); }).then(function(c){ COSTS=c; }),
