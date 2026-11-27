@@ -49,6 +49,21 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 .bt-x.hold{border-left-color:var(--hold)}.bt-x.hold b{color:var(--hold)}
 .bt-x.same{border-left-color:var(--mut)}.bt-x.same b{color:var(--mut)}
 /* 연도표 */
+.bt-oy{overflow:hidden;background:var(--card);border:1px solid var(--line);padding:10px 12px}
+.oy-lg{display:flex;gap:12px;font-size:11px;color:var(--mut);margin-bottom:6px;align-items:center}.oy-lg i{display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px}
+.oy-lg .me{background:var(--buy)}.oy-lg .ks{background:var(--buy);opacity:.3}.oy-ax{margin-left:auto}
+.oy-r{display:grid;grid-template-columns:38px 1fr;column-gap:8px;padding:5px 0;border-top:1px solid var(--line)}
+.oy-r>b{grid-row:span 2;align-self:center;font-size:12.5px}.oy-r small{font-size:10.5px;color:var(--mut);text-align:center}
+.oy-r.hl{background:var(--seg)}
+.oy-bs{position:relative;background:linear-gradient(var(--line),var(--line)) 50% 0/1px 100% no-repeat}
+.oy-b{position:relative;height:13px;margin:2px 0;font-size:10.5px;font-variant-numeric:tabular-nums}
+.oy-b i{position:absolute;top:1px;bottom:1px}.oy-b em{position:absolute;top:-1px;font-style:normal;white-space:nowrap}
+.oy-b.me i.up{background:var(--buy)}.oy-b.me i.dn{background:var(--sell)}.oy-b.me em{font-weight:700}
+.oy-b.ks i.up{background:var(--buy);opacity:.3}.oy-b.ks i.dn{background:var(--sell);opacity:.3}.oy-b.ks em{color:var(--mut)}
+.oy-b.cut i.up{clip-path:polygon(0 0,94% 0,100% 50%,94% 100%,0 100%)}
+.oy-s{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.oy-s div{border:1px solid var(--line);padding:8px}.oy-s span{display:block;font-size:11px;color:var(--mut)}
+.oy-s b{display:block;font-size:20px;color:var(--buy);margin:2px 0}.oy-s b.n{color:var(--sell)}.oy-s small{font-size:10.5px;color:var(--mut)}
 .bt-yr{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums;background:var(--card);border:1px solid var(--line)}
 .bt-yr th,.bt-yr td{padding:5px 6px;text-align:right;border-bottom:1px solid var(--line)}
 .bt-yr th:first-child,.bt-yr td:first-child{text-align:left}
@@ -163,17 +178,20 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
   </div></div>
 
   <div class="bt-h"><span class="dot" style="background:var(--sell)"></span>처음 보는 기간 시험<em>규칙을 고를 때 쓴 적 없는 2005~2011</em></div>
-  <table class="bt-yr">
-    <tr><th>연도</th><th>지금 규칙</th><th>코스피</th><th>S&amp;P500</th><th>나스닥100</th></tr>
-    <tr><td>2005</td><td class="p">+102%</td><td class="p">+54%</td><td class="p">+3%</td><td class="p">+2%</td></tr>
-    <tr><td>2006</td><td class="n">−5%</td><td class="p">+4%</td><td class="p">+14%</td><td class="p">+7%</td></tr>
-    <tr><td>2007</td><td class="p">+15%</td><td class="p">+32%</td><td class="p">+4%</td><td class="p">+19%</td></tr>
-    <tr><td>2008</td><td class="n">−31%</td><td class="n">−41%</td><td class="n">−39%</td><td class="n">−42%</td></tr>
-    <tr><td>2009</td><td class="n">−7%</td><td class="p">+50%</td><td class="p">+24%</td><td class="p">+54%</td></tr>
-    <tr><td>2010</td><td class="p">+8%</td><td class="p">+22%</td><td class="p">+13%</td><td class="p">+19%</td></tr>
-    <tr><td>2011</td><td class="p">+16%</td><td class="n">−11%</td><td>0%</td><td class="p">+3%</td></tr>
-    <tr class="sum"><td>연평균</td><td class="p">+8.5%</td><td class="p">+10.7%</td><td class="p">+0.5%</td><td class="p">+5.0%</td></tr>
-  </table>
+  <div class="bt-oy">
+    <div class="oy-lg"><span><i class="me"></i>지금 규칙</span><span><i class="ks"></i>코스피</span><span class="oy-ax">빨강 오름 · 파랑 내림</span></div>
+    <div class="oy-r"><b>2005</b><div class="oy-bs"><div class="oy-b me cut"><i class="up" style="left:50%;width:38.0%"></i><em style="left:calc(50% + 38.0% + 4px)">+102%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:34.2%"></i><em style="left:calc(50% + 34.2% + 4px)">+54%</em></div></div><small>S&amp;P +3 · 나스닥 +2</small></div>
+<div class="oy-r"><b>2006</b><div class="oy-bs"><div class="oy-b me"><i class="dn" style="right:50%;width:3.2%"></i><em style="right:calc(50% + 3.2% + 4px)">−5%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:2.5%"></i><em style="left:calc(50% + 2.5% + 4px)">+4%</em></div></div><small>S&amp;P +14 · 나스닥 +7</small></div>
+<div class="oy-r"><b>2007</b><div class="oy-bs"><div class="oy-b me"><i class="up" style="left:50%;width:9.5%"></i><em style="left:calc(50% + 9.5% + 4px)">+15%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:20.3%"></i><em style="left:calc(50% + 20.3% + 4px)">+32%</em></div></div><small>S&amp;P +4 · 나스닥 +19</small></div>
+<div class="oy-r"><b>2008</b><div class="oy-bs"><div class="oy-b me"><i class="dn" style="right:50%;width:19.6%"></i><em style="right:calc(50% + 19.6% + 4px)">−31%</em></div><div class="oy-b ks"><i class="dn" style="right:50%;width:26.0%"></i><em style="right:calc(50% + 26.0% + 4px)">−41%</em></div></div><small>S&amp;P −39 · 나스닥 −42</small></div>
+<div class="oy-r hl"><b>2009</b><div class="oy-bs"><div class="oy-b me"><i class="dn" style="right:50%;width:4.4%"></i><em style="right:calc(50% + 4.4% + 4px)">−7%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:31.7%"></i><em style="left:calc(50% + 31.7% + 4px)">+50%</em></div></div><small>S&amp;P +24 · 나스닥 +54</small></div>
+<div class="oy-r"><b>2010</b><div class="oy-bs"><div class="oy-b me"><i class="up" style="left:50%;width:5.1%"></i><em style="left:calc(50% + 5.1% + 4px)">+8%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:13.9%"></i><em style="left:calc(50% + 13.9% + 4px)">+22%</em></div></div><small>S&amp;P +13 · 나스닥 +19</small></div>
+<div class="oy-r"><b>2011</b><div class="oy-bs"><div class="oy-b me"><i class="up" style="left:50%;width:10.1%"></i><em style="left:calc(50% + 10.1% + 4px)">+16%</em></div><div class="oy-b ks"><i class="dn" style="right:50%;width:7.0%"></i><em style="right:calc(50% + 7.0% + 4px)">−11%</em></div></div><small>S&amp;P 0 · 나스닥 +3</small></div>
+<div class="oy-s">
+      <div><span>연평균 2005~2011</span><b>+8.5%</b><small>코스피 +10.7 · S&amp;P +0.5 · 나스닥 +5.0</small></div>
+      <div><span>2005년 빼면(2006~2011)</span><b class="n">약 −2%</b><small>코스피 약 +5 · S&amp;P 약 0 · 나스닥 약 +6</small></div>
+    </div>
+  </div>
   <p class="bt-note">2008년에는 지수보다 덜 빠졌지만(판매 규칙 작동), 2009년 반등은 놓쳤어요. 연평균 +8.5%는 2005년(+102%, 넣은 돈이 적던 첫해) 덕이 커서, <b>2006~2011년만 보면 연 약 −2%</b>(코스피 약 +5%). 지수는 배당을 뺀 가격 지수, 그 기간 수급 자료는 없어 수급 규칙은 적용 안 됨.</p>
   <div class="bt-y9">
     <div class="y9-h">🐎 2009년은 왜 −7%였나 <em>지수 +24~54% 반등</em></div>
