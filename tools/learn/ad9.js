@@ -1472,14 +1472,16 @@ function build(c, which) {
         const irr = fl => { let lo = -0.9, hi = 1; const npv = r => { let t = 0; for (const [k, v] of fl) t += v / Math.pow(1 + r, k); return t; }; for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (npv(m) > 0) lo = m; else hi = m; } return Math.pow(1 + lo, 12) - 1; };
         log(''); log('## 40 후보 전 종목 100만원씩 — 거래마다 100만원(비용·한국 거래세 포함, 미국 양도세는 매도 연도별 250만원 공제 후 22%, 환율 변동 제외), 아직 보유 중인 종목은 마지막 달 종가로 평가');
         log('방식                                                     거래 수  보유중  이긴 거래  평균    중앙값   누적(투입 대비)  연평균(IRR)  동시 보유 최대  투입 합계 | 같은 날짜에 지수로: 누적  연평균  지수보다 나은 거래');
+        const RES40 = [];
         for (const [nm, cand, o, all] of V40) {
           const opt = { ...simOpt(rule10, o), cand, log: true };
           if (all) opt.perFixed = 1e6;
           const sm = all ? simulate(ym => cand(ym), 100000, C1, opt, 0) : simulate(ym => cand(ym).slice(0, 4), 4, C1, opt, DEP);
           const tr = (sm.trades || []).filter(t => t.ret != null && t.buyYm && t.sellYm);
           const last = sm.snapshots ? [...sm.snapshots.keys()].sort().pop() : null, open = last ? sm.snapshots.get(last) : [];
-          const rows = tr.map(t => ({ b: mi(t.buyYm), s: mi(t.sellYm), r: t.ret, us: !isKR(t.y), Y: Math.floor(t.sellYm / 100) }))
-            .concat((open || []).filter(h => h.buyPx > 0 && h.curPx > 0).map(h => ({ b: mi(h.buyYm), s: mi(+last) + 1, r: h.curPx / h.buyPx - 1, us: !isKR(h.y), Y: Math.floor(+last / 100), open: 1 })));
+          const rows = tr.map(t => ({ y: t.y, b: mi(t.buyYm), s: mi(t.sellYm), r: t.ret, us: !isKR(t.y), Y: Math.floor(t.sellYm / 100) }))
+            .concat((open || []).filter(h => h.buyPx > 0 && h.curPx > 0).map(h => ({ y: h.y, b: mi(h.buyYm), s: mi(+last) + 1, r: h.curPx / h.buyPx - 1, us: !isKR(h.y), Y: Math.floor(+last / 100), open: 1 })));
+          RES40.push({ nm, all, rows });
           const usY = {}; rows.filter(x => x.us && !x.open).forEach(x => { usY[x.Y] = (usY[x.Y] || 0) + x.r * 1e6; });
           const fl = new Map(), k0 = Math.min(...rows.map(x => x.b)), addF = (k, v) => fl.set(k - k0, (fl.get(k - k0) || 0) + v);
           rows.forEach(x => { addF(x.b, -1e6); addF(x.s, 1e6 * (1 + x.r)); });
@@ -1498,6 +1500,22 @@ function build(c, which) {
               const yrs = Object.keys(bg); log(`   +100% 거래가 있었던 해 ${yrs.filter(Y => bg[Y].b100 > 0).length}/${yrs.length}년 · +50% 거래가 있었던 해 ${yrs.filter(Y => bg[Y].b50 > 0).length}/${yrs.length}년`); }
             const srt = rows.map(x => x.r).sort((a, b) => b - a), tot = srt.reduce((a, b) => a + b, 0); log(`   상위 10% 거래가 이익 합계에서 차지하는 몫 ${(srt.slice(0, Math.ceil(srt.length / 10)).reduce((a, b) => a + b, 0) / tot * 100).toFixed(0)}% · 상위 10종목 빼면 거래당 평균 ${pc((tot - srt.slice(0, 10).reduce((a, b) => a + b, 0)) / (srt.length - 10))}`); }
         }
+        safe('40 놓친 대박', () => {                                          // ① 점수가 놓친 대박: 후보 전부(지금 규칙)의 +100% 거래 중 상위 4가 같은 종목을 같은 달에 산 비율 ② 규칙이 놓친 대박: 한 해 2배 넘게 오른 종목(돌파 신호가 있던 종목) 중 그해 +50% 넘게 잡은 비율
+          const top = RES40[0], allR = RES40[1]; if (!top || !allR) return;
+          const key = x => x.y + '|' + x.b, topSet = new Set(top.rows.map(key));
+          const big = allR.rows.filter(x => x.r >= 1), got = big.filter(x => topSet.has(key(x)));
+          log(''); log(`## 40 놓친 대박 ① 점수: 후보 전부(지금 규칙)의 +100% 넘은 거래 ${big.length}건 중 점수 상위 4가 산 것 ${got.length}건(${big.length ? (got.length / big.length * 100).toFixed(0) : 0}%) → 놓친 비율 ${big.length ? ((1 - got.length / big.length) * 100).toFixed(0) : 0}%`);
+          if (big.length) log('   놓친 +100% 거래 수익 상위: ' + big.filter(x => !topSet.has(key(x))).sort((a, b) => b.r - a.r).slice(0, 8).map(x => `${CO_NAME.get(x.y) || x.y} ${ymOf(x.b)} ${pc(x.r)}`).join(', '));
+          const b50 = allR.rows.filter(x => x.r >= 0.5), g50 = b50.filter(x => topSet.has(key(x)));
+          log(`   +50% 넘은 거래 ${b50.length}건 중 상위 4가 산 것 ${g50.length}건(${b50.length ? (g50.length / b50.length * 100).toFixed(0) : 0}%) · 참고: 후보 전체 거래 중 상위 4가 산 비율 ${(top.rows.filter(x => allR.rows.some(z => key(z) === key(x))).length / allR.rows.length * 100).toFixed(0)}%`);
+          const ys = new Set(); scored[kA].forEach(a => a.forEach(e => ys.add(e.r.y)));
+          const Ys = YEARS_ALL.filter(Y => Y >= 2012 && Y < 2026); let nb = 0, ca = 0, ct = 0; const missed = [];
+          for (const y of ys) { const o = px(y); if (!o) continue; for (const Y of Ys) { const a = o.m.get(mi((Y - 1) * 100 + 12)), b2 = o.m.get(mi(Y * 100 + 12)); if (!(a > 0 && b2 > 0) || b2 / a < 2) continue; nb++;
+            const hit = R => R.rows.some(x => x.y === y && x.r >= 0.5 && x.b <= mi(Y * 100 + 12) && x.s >= mi(Y * 100 + 1)); const h1 = hit(allR), h2 = hit(top); if (h1) ca++; if (h2) ct++; if (!h1) missed.push(`${CO_NAME.get(y) || y} ${Y} ×${(b2 / a).toFixed(1)}`); } }
+          log(`## 40 놓친 대박 ② 규칙: 한 해(12월→12월) 2배 넘게 오른 종목-연도 ${nb}개(돌파 신호가 있던 종목, 2012~2025) 중 그해 +50% 넘는 거래로 잡은 것 — 후보 전부 ${ca}개(${nb ? (ca / nb * 100).toFixed(0) : 0}%) · 점수 상위 4 ${ct}개(${nb ? (ct / nb * 100).toFixed(0) : 0}%)`);
+          log('   후보 전부도 놓친 예: ' + missed.slice(0, 12).join(', ') + (missed.length > 12 ? ` 외 ${missed.length - 12}개` : ''));
+          log('   ※ ②의 종목은 그 시점 시총 상위 범위 밖이었던 해도 섞여 있어(지금 목록 기준) 놓친 비율이 실제보다 크게 나올 수 있음');
+        });
         log('※ 누적 = (번 돈 합계 − 미국 양도세) ÷ 투입 합계(거래 수 × 100만원), 재투자 없음. 연평균 = 각 거래의 사고판 달 현금흐름으로 계산한 IRR. 지수 대조 = 같은 거래를 같은 달에 코스피(한국)·S&P500(미국) 가격 지수로 했을 때(비용·세금 없음, 배당 미포함).');
       }));
     }
