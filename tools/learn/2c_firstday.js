@@ -28,7 +28,7 @@ function firstDays(j) {
       if (last >= CUR || age < 20 * 86400000 || last === 0) { skip++; return; }   // 최신이거나, 최근에 받았거나, 자료 없음으로 표시된 종목
     }
     try {
-      const j = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s.y)}?period1=1199145600&period2=${P2}&interval=1d`);
+      const j = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s.y)}?period1=${process.env.FD_P1 || 1199145600}&period2=${P2}&interval=1d`);
       const m = firstDays(j);
       fs.writeFileSync(f, JSON.stringify(m || []));
       m && m.length ? ok++ : none++;

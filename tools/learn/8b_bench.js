@@ -12,7 +12,7 @@ const sig = v => +(+v).toPrecision(8);
     if (!m || !m.length) {
       try { m = yahooMonthly(await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(y)}?period1=946684800&period2=${Math.floor(Date.now() / 1000) + 86400}&interval=1mo`)); if (m && m.length) fs.writeFileSync(file(y), JSON.stringify(m)); } catch (e) { m = null; }
     }
-    out[k] = {}; (m || []).forEach(b => { if (b[0] >= 201101 && b[4] > 0) out[k][b[0]] = sig(b[4]); });
+    out[k] = {}; (m || []).forEach(b => { if (b[0] >= (+process.env.BENCH_FROM || 201101) && b[4] > 0) out[k][b[0]] = sig(b[4]); });
     console.log(`${k} (${y}): ${Object.keys(out[k]).length}개월`);
   }
   fs.writeFileSync(path.join(DATA, 'bench.json'), JSON.stringify(out));

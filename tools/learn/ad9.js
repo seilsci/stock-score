@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1457,6 +1457,31 @@ function build(c, which) {
         add(S('B 수급 규칙 없이'), N === 1 ? '한국6·미국10 · 한 번에' : `한국6·미국10 · 매도 대금 ${N}달에 나눠 넣기`, { cand: candOf(mBase), rule: rule10, o: { exitMaFn: KR6, splitN: N } });
       });
       posts.push(() => post12('39-', '39 매도 대금 나눠 넣기'));
+    }
+    if (on(44)) {                                                              // ═════ 묶음 44: 규칙을 고른 적 없는 옛 기간까지 늘려 보기(DATA=data_2003, MIN_YM=200301 신호, BT_START=2005) — 규칙은 지금 그대로, 결과를 보고 고치지 않음
+      PFX = '44';
+      const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
+      const flowOK = drop(isSame)(mBase);
+      add(S('A 규칙'), '지금 규칙(한국6·미국10 + 수급)', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6 } });
+      add(S('A 규칙'), '한국6·미국10(수급 없이)', { cand: candOf(mBase), rule: rule10, o: { exitMaFn: KR6 } });
+      add(S('A 규칙'), '10이평 판매(예전 규칙)', { cand: candOf(mBase), rule: rule10 });
+      posts.push(() => safe('44 기간', () => {
+        const mine = V.filter(v => String(v.sec).startsWith('44-') && v.full && v.full.yearly);
+        const ys = YEARS_ALL.slice();
+        const idxY = (key, Y) => { const a = idxAt(key, mi((Y - 1) * 100 + 12)), b2 = idxAt(key, mi(Y * 100 + 12)) || idxAt(key, END); return a > 0 && b2 > 0 ? b2 / a - 1 : null; };
+        const IX = [['코스피', 'ks'], ['S&P500', 'sp'], ['나스닥100', 'nq']];
+        log(''); log(`## 44 해마다 수익률(${ys[0]}~${ys[ys.length - 1]}, 월 100만원 적립 시간가중 · 지수는 가격 지수 연간 변화, 배당 없음)`);
+        log('연도   ' + mine.map(v => v.name.slice(0, 16).padStart(17)).join('') + IX.map(([n]) => n.padStart(10)).join(''));
+        ys.forEach(Y => log(`${Y}${Y < 2012 ? '*' : ' '}  ` + mine.map(v => pc(v.full.yearly[Y] ?? NaN).padStart(17)).join('') + IX.map(([, k]) => { const r = idxY(k, Y); return (r == null ? '-' : pc(r)).padStart(10); }).join('')));
+        log('(* = 규칙을 고를 때 쓴 적 없는 기간)');
+        const per = [['처음 보는 기간', ys.filter(Y => Y < 2012)], ['규칙을 고른 기간', ys.filter(Y => Y >= 2012)], ['전체', ys]];
+        log(''); log('## 44 구간별 연평균');
+        log('구간                 ' + mine.map(v => v.name.slice(0, 16).padStart(17)).join('') + IX.map(([n]) => n.padStart(10)).join(''));
+        per.forEach(([nm, Ys]) => { if (!Ys.length) return; const ixC = k => { let p = 1, n = 0; Ys.forEach(Y => { const r = idxY(k, Y); if (r != null) { p *= 1 + r; n++; } }); return n ? Math.pow(p, 1 / n) - 1 : NaN; };
+          log(`${(nm + ` ${Ys[0]}~${Ys[Ys.length - 1]}`).padEnd(20)} ` + mine.map(v => pc(cagrOver(v.full.yearly, Ys)).padStart(17)).join('') + IX.map(([, k]) => pc(ixC(k)).padStart(10)).join('')); });
+        log(''); log('## 44 가장 나빴던 해: ' + mine.map(v => { const w = ys.map(Y => [Y, v.full.yearly[Y]]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1])[0]; return `${v.name.slice(0, 16)} ${w ? w[0] + ' ' + pc(w[1]) : '-'} (낙폭 ${pc(v.full.mdd)})`; }).join(' · '));
+      }));
+      posts.push(() => post12('44-', '44 옛 기간 포함'));
     }
     if (on(43)) {                                                              // ═════ 묶음 43: 점수 강화 — ① 수급 지표를 점수 모델에 넣기(한국만, 돌파 달 값) ② 정답을 '손실 피하기'로 바꿔 학습 (모두 지금 규칙: 한국6·미국10 + 수급 거르기)
       PFX = '43';
