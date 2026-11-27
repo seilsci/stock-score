@@ -32,7 +32,7 @@ h1{font-size:20px;margin:0}
 .cd{color:var(--mut);font-size:12px;font-weight:400;margin-left:4px}
 .meta{color:var(--mut);font-size:12.5px}
 .tag{font-size:11px;padding:1px 6px;border-radius:6px;background:var(--chip);color:var(--mut);margin-left:4px;font-weight:600}
-.r{text-align:right;white-space:nowrap}
+.r{text-align:right;white-space:nowrap;display:flex;align-items:center;justify-content:flex-end;gap:10px}.r-v{text-align:right}     /* 가격·10이평 오른쪽에 점수 */
 .px{font-weight:600}
 .gap.b{color:var(--buy)}.gap.s{color:var(--sell)}
 .msg{padding:28px 16px;text-align:center;color:var(--mut)}
@@ -270,8 +270,8 @@ function render() {
     return '<div class="row' + (SEL && SEL['코드'] === r['코드'] && SEL['시장'] === r['시장'] ? ' sel' : '') + '" data-i="' + i + '"><div class="rk">' + (i + 1) + '</div><div>' +
       '<div class="nm">' + esc(r['이름']) + '<span class="cd">' + esc(r['코드']) + '</span>' + tag + '</div>' +
       '<div class="meta">' + mk + '시총 ' + cap(r) + '</div></div>' +
-      '<div class="r">' + scHtml + '<div class="px">' + px(r, kr) + '</div>' +
-      '<div class="meta gap ' + cls + '">' + (S === '익절' ? '10이평의 ×' + (+r['배율']).toFixed(2) + (r['익절상태'] === '하락' ? ' (직전 달)' : '') : gl + (g > 0 ? '+' : '') + g.toFixed(1) + '%') + '</div></div></div>';
+      '<div class="r"><div class="r-v"><div class="px">' + px(r, kr) + '</div>' +
+      '<div class="meta gap ' + cls + '">' + (S === '익절' ? '10이평의 ×' + (+r['배율']).toFixed(2) + (r['익절상태'] === '하락' ? ' (직전 달)' : '') : gl + (g > 0 ? '+' : '') + g.toFixed(1) + '%') + '</div></div>' + scHtml + '</div></div>';
   }).join('');
   LIST = sel;
   if (!SEL || !sel.some(function (r) { return r['코드'] === SEL['코드'] && r['시장'] === SEL['시장']; })) {
