@@ -238,7 +238,12 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       amt: got, basis: h.basis, ret: got / h.basis - 1, reason: reason || 'ma10' });
     if (trades && h.buyYm) trades.push({ y: h.y, buyYm: h.buyYm, sellYm: ymOf(k), buyPx: h.buyPx, sellPx: h.last,
       ret: got / h.basis - 1, score: h.buyScore, feats: h.buyFeats, reason: reason || 'ma10' });
+    if (opt.splitN > 1) soldAt.set(k, (soldAt.get(k) || 0) + got);           // 나눠 넣기 시험: 그달 판 돈 기록
     return got;
+  };
+  const soldAt = new Map();
+  const lockedAt = b => {                                  // 나눠 넣기(opt.splitN=N): s달 말에 판 돈은 b달 구매 때 min(N, b−s)/N만 쓸 수 있음 → 아직 못 쓰는 몫
+    let L = 0; const N = opt.splitN; for (const [sk, v] of soldAt) { const d = b - sk; if (d >= 1 && d < N) L += v * (1 - d / N); } return L;
   };
   const usTax = Y => C.us.cg_tax_rate * Math.max(0, (usGain[Y] || 0) - C.us.cg_exemption_krw) + (opt.krGainTax ? opt.krGainTax.rate * Math.max(0, (krGain[Y] || 0) - opt.krGainTax.exempt) : 0);
   const sellPart = (h, k, fr, reason) => {                 // 일부만 팔기(부분 익절·비중 줄이기): 수수료·세금은 팔린 몫만큼
@@ -344,7 +349,8 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (opt.buyBlock && opt.buyBlock(k, ymOf(sigK), stNow())) return;
     if (opt.buyDelay) sigK -= opt.buyDelay;
     const kc = cash * (opt.cashKeepFn ? Math.max(0, Math.min(1, opt.cashKeepFn(k, stNow()) || 0)) : (opt.cashKeep || 0)); cash -= kc;
-    try { doBuys0(sigK, k, priceAt); } finally { cash += kc; }
+    const kl = opt.splitN > 1 ? Math.min(Math.max(0, cash), lockedAt(k)) : 0; cash -= kl;      // 나눠 넣기: 아직 차례가 안 된 매도 대금은 이번 구매에 안 씀
+    try { doBuys0(sigK, k, priceAt); } finally { cash += kc + kl; }
   };
   let pend = null, fdMiss = 0, tlhN = 0, taxTotal = 0, coSkipN = 0, divTotal = 0;
   let eqIdx = 1, eqPeak = 1; const eqHist = [], cfs = [];               // 시험용 상태: 전략 수익곡선(시간가중)·최고점·현금흐름
