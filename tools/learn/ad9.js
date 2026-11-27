@@ -1506,6 +1506,10 @@ function build(c, which) {
           const big = allR.rows.filter(x => x.r >= 1), got = big.filter(x => topSet.has(key(x)));
           log(''); log(`## 40 놓친 대박 ① 점수: 후보 전부(지금 규칙)의 +100% 넘은 거래 ${big.length}건 중 점수 상위 4가 산 것 ${got.length}건(${big.length ? (got.length / big.length * 100).toFixed(0) : 0}%) → 놓친 비율 ${big.length ? ((1 - got.length / big.length) * 100).toFixed(0) : 0}%`);
           if (big.length) log('   놓친 +100% 거래 수익 상위: ' + big.filter(x => !topSet.has(key(x))).sort((a, b) => b.r - a.r).slice(0, 8).map(x => `${CO_NAME.get(x.y) || x.y} ${ymOf(x.b)} ${pc(x.r)}`).join(', '));
+          const nAll = new Map(), nTop = new Map(); allR.rows.forEach(x => nAll.set(x.b, (nAll.get(x.b) || 0) + 1)); top.rows.forEach(x => { if (allR.rows.some(z => key(z) === key(x))) nTop.set(x.b, (nTop.get(x.b) || 0) + 1); });
+          const expHit = arr => arr.reduce((a, x) => a + Math.min(1, (nTop.get(x.b) || 0) / (nAll.get(x.b) || 1)), 0);      // 그달 후보 중 상위 4가 산 비율 = 무작위로 같은 수를 샀다면 그 거래를 잡았을 확률
+          [['+100%', 1], ['+50%', 0.5], ['손실 −20% 이하', -9]].forEach(([nmT, th]) => { const arr = th > -9 ? allR.rows.filter(x => x.r >= th) : allR.rows.filter(x => x.r <= -0.2); const g = arr.filter(x => topSet.has(key(x))).length, e = expHit(arr);
+            log(`   ${nmT} 거래 ${arr.length}건: 상위 4가 잡은 것 ${g}건 vs 무작위로 같은 수를 샀다면 기대 ${e.toFixed(1)}건 → ${e > 0 ? (g / e).toFixed(2) : '-'}배` + (th === -9 ? ' (1배보다 작을수록 손실을 잘 피함)' : ' (1배보다 클수록 대박을 잘 고름)')); });
           const b50 = allR.rows.filter(x => x.r >= 0.5), g50 = b50.filter(x => topSet.has(key(x)));
           log(`   +50% 넘은 거래 ${b50.length}건 중 상위 4가 산 것 ${g50.length}건(${b50.length ? (g50.length / b50.length * 100).toFixed(0) : 0}%) · 참고: 후보 전체 거래 중 상위 4가 산 비율 ${(top.rows.filter(x => allR.rows.some(z => key(z) === key(x))).length / allR.rows.length * 100).toFixed(0)}%`);
           const ys = new Set(); scored[kA].forEach(a => a.forEach(e => ys.add(e.r.y)));
