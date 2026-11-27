@@ -5,7 +5,9 @@
   document.body.appendChild(box);
   var up=box.children[0], dn=box.children[1];
   function root(){ return document.documentElement; }
+  function navH(){ var n=document.querySelector('.navtabs'); if(n) document.documentElement.style.setProperty('--nav-h',n.offsetHeight+'px'); }
   function place(){
+    navH();
     var dock=document.getElementById('my-dock'), off=0, shown=dock && !dock.hidden && getComputedStyle(dock).display!=='none';
     if(shown) off=dock.offsetHeight;                                           // 하단 고정 '내 보유 종목' 창 위로 올림
     box.style.display=(shown && !dock.classList.contains('c'))?'none':'flex';   // 보유 종목 창이 펼쳐져 있으면 숨김(접었을 때만 보임)
