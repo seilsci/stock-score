@@ -2295,7 +2295,7 @@ function myDock(show, n, val, unrl, cost){       // 내 보유 종목: 화면 �
     var pct=cost>0?(unrl/cost*100):0, c=unrl>=0?'p':'n';
     document.getElementById('my-dock-t').innerHTML='내 보유 종목 '+n+'개 · 평가 '+won(val)+' · <b class="'+c+'">'+(unrl>=0?'+':'−')+won(Math.abs(unrl))+' ('+(pct>=0?'+':'')+pct.toFixed(1)+'%)</b>';
     if(!d._w){ d._w=1; var cl=false; try{ cl=localStorage.getItem('jdock')==='c'; }catch(e){} d.classList.toggle('c',cl);
-      document.getElementById('my-dock-h').onclick=function(){ var c2=!d.classList.contains('c'); d.classList.toggle('c',c2); try{ localStorage.setItem('jdock',c2?'c':''); }catch(e){} myDockPad(); };
+      document.getElementById('my-dock-h').onclick=function(){ var c2=!d.classList.contains('c'); d.classList.toggle('c',c2); try{ localStorage.setItem('jdock',c2?'c':''); }catch(e){} myDockPad(); if(window._fabPlace) window._fabPlace(); };
       window.addEventListener('resize',myDockPad); }
     var col=d.classList.contains('c'); document.getElementById('my-dock-a').textContent=col?'펼치기 ▲':'접기 ▼'; document.getElementById('my-dock-h').setAttribute('aria-expanded',col?'false':'true');
   }
@@ -2434,6 +2434,6 @@ fetch('tools/learn/result/ledger.json').then(function(r){ return r.json(); }).th
 document.addEventListener('visibilitychange',function(){ if(XMODE&&document.visibilityState==='visible'&&DATA) syncPull(); });
 </script>
 <script src="tidy.js"></script>
-<script src="fab.js?v=1127d"></script>
+<script src="fab.js?v=1127e"></script>
 </body>
 </html>
