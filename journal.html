@@ -496,23 +496,25 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
   var holds = over ? over.holds : (DATA.snapshots[ym] || []), nxTag='';
   if(!over && isFD() && LED && LED.months[ym]){                          // 첫날 구매 방식: 말일 보유 + 다음 달 1일 구매
     var NXh=fdNextOf(ym);
-    if(NXh && NXh.buys && NXh.buys.length){ holds=holds.concat(NXh.buys.map(function(x){ return {y:x.y,name:x.name,buyYm:+NXh.ym,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:x.score}; })); nxTag=fmt(NXh.ym).slice(5)+'월 1일 구매 포함'; }
+    if(NXh && NXh.buys && NXh.buys.length){ holds=holds.concat(NXh.buys.map(function(x){ return {y:x.y,name:x.name,buyYm:+NXh.ym,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:x.score,sc100:x.sc100}; })); nxTag=fmt(NXh.ym).slice(5)+'월 1일 구매 포함'; }
   }
   title.innerHTML = over ? fmt(ym)+' 말 + '+(over.nx?fmt(over.nx).slice(5)+'월 1일':'다음 달 1일')+' 예상 보유 종목 '+holds.length+'개 <span class="plan-tag">예정 주문 반영</span>' : fmt(ym)+' 말 보유 종목 '+holds.length+'개'+(nxTag?' <span class="plan-tag">'+nxTag+'</span>':'');
   if(!holds.length){ list.innerHTML='<div style="color:var(--mut);padding:4px 0">현금 보유</div>'; return; }
   list.innerHTML = holds.map(function(h,i){
     var ret=h.ret, cls=ret>=0?'p':'n';
     var isSel = SEL_HOLD && SEL_HOLD.y===h.y;
-    var scN = scoreOf(h.y,h.buyYm); if(scN==null && h.row){ var lsH=localScore(h.y,h.row); if(lsH!=null) scN=lsH; } var sc = scN!=null ? scN : ((h.score==null||isNaN(h.score))?null:Math.round(h.score*100));
+    var scN = scoreOf(h.y,h.buyYm); if(scN==null && h.row){ var lsH=localScore(h.y,h.row); if(lsH!=null) scN=lsH; } var sc = scN!=null ? scN : (h.sc100!=null ? h.sc100 : rawPct(h.score));
     var hUS = !/\.(KS|KQ)$/.test(h.y), fxv = over ? over.fx : (LED && LED.months[ym] ? LED.months[ym].fx : 1);
     var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx * (hUS ? fxv : 1)) : null;
     var buyAmt = h.basis ? Math.round(h.basis) : null;
     var shStr = h.sh ? (h.sh < 1 ? h.sh.toFixed(3)+'주' : Math.floor(h.sh)+'주') : '';
+    var unitStr = h.buyPx ? (hUS ? '$'+(+h.buyPx).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+(buyAmt&&h.sh>=1?' ('+Math.round(buyAmt/h.sh).toLocaleString()+'원)':'') : Math.round(h.buyPx).toLocaleString()+'원') : '';     // 1주당 구매 단가(미국은 달러 + 수수료 포함 원화)
     return '<div class="h-wrap"><div class="h-row'+(isSel?' sel':'')+'" data-i="'+i+'">'
       +'<div class="h-nm"><div class="h-name">'+esc(h.name||h.y)+'</div>'+(h.buyYm?'<div class="h-bd">'+fmt(h.buyYm)+' 구매</div>':'')+'</div>'
       +'<div class="h-px">'
         +(buyAmt?'매수 '+buyAmt.toLocaleString()+'원':'매수 '+fmt(h.buyYm))+'<br>'
         +(evalAmt?'평가 '+evalAmt.toLocaleString()+'원 '+shStr:'종가 '+px(h.curPx))
+        +(unitStr?'<br>1주 '+unitStr:'')
       +'</div>'
       +'<div class="h-ret '+cls+'">'+pc(ret)+'</div>'
       +'<div class="h-sc" data-sc-i="'+i+'" title="점수 기준 보기">'+(sc==null?'-':sc+'점')+'</div>'
@@ -842,6 +844,7 @@ var FNAME = {
   lowwick: '아랫꼬리', range: '변동폭', close_pos: '종가 위치', vol: '거래량 변화', vol3: '단기 거래량', vol_max36: '최대 거래량 대비',
   turn: '거래대금 크기', volat12: '12개월 변동성', us: '미국 종목', etf: 'ETF 여부', idx_above: '지수 이평 위', idx_slope: '지수 기울기', idx_ret12: '지수 12개월 수익'
 };
+function rawPct(s){ return (s==null||isNaN(s)||(!W&&!G))?null:Math.round(rawToScore(+s)); }     // 장부·거래의 점수는 모델 원점수(예상 로그수익) → 0~100 점수로(예전엔 ×100을 해서 2점·5점처럼 잘못 나옴)
 function rawToScore(raw){
   var pct=G?G.pct:W.pct, lo=0, hi=pct.length-1;
   while(lo<hi){ var mid=(lo+hi)>>1; if(pct[mid]<raw) lo=mid+1; else hi=mid; }
@@ -1019,9 +1022,9 @@ function fdNextOf(ym){                      // 첫날 구매 방식: ym 월말 �
   if(String(ym)!==last||!m) return null;
   if(!COSTS||!BARS) return {ym:nx,loading:true};
   if(NEXTFD&&NEXTFD.base===LED&&NEXTFD.ym===nx) return NEXTFD;
-  var cands=(m.cands||[]).map(function(c){ var sc=c.brk?scoreOf(c.y,c.brk):null; return {y:c.y,name:c.name,us:c.us,px:c.px,score:sc!=null?sc:'-',brk:c.brk}; });
+  var cands=(m.cands||[]).map(function(c){ var sc=c.brk?scoreOf(c.y,c.brk):null; if(sc==null&&c.brk) sc=scoreFromBars(c.y,c.brk,c.us); if(sc==null) sc=rawPct(c.score); return {y:c.y,name:c.name,us:c.us,px:c.px,score:sc!=null?sc:'-',brk:c.brk}; });
   var core=planCore({nowYm:nx,lastYm:ym,holds:DATA.snapshots[ym]||[],cash:m.cash,dep:LED.meta.dep,fx:m.fx,rateUp:false,picks:[],N:4,usGainYtd:0,fd:true,cands:cands});
-  var buys=core.buys.map(function(b){ return Object.assign({},b,{score:typeof b.score==='number'?b.score/100:null}); });
+  var buys=core.buys.map(function(b){ return Object.assign({},b,{score:typeof b.score==='number'?b.score/100:null,sc100:typeof b.score==='number'?b.score:null}); });
   NEXTFD={ym:nx,buys:buys,skipped:core.skipped,base:LED};
   return NEXTFD;
 }
@@ -1073,7 +1076,7 @@ function renderLedger(){
     bal+=x.amt;
     var hm=holdMonths(x.buyYm,ym), rr=REASON[x.reason]||x.reason||'';
     var buyTr=DATA.trades.filter(function(t){ return t.y===x.y && String(t.buyYm)===String(x.buyYm); })[0];
-    var sv=scoreOf(x.y,x.buyYm), buyScore=sv!=null?sv:(buyTr?Math.round(buyTr.score*100):'-');
+    var sv=scoreOf(x.y,x.buyYm), buyScore=sv!=null?sv:((buyTr?rawPct(buyTr.score):null) ?? '-');
     var bm=LED.months[x.buyYm], bb=bm&&bm.buys.filter(function(b){ return b.y===x.y; })[0];     // 그때의 구매 기록(가격·금액)
     var bpx=bb?pxS(bb.px,x.us):(buyTr?pxS(buyTr.buyPx,x.us):'-'), bamt=bb?bb.amt:x.basis;
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
@@ -1097,7 +1100,7 @@ function renderLedger(){
     var endYm=tr?tr.sellYm:Object.keys(LED.months).sort().pop();
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
     var cost='+ 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span> = <b>'+won(x.amt)+'</b>';
-    var scv=(function(){ var v=scoreOf(x.y,Y); if(v!=null) return v; if(x.brk){ var b2=scoreFromBars(x.y,x.brk,x.us); if(b2!=null) return b2; } return x.score==null?'-':Math.round(x.score*100); })();
+    var scv=(function(){ var v=scoreOf(x.y,Y); if(v!=null) return v; if(x.brk){ var b2=scoreFromBars(x.y,x.brk,x.us); if(b2!=null) return b2; } var r2=rawPct(x.score); return r2==null?'-':r2; })();
     add('buy','구매'+(FD?'(1일)':''),esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
       calc+'<br>'+cost+'<br>점수 <span class="lr-sc" data-sy="'+esc(x.y)+'" data-sb="'+Y+'" data-sn="'+esc(x.name)+'" data-sp="'+(x.score==null?'':x.score)+'"'+(x.brk?' data-brk="'+x.brk+'" data-us="'+(x.us?1:0)+'"':'')+'>'+scv+'</span>',
       signWon(-x.amt),bal,{y:x.y,end:endYm,buy:Y,sell:tr?tr.sellYm:null});
@@ -1611,7 +1614,7 @@ function planHoldings(P){                    // 예상 보유 = 지난달 보유
   });
   P.buys.forEach(function(x){
     if(P.fd&&sold[x.y+'|'+nowYm]) return;                                  // 첫날 구매 방식: 산 달 말에 판매 예정이면 보유에서 뺌
-    out.push({y:x.y,name:x.name,buyYm:+nowYm,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:typeof x.score==='number'?x.score/100:null,row:x.row,apiScore:x.score,raw:chartRaw(x.row)});
+    out.push({y:x.y,name:x.name,buyYm:+nowYm,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:typeof x.score==='number'?x.score/100:null,sc100:typeof x.score==='number'?x.score:null,row:x.row,apiScore:x.score,raw:chartRaw(x.row)});
   });
   return out;
 }
@@ -1652,7 +1655,7 @@ function renderPlanView(){
     bal+=x.amt;
     var hm=holdMonths(x.buyYm,ym), rr=REASON[x.reason]||x.reason||'';
     var buyTr=DATA.trades.filter(function(t){ return t.y===x.y&&String(t.buyYm)===String(x.buyYm); })[0];
-    var sv=scoreOf(x.y,x.buyYm), buyScore=sv!=null?sv:(buyTr?Math.round(buyTr.score*100):'-');
+    var sv=scoreOf(x.y,x.buyYm), buyScore=sv!=null?sv:((buyTr?rawPct(buyTr.score):null) ?? '-');
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
     var cost='− 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span>'+(x.tax>0?' − 거래세 '+won(x.tax)+' <span class="meta">('+(x.taxRate*100).toFixed(2)+'%)</span>':'')+' = <b>'+won(x.amt)+'</b>'+(x.us?'<br><span class="meta">미국 양도세는 12월에 한꺼번에 계산해 뺍니다</span>':'');
     row('sell','판매 예정'+(FDP?'(월말)':''),esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
@@ -2350,7 +2353,7 @@ function renderAll(){
   wireMy(); if(XMODE&&!window._myb){ window._myb=1; loadBars(renderMy); } renderMy(); wireAmtInputs(); syncAmtInputs(); renderStartCard(); renderSoldList(); renderCumChart(); renderYearChart(); renderRetChart(); renderMonthTable(); renderNav();
   if(PLAN_YM && String(SEL_YM)===PLAN_YM){
     renderPlanView();
-    if(PLAN){ var hD=decPlanOf(PLAN), hh=planHoldings(PLAN); if(hD) hD.p2.buys.forEach(function(x){ hh.push({y:x.y,name:x.name,buyYm:+hD.dnx,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:typeof x.score==='number'?x.score/100:null,row:hD.rowOf[x.y],apiScore:x.score,raw:chartRaw(hD.rowOf[x.y])}); }); renderHoldings({holds:hh,fx:PLAN.fx,nx:hD?hD.dnx:null}); }
+    if(PLAN){ var hD=decPlanOf(PLAN), hh=planHoldings(PLAN); if(hD) hD.p2.buys.forEach(function(x){ hh.push({y:x.y,name:x.name,buyYm:+hD.dnx,buyPx:x.px,curPx:x.px,sh:x.sh,basis:x.amt,ret:0,score:typeof x.score==='number'?x.score/100:null,sc100:typeof x.score==='number'?x.score:null,row:hD.rowOf[x.y],apiScore:x.score,raw:chartRaw(hD.rowOf[x.y])}); }); renderHoldings({holds:hh,fx:PLAN.fx,nx:hD?hD.dnx:null}); }
     else { document.getElementById('hold-title').textContent='예상 보유 종목을 계산하는 중…'; document.getElementById('hold-list').innerHTML=''; }
     document.getElementById('chart-box').style.display='none';
     if(!PLAN) loadPlan();
