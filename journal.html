@@ -116,6 +116,7 @@ canvas{display:block;width:100%;height:230px}
 .h-row.sel{background:var(--chip)}
 .h-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h-nm{min-width:0}.h-bd{font-size:10px;color:var(--mut);margin-top:1px}
+@media(max-width:600px){.kw{display:none}}   /* 폰: 미국 종목의 1주당 원화 가격은 숨김(달러만) */
 .h-px{font-size:11px;color:var(--mut);text-align:right}
 .h-ret{font-weight:600;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .h-rs{grid-column:span 2;align-self:stretch;display:flex;flex-direction:column;justify-content:flex-end}.h-rs-t{display:flex;align-items:center;justify-content:flex-end;gap:8px}.h-rs small{display:block;text-align:right;white-space:nowrap;font-size:11px;color:var(--mut);line-height:1.5;margin-top:3px}     /* 수익률·점수 아래 '지금' 줄: 수익률과 같은 곳에서 시작해 점수 오른쪽 끝까지 */
@@ -522,8 +523,8 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
     var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx * (hUS ? fxv : 1)) : null;
     var buyAmt = h.basis ? Math.round(h.basis) : null;
     var shStr = h.sh ? (h.sh < 1 ? h.sh.toFixed(3)+'주' : Math.floor(h.sh)+'주') : '';
-    var curUnit = (h.curPx ? (hUS ? '$'+(+h.curPx).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+' ('+Math.round(h.curPx*fxv).toLocaleString()+'원)' : Math.round(h.curPx).toLocaleString()+'원') : '');     // 현재(그달 말·지금) 1주 가격
-    var unitStr = h.buyPx ? (hUS ? '$'+(+h.buyPx).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+(buyAmt&&h.sh>=1?' ('+Math.round(buyAmt/h.sh).toLocaleString()+'원)':'') : Math.round(h.buyPx).toLocaleString()+'원') : '';     // 1주당 구매 단가(미국은 달러 + 수수료 포함 원화)
+    var curUnit = (h.curPx ? (hUS ? '$'+(+h.curPx).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+'<span class="kw"> ('+Math.round(h.curPx*fxv).toLocaleString()+'원)</span>' : Math.round(h.curPx).toLocaleString()+'원') : '');     // 현재(그달 말·지금) 1주 가격
+    var unitStr = h.buyPx ? (hUS ? '$'+(+h.buyPx).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+(buyAmt&&h.sh>=1?'<span class="kw"> ('+Math.round(buyAmt/h.sh).toLocaleString()+'원)</span>':'') : Math.round(h.buyPx).toLocaleString()+'원') : '';     // 1주당 구매 단가(미국은 달러 + 수수료 포함 원화)
     return '<div class="h-wrap"><div class="h-row'+(isSel?' sel':'')+'" data-i="'+i+'">'
       +'<div class="h-nm"><div class="h-name">'+esc(h.name||h.y)+'</div>'+(h.buyYm?'<div class="h-bd">'+fmt(h.buyYm)+' 구매</div>':'')+'</div>'
       +'<div class="h-px">'
