@@ -616,6 +616,11 @@ function chartTip(cv, ev, i){                // i = 월 위치
   var w=t.offsetWidth, h=t.offsetHeight, x=touch?ev.clientX-w/2:ev.clientX+14, yy=touch?ev.clientY-h-28:ev.clientY-h-14;     // 터치: 손가락 위 가운데(안 가림), 화면 밖으로 안 나가게
   if(x+w>vw-8) x=touch?vw-w-8:ev.clientX-w-14;
   if(x<8) x=8; if(yy<8) yy=Math.min(ev.clientY+22,window.innerHeight-h-8);
+  if(touch){                                  // 터치: 정보창을 그래프 위쪽 모서리에 붙임 — 짚은 달이 왼쪽 절반이면 오른쪽 위, 오른쪽 절반이면 왼쪽 위(짚은 곳·그래프가 안 가려짐)
+    var cr=cv.getBoundingClientRect(), pressRight=(ev.clientX-cr.left)>cr.width/2;
+    x=pressRight?cr.left+8:cr.right-w-8; x=Math.max(8,Math.min(vw-w-8,x));
+    yy=Math.max(8,Math.min(window.innerHeight-h-8,cr.top+6));
+  }
   t.style.left=x+'px'; t.style.top=yy+'px';
 }
 function bindChart(cv){                      // 마우스·터치로 월을 가리키면 정보창, 옆으로 끌면 기간 이동 (한 번만 연결)
