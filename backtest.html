@@ -50,16 +50,12 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 .bt-x.same{border-left-color:var(--mut)}.bt-x.same b{color:var(--mut)}
 /* 연도표 */
 .bt-oy{overflow:hidden;background:var(--card);border:1px solid var(--line);padding:10px 12px}
-.oy-lg{display:flex;gap:12px;font-size:11px;color:var(--mut);margin-bottom:6px;align-items:center}.oy-lg i{display:inline-block;width:10px;height:10px;margin-right:4px;vertical-align:-1px}
-.oy-lg i{width:16px !important}.oy-lg .me{background:linear-gradient(90deg,var(--buy) 50%,var(--sell) 50%)}.oy-lg .ks{background:linear-gradient(90deg,var(--buy) 50%,var(--sell) 50%);opacity:.3}.oy-ax{margin-left:auto}
-.oy-r{display:grid;grid-template-columns:38px 1fr;column-gap:8px;padding:5px 0;border-top:1px solid var(--line)}
-.oy-r>b{grid-row:span 2;align-self:center;font-size:12.5px}.oy-r small{font-size:10.5px;color:var(--mut);text-align:center}
-.oy-r.hl{background:var(--seg)}
-.oy-bs{position:relative;background:linear-gradient(var(--line),var(--line)) 50% 0/1px 100% no-repeat}
-.oy-b{position:relative;height:13px;margin:2px 0;font-size:10.5px;font-variant-numeric:tabular-nums}
-.oy-b i{position:absolute;top:1px;bottom:1px}.oy-b em{position:absolute;top:-1px;font-style:normal;white-space:nowrap}
-.oy-b.me i.up{background:var(--buy)}.oy-b.me i.dn{background:var(--sell)}.oy-b.me em{font-weight:700}
-.oy-b.ks i.up{background:var(--buy);opacity:.3}.oy-b.ks i.dn{background:var(--sell);opacity:.3}.oy-b.ks em{color:var(--mut)}
+.oy-t{font-weight:700;font-size:13.5px;margin-bottom:4px}.oy-t small{font-weight:400;font-size:11px;color:var(--mut);margin-left:6px}
+#oy-c{width:100%;height:auto;display:block;touch-action:pan-y;font-family:inherit}
+#oy-c text{font-size:10px;fill:var(--mut);font-variant-numeric:tabular-nums}
+.oy-lg2{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;margin-top:4px}.oy-lg2 i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}.oy-lg2 b{margin-left:3px}
+#oy-tip{position:fixed;z-index:60;pointer-events:none;display:none;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+#oy-tip td{padding:2px 0 2px 14px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}#oy-tip td:first-child{padding-left:0;text-align:left}
 .oy-s{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 .oy-s div{border:1px solid var(--line);padding:8px}.oy-s span{display:block;font-size:11px;color:var(--mut)}
 .oy-s b{display:block;font-size:20px;color:var(--buy);margin:2px 0}.oy-s b.n{color:var(--sell)}.oy-s small{font-size:10.5px;color:var(--mut)}
@@ -178,15 +174,10 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 
   <div class="bt-h"><span class="dot" style="background:var(--sell)"></span>처음 보는 기간 시험<em>규칙을 고를 때 쓴 적 없는 2005~2011</em></div>
   <div class="bt-oy">
-    <div class="oy-lg"><span><i class="me"></i>지금 규칙</span><span><i class="ks"></i>코스피</span><span class="oy-ax">빨강 오름 · 파랑 내림</span></div>
-    <div class="oy-r"><b>2005</b><div class="oy-bs"><div class="oy-b me"><i class="up" style="left:50%;width:40.0%"></i><em style="left:calc(50% + 40.0% + 4px)">+102%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:21.2%"></i><em style="left:calc(50% + 21.2% + 4px)">+54%</em></div></div><small>S&amp;P +3 · 나스닥 +2</small></div>
-<div class="oy-r"><b>2006</b><div class="oy-bs"><div class="oy-b me"><i class="dn" style="right:50%;width:2.0%"></i><em style="right:calc(50% + 2.0% + 4px)">−5%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:1.6%"></i><em style="left:calc(50% + 1.6% + 4px)">+4%</em></div></div><small>S&amp;P +14 · 나스닥 +7</small></div>
-<div class="oy-r"><b>2007</b><div class="oy-bs"><div class="oy-b me"><i class="up" style="left:50%;width:5.9%"></i><em style="left:calc(50% + 5.9% + 4px)">+15%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:12.5%"></i><em style="left:calc(50% + 12.5% + 4px)">+32%</em></div></div><small>S&amp;P +4 · 나스닥 +19</small></div>
-<div class="oy-r"><b>2008</b><div class="oy-bs"><div class="oy-b me"><i class="dn" style="right:50%;width:12.2%"></i><em style="right:calc(50% + 12.2% + 4px)">−31%</em></div><div class="oy-b ks"><i class="dn" style="right:50%;width:16.1%"></i><em style="right:calc(50% + 16.1% + 4px)">−41%</em></div></div><small>S&amp;P −39 · 나스닥 −42</small></div>
-<div class="oy-r hl"><b>2009</b><div class="oy-bs"><div class="oy-b me"><i class="dn" style="right:50%;width:2.7%"></i><em style="right:calc(50% + 2.7% + 4px)">−7%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:19.6%"></i><em style="left:calc(50% + 19.6% + 4px)">+50%</em></div></div><small>S&amp;P +24 · 나스닥 +54</small></div>
-<div class="oy-r"><b>2010</b><div class="oy-bs"><div class="oy-b me"><i class="up" style="left:50%;width:3.1%"></i><em style="left:calc(50% + 3.1% + 4px)">+8%</em></div><div class="oy-b ks"><i class="up" style="left:50%;width:8.6%"></i><em style="left:calc(50% + 8.6% + 4px)">+22%</em></div></div><small>S&amp;P +13 · 나스닥 +19</small></div>
-<div class="oy-r"><b>2011</b><div class="oy-bs"><div class="oy-b me"><i class="up" style="left:50%;width:6.3%"></i><em style="left:calc(50% + 6.3% + 4px)">+16%</em></div><div class="oy-b ks"><i class="dn" style="right:50%;width:4.3%"></i><em style="right:calc(50% + 4.3% + 4px)">−11%</em></div></div><small>S&amp;P 0 · 나스닥 +3</small></div>
-<div class="oy-s">
+    <div class="oy-t">2005~2011 누적 수익률 <small>점을 누르면 그 해 수치</small></div>
+    <svg id="oy-c" viewBox="0 0 360 210" role="img" aria-label="2005~2011 누적 수익률 꺾은선"></svg>
+    <div class="oy-lg2" id="oy-lg"></div>
+    <div class="oy-s">
       <div><span>연평균 2005~2011</span><b>+8.5%</b><small>코스피 +10.7 · S&amp;P +0.5 · 나스닥 +5.0</small></div>
       <div><span>2005년 빼면(2006~2011)</span><b class="n">약 −2%</b><small>코스피 약 +5 · S&amp;P 약 0 · 나스닥 약 +6</small></div>
     </div>
@@ -289,6 +280,51 @@ x26:{t:'ETF 빼기 · 같은 지수 ETF 하나만',w:'2026-11-26~27 · PC',r:[['
   document.getElementById('bt-x').onclick=close;
   m.addEventListener('click',function(e){ if(e.target===m) close(); });
   document.addEventListener('keydown',function(e){ if(e.key==='Escape') close(); });
+})();
+
+/* 처음 보는 기간 꺾은선: 해마다 수익률(시간가중) → 누적. 점을 누르거나 마우스를 올리면 그래프 위(자리가 없으면 아래)에 수치 */
+(function(){
+  var sv=document.getElementById('oy-c'); if(!sv) return;
+  var YS=[2005,2006,2007,2008,2009,2010,2011];
+  var S=[['지금 규칙','var(--fg)',[102.3,-5.3,14.8,-30.5,-7.3,7.5,16.2]],['코스피','#e09a3a',[54.0,4.0,32.3,-40.7,49.7,21.9,-11.0]],
+         ['S&amp;P500','#4fb286',[3.0,13.6,3.5,-38.5,23.5,12.8,0.0]],['나스닥100','#8a5cf0',[1.5,6.8,18.7,-41.9,53.5,19.2,2.7]]];
+  S.forEach(function(r){ var c=1; r[3]=[0].concat(r[2].map(function(v){ c*=1+v/100; return (c-1)*100; })); });
+  var lo=-40, hi=140, L=8, R=316, T=10, B=182;
+  var X=function(i){ return L+(R-L)*i/YS.length; }, Y=function(v){ return B-(B-T)*(v-lo)/(hi-lo); };
+  var fmt=function(v){ return (v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1)+'%'; };
+  var col=function(v){ return v>=0?'var(--buy)':'var(--sell)'; };
+  var h='';
+  [0,50,100].forEach(function(g){ h+='<line x1="'+L+'" x2="'+R+'" y1="'+Y(g)+'" y2="'+Y(g)+'" stroke="var(--line)" stroke-width="'+(g?0.7:1.2)+'"/><text x="'+(R+4)+'" y="'+(Y(g)+3)+'">'+(g?'+':'')+g+'%</text>'; });
+  h+='<text x="'+X(0)+'" y="200" text-anchor="middle">시작</text>';
+  YS.forEach(function(y,i){ h+='<text x="'+X(i+1)+'" y="200" text-anchor="middle"'+(y===2009?' style="font-weight:700;fill:var(--fg)"':'')+'>\''+String(y).slice(2)+'</text>'; });
+  h+='<rect id="oy-hl" x="0" y="'+T+'" width="0" height="'+(B-T)+'" fill="var(--seg)" opacity="0"/>';
+  S.slice().reverse().forEach(function(r,k){ var me=k===S.length-1;
+    h+='<polyline fill="none" stroke="'+r[1]+'" stroke-width="'+(me?2.6:1.8)+'" points="'+r[3].map(function(v,i){ return X(i)+','+Y(v); }).join(' ')+'"/>';
+    if(me) r[3].forEach(function(v,i){ h+='<circle cx="'+X(i)+'" cy="'+Y(v)+'" r="3.2" fill="var(--fg)" stroke="var(--card)" stroke-width="1.2"/>'; });
+  });
+  sv.innerHTML=h;
+  document.getElementById('oy-lg').innerHTML=S.map(function(r){ var e=r[3][7]; return '<span><i style="background:'+r[1]+'"></i>'+r[0]+'<b style="color:'+col(e)+'">'+fmt(e)+'</b></span>'; }).join('')+'<span style="color:var(--mut);margin-left:auto">2005~2011 누적</span>';
+  var tip=document.createElement('div'); tip.id='oy-tip'; document.body.appendChild(tip);
+  var hl=document.getElementById('oy-hl'), cur=-1;
+  function show(e){
+    var r=sv.getBoundingClientRect(), vx=(e.clientX-r.left)/r.width*360, i=Math.round((vx-L)/((R-L)/YS.length));
+    if(i<1) i=1; if(i>YS.length) i=YS.length; cur=i;
+    var w=(R-L)/YS.length; hl.setAttribute('x',X(i)-w/2); hl.setAttribute('width',w); hl.setAttribute('opacity',1);
+    tip.innerHTML='<div style="font-weight:700;margin-bottom:3px">'+YS[i-1]+'년'+(YS[i-1]===2009?' <span style="color:var(--mut);font-weight:400;font-size:11px">반등을 놓친 해</span>':'')+'</div><table style="border-collapse:collapse"><tr style="color:var(--mut);font-size:11px"><td></td><td>그 해</td><td>누적</td></tr>'+
+      S.map(function(s2){ var a=s2[2][i-1], c=s2[3][i]; return '<tr><td><i style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:'+s2[1]+'"></i>'+s2[0]+'</td><td><b style="color:'+col(a)+'">'+fmt(a)+'</b></td><td><b style="color:'+col(c)+'">'+fmt(c)+'</b></td></tr>'; }).join('')+'</table>';
+    tip.style.display='block';
+    var vw=document.documentElement.clientWidth, tw=tip.offsetWidth, th=tip.offsetHeight;
+    var x=Math.max(6,Math.min(vw-tw-6,e.clientX-tw/2)), y=r.top-th-6;           // 그래프 위에 — 자리가 없으면 그래프 아래에(선을 가리지 않게)
+    if(y<6) y=r.bottom+6;
+    if(y+th>window.innerHeight-6) y=Math.max(6,r.top-th-6);
+    tip.style.left=x+'px'; tip.style.top=y+'px';
+  }
+  function hide(){ tip.style.display='none'; hl.setAttribute('opacity',0); cur=-1; }
+  sv.addEventListener('pointermove',function(e){ if(e.pointerType!=='touch') show(e); });
+  sv.addEventListener('pointerdown',show);
+  sv.addEventListener('pointerleave',function(e){ if(e.pointerType!=='touch') hide(); });
+  document.addEventListener('pointerdown',function(e){ if(!sv.contains(e.target)) hide(); });
+  window.addEventListener('scroll',function(){ if(cur>0) hide(); },{passive:true});
 })();
 </script>
 </body>
