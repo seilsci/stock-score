@@ -529,7 +529,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
       +'<div class="h-nm"><div class="h-name">'+esc(h.name||h.y)+'</div>'+(h.buyYm?'<div class="h-bd">'+fmt(h.buyYm)+' 구매</div>':'')+'</div>'
       +'<div class="h-px">'
         +(buyAmt?'매수 '+buyAmt.toLocaleString()+'원':'매수 '+fmt(h.buyYm))+'<br>'
-        +(evalAmt?'평가 '+evalAmt.toLocaleString()+'원 '+shStr:'종가 '+px(h.curPx))
+        +(evalAmt?(shStr?shStr+' ':'')+'평가 '+evalAmt.toLocaleString()+'원':'종가 '+px(h.curPx))
         +(unitStr?'<br>구매당시 '+unitStr:'')
       +'</div>'
       +(curUnit?'<div class="h-rs"><div class="h-rs-t"><span class="h-ret '+cls+'">'+pc(ret)+'</span><div class="h-sc" data-sc-i="'+i+'" title="점수 기준 보기">'+(sc==null?'-':sc+'점')+'</div></div><small>지금 '+curUnit+'</small></div>'
