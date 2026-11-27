@@ -118,6 +118,7 @@ canvas{display:block;width:100%;height:230px}
 .h-nm{min-width:0}.h-bd{font-size:10px;color:var(--mut);margin-top:1px}
 .h-px{font-size:11px;color:var(--mut);text-align:right}
 .h-ret{font-weight:600;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.h-ret2{align-self:stretch;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end}.h-ret2 small{display:block;font-size:11px;font-weight:400;color:var(--mut);line-height:1.5;margin-top:3px}
 .h-ret.p{color:var(--buy)}.h-ret.n{color:var(--sell)}
 .h-sc{background:var(--chip);border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--mut);cursor:pointer;white-space:nowrap}
 .h-sc:hover{background:var(--acc);color:#fff}
@@ -517,6 +518,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
     var evalAmt = h.sh && h.curPx ? Math.round(h.sh * h.curPx * (hUS ? fxv : 1)) : null;
     var buyAmt = h.basis ? Math.round(h.basis) : null;
     var shStr = h.sh ? (h.sh < 1 ? h.sh.toFixed(3)+'주' : Math.floor(h.sh)+'주') : '';
+    var curUnit = (h.curPx ? (hUS ? '$'+(+h.curPx).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+' ('+Math.round(h.curPx*fxv).toLocaleString()+'원)' : Math.round(h.curPx).toLocaleString()+'원') : '');     // 현재(그달 말·지금) 1주 가격
     var unitStr = h.buyPx ? (hUS ? '$'+(+h.buyPx).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+(buyAmt&&h.sh>=1?' ('+Math.round(buyAmt/h.sh).toLocaleString()+'원)':'') : Math.round(h.buyPx).toLocaleString()+'원') : '';     // 1주당 구매 단가(미국은 달러 + 수수료 포함 원화)
     return '<div class="h-wrap"><div class="h-row'+(isSel?' sel':'')+'" data-i="'+i+'">'
       +'<div class="h-nm"><div class="h-name">'+esc(h.name||h.y)+'</div>'+(h.buyYm?'<div class="h-bd">'+fmt(h.buyYm)+' 구매</div>':'')+'</div>'
@@ -525,7 +527,7 @@ function renderHoldings(over){            // over: 예정 달의 예상 보유 {
         +(evalAmt?'평가 '+evalAmt.toLocaleString()+'원 '+shStr:'종가 '+px(h.curPx))
         +(unitStr?'<br>1주 '+unitStr:'')
       +'</div>'
-      +'<div class="h-ret '+cls+'">'+pc(ret)+'</div>'
+      +(curUnit?'<div class="h-ret h-ret2 '+cls+'"><span>'+pc(ret)+'</span><small>지금 '+curUnit+'</small></div>':'<div class="h-ret '+cls+'">'+pc(ret)+'</div>')
       +'<div class="h-sc" data-sc-i="'+i+'" title="점수 기준 보기">'+(sc==null?'-':sc+'점')+'</div>'
       +'</div><div class="h-cv"><div class="fold-bar"><button type="button" class="fold-b" data-fold="row">그래프 접기</button></div><canvas></canvas></div></div>';
   }).join('');
