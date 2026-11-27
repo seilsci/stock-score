@@ -49,6 +49,11 @@ h1{font-size:20px;margin:0}
 canvas{display:block;width:100%;height:230px}
 #ctip{position:fixed;z-index:300;display:none;pointer-events:none;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-variant-numeric:tabular-nums}
 #ctip table{border-collapse:collapse;margin-top:4px}
+.cinfo{display:none;margin-top:6px;padding:6px 10px;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;font-size:12px;font-variant-numeric:tabular-nums}
+.cinfo .ci-h{margin-bottom:3px}
+.cinfo .ci-g{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}
+.cinfo .ci-g>div{display:flex;justify-content:space-between;gap:6px;white-space:nowrap}
+.cinfo .ci-g>div>span:first-child{color:var(--mut)}
 #ctip td{padding:1px 0}
 #ctip td:first-child{color:var(--mut);padding-right:14px}
 #ctip td+td{text-align:right;padding-left:10px;white-space:nowrap}
@@ -303,7 +308,7 @@ function drawChart() {
   var r = SEL;
   if (!r) { cn.textContent = '\u00a0'; cp.textContent = ''; return; }
   var kr = r['시장'] !== 'US';
-  var ckey = r['시장'] + '|' + r['코드']; if (cv._key !== ckey) { cv._key = ckey; cv._hi = null; }
+  var ckey = r['시장'] + '|' + r['코드']; if (cv._key !== ckey) { cv._key = ckey; cv._hi = null; if (cv._info) cv._info.style.display = 'none'; }
   cn.innerHTML = esc(r['이름']) + ' <span class="cd">' + esc(r['코드']) + '</span>';
   var xs2 = (r['신호'] === '매도' || r['신호'] === '유예') && +r['판매이평'] > 0, gp = (r['최근종가'] / (xs2 ? r['판매이평'] : r['10이평']) - 1) * 100, gl2 = xs2 ? (r['시장'] === 'US' ? '10이평 ' : '6이평 ') : '10이평 ';
   cp.innerHTML = px(r, kr) + ' <span class="meta gap ' + (r['신호'] === '매수' || r['신호'] === '확인' ? 'b' : 's') + '">' + gl2 +
@@ -393,26 +398,22 @@ function bigNum(v, us) {                      // 거래대금: 한국 원(조·�
   return Math.round(v / 1e4).toLocaleString() + '만원';
 }
 var CTIP = null;
-function hideTip() { if (CTIP) CTIP.style.display = 'none'; var cv = document.getElementById('cv'); if (cv && cv._hi != null) { cv._hi = null; drawChart(); } }
+function hideTip() { var cv = document.getElementById('cv'); if (cv && cv._hi != null) { cv._hi = null; drawChart(); } }
 function chartTip(cv, ev, i) {
   var G = cv._g, x = G.bars[i], prev = i > 0 ? G.bars[i - 1] : null, m = G.mas[i], kr = G.kr;
   var fm = function (v) { return kr ? Math.round(v).toLocaleString() + '원' : '$' + (+v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
   var cc = function (v) { return '<span style="color:' + (v >= 0 ? 'var(--buy)' : 'var(--sell)') + '">' + (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%</span>'; };
-  var ym = String(x[0]), t = CTIP || (CTIP = document.createElement('div'));
-  if (!t.id) { t.id = 'ctip'; document.body.appendChild(t); document.addEventListener('pointerdown', function (e) { if (e.target.tagName !== 'CANVAS') hideTip(); }); }
-  var R3 = function (l, a, p) { return '<tr><td>' + l + '</td><td>' + a + '</td><td>' + (p || '') + '</td></tr>'; };       // 라벨 | 금액 | 대비(%) 세 칸으로 맞춤
-  t.innerHTML = '<b>' + ym.slice(0, 4) + '-' + ym.slice(4) + '</b><table>' +
-    R3('시가', fm(x[1])) + R3('고가', fm(x[2])) + R3('저가', fm(x[3])) + R3('종가', '<b>' + fm(x[4]) + '</b>') +
-    (prev ? R3('전월 대비', '', cc(x[4] / prev[4] - 1)) : '') +
-    (x[5] > 0 ? R3('거래대금', '≈ ' + bigNum(x[5] * x[4], !kr)) + R3('거래량', Math.round(x[5]).toLocaleString() + '주') : '') +
-    (G.mas6 && G.mas6[i] != null ? R3('6이평', fm(G.mas6[i]), cc(x[4] / G.mas6[i] - 1)) : '') +
-    (m != null ? R3('10이평', fm(m), cc(x[4] / m - 1)) : '') + '</table>';
-  t.style.display = 'block';
-  var vw = Math.min(window.innerWidth, document.documentElement.clientWidth || window.innerWidth, window.visualViewport ? window.visualViewport.width : 9999), touch = ev.pointerType === 'touch';
-  var w = t.offsetWidth, h = t.offsetHeight, px0 = touch ? ev.clientX - w / 2 : ev.clientX + 14, py0 = touch ? ev.clientY - h - 28 : ev.clientY - h - 14;   // 터치: 손가락 위 가운데(안 가림), 화면 밖으로 안 나가게
-  if (px0 + w > vw - 8) px0 = touch ? vw - w - 8 : ev.clientX - w - 14;
-  if (px0 < 8) px0 = 8; if (py0 < 8) py0 = Math.min(ev.clientY + 22, window.innerHeight - h - 8);
-  t.style.left = px0 + 'px'; t.style.top = py0 + 'px';
+  var ym = String(x[0]), tags = [];
+  if (!CTIP) { CTIP = true; document.addEventListener('pointerdown', function (e) { if (e.target.tagName !== 'CANVAS' && e.pointerType !== 'touch') hideTip(); }); }
+  if (!cv._info) { cv._info = document.createElement('div'); cv._info.className = 'cinfo'; cv.insertAdjacentElement('afterend', cv._info); }       // 그래프를 가리지 않게 그래프 바로 아래 2열 칸에 표시(폰·PC 공통)
+  var C2 = function (l, a, p) { return '<div><span>' + l + '</span><span>' + a + (p ? ' ' + p : '') + '</span></div>'; };
+  cv._info.innerHTML = '<div class="ci-h"><b>' + ym.slice(0, 4) + '-' + ym.slice(4) + '</b></div><div class="ci-g">' +
+    C2('시가', fm(x[1])) + C2('종가', '<b>' + fm(x[4]) + '</b>') + C2('고가', fm(x[2])) + C2('저가', fm(x[3])) +
+    (prev ? C2('전월 대비', '', cc(x[4] / prev[4] - 1)) : '') + (x[5] > 0 ? C2('거래대금', '≈ ' + bigNum(x[5] * x[4], !kr)) : '') +
+    (x[5] > 0 ? C2('거래량', Math.round(x[5]).toLocaleString() + '주') : '') +
+    (G.mas6 && G.mas6[i] != null ? C2('6이평', fm(G.mas6[i]), cc(x[4] / G.mas6[i] - 1)) : '') +
+    (m != null ? C2('10이평', fm(m), cc(x[4] / m - 1)) : '') + '</div>';
+  cv._info.style.display = 'block';
 }
 /* 그래프 접기/열기: 오른쪽 위 버튼으로만 접고 열어요(그래프를 눌러도 접히지 않음). 접은 상태는 기억하지 않고 새로 열면 항상 펼쳐진 상태 */
 var IFOLD = false;
