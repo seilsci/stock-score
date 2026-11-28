@@ -80,7 +80,9 @@ runlegacy(){
   env $F node 7_backtest.js > "data/exp_run_$1.log" 2>&1
 }
 OUT=data/exp_result.txt
-: > "$OUT"
+# 이어하기(2026-11-28 사용자 요청): 같은 코드(git 커밋)·같은 묶음 목록으로 시작한 실행이 중간에 끊겼으면(FINISHED 표시 없음) 끝난 묶음은 건너뛰고 남은 것만 이어서 함. 정상 종료했거나 목록·코드가 바뀌었으면 처음부터
+ST=data/exp_state.txt; SIG="$(git rev-parse HEAD 2>/dev/null) $BATCHES"; RESUME=0
+if [ -f "$ST" ] && [ "$(head -1 "$ST")" = "SIG $SIG" ] && ! grep -qx FINISHED "$ST" && [ -f "$OUT" ]; then RESUME=1; echo "── 이전 실행이 중간에 끊겼어요: 끝난 묶음 $(grep -c '^DONE ' "$ST")개는 건너뛰고 이어서 합니다"; else : > "$OUT"; echo "SIG $SIG" > "$ST"; fi
 RT=data/runtimes.txt; touch "$RT"
 # 지난 같은 곳($WHERE) 실행의 묶음별 실측 시간(초): 기록이 없으면 어림값 70초(클라우드에서 잰 값)
 prev_b(){ node eta.js exp "$WHERE" "$1"; }      # 같은 곳 최근 3번 중앙값(기록 없으면 70초)
@@ -89,6 +91,7 @@ T0=$(date +%s); DONE_N=0; DONE_EXP=0; DONE_REAL=0; REC=""
 hm(){ date -d @"$1" '+%H:%M'; }
 echo "시험 시작: $(date '+%H:%M') — 묶음 ${BATCHES} · 지난 $WHERE 실측 기준 전체 약 $((EXP_TOT/60))분 → 100% 예상 $(hm $((T0+EXP_TOT)))"
 for B in $BATCHES; do
+  if [ "$RESUME" = 1 ] && grep -qx "DONE $B" "$ST"; then echo "── 묶음 $B 이미 끝남(건너뜀)"; DONE_N=$((DONE_N+1)); DONE_EXP=$((DONE_EXP + $(prev_b $B))); DONE_REAL=$((DONE_REAL + $(prev_b $B))); continue; fi
   TB=$(date +%s); BB=$((B%100)); RE=0; [ "$B" -ge 100 ] && RE=1      # 100 이상 번호 = (번호−100)번 묶음을 새 규칙(양도세 5월 납부·4월 미리 확보·배당 세후)으로 다시
   if [ "$RE" = 1 ]; then export AD9_REAL=1; else unset AD9_REAL; fi
   if [ "$BB" = 16 ]; then echo "── 일봉 받기(이미 받은 종목은 건너뜀, 처음이면 10~20분) $(date '+%H:%M')"; node 2g_daily.js 2>&1; fi
@@ -98,7 +101,7 @@ for B in $BATCHES; do
   echo "── 묶음 $B ${NAME[$B]} 시작 $(date '+%H:%M')"
   if { [ "$B" = 15 ] && run15; } || { [ "$B" = 28 ] && run28; } || { [ "$B" = 61 ] && run61; } || { [ "$B" = 38 ] && node 2l_flow_naver.js > "data/exp_run_38.log" 2>&1; } || { case " 44 45 46 47 48 " in *" $BB "*) runold $BB;; *) false;; esac; } || { case " 51 52 53 54 55 56 57 58 59 60 " in *" $BB "*) runlegacy $BB;; *) false;; esac; } || { case " 15 28 38 44 45 46 47 48 51 52 53 54 55 56 57 58 59 60 " in *" $BB "*) false;; *) AD9="$BB" node 7_backtest.js > "data/exp_run_$B.log" 2>&1;; esac; }; then
     { echo; echo "================ 묶음 $B · ${NAME[$B]} ================"; if [ "$B" = 15 ]; then cat data/bt15.txt; elif [ "$B" = 28 ]; then cat data/bt28.txt; elif [ "$B" = 61 ]; then cat data/bt61.txt; elif [ "$B" = 38 ]; then cat data/flow_naver_cmp.txt; elif [ "$BB" -ge 51 ] && [ "$BB" -le 58 ]; then awk '/^## 점수가 기여했나/{a=1;next} a&&/^## /{p=1;a=0} /^## 체결 가정/{p=0} p' data/backtest.txt; elif [ "$BB" = 59 ]; then awk '/^## 3단계/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; elif [ "$BB" = 60 ]; then awk '/^## (걸어가며|설정|종목을 무작위|무작위 절반|4단계|5단계)/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; elif [ "$BB" = 48 ]; then cat data_2003/exp_run_48.log; elif [ "$BB" -ge 44 ] && [ "$BB" -le 48 ]; then awk -v b="$BB" '$0 ~ "^## " b " "{p=1} /^## 체결 가정/{p=0} /^## ([0-9]+) /&&$0 !~ "^## " b " "{p=0} p' data_2003/backtest.txt; else awk '/^## (확인 매수 후속|9 검증|10 다른 전략|11 일관성|1[2-9]|[2-4][0-9] )/{p=1} /^## 체결 가정/{p=0} p' data/backtest.txt; fi; } >> "$OUT"
-    echo "── 묶음 $B 끝"
+    echo "── 묶음 $B 끝"; echo "DONE $B" >> "$ST"
   else
     { echo; echo "================ 묶음 $B · ${NAME[$B]} — 실행 오류 ================"; tr '\r' '\n' < "data/exp_run_$B.log" | tail -8; [ "$B" = 15 ] && cat data/bt15.txt; } >> "$OUT"
     echo "── 묶음 $B 실행 오류(data/exp_run_$B.log 마지막 줄을 결과에 적어 둠) — 다음 묶음으로 계속"
@@ -112,6 +115,7 @@ for B in $BATCHES; do
   echo "■ 묶음 $B 끝 ($DONE_N/$NB) · 지금 $(hm $NOW) · 이 묶음 $((SEC/60))분 $((SEC%60))초 · 남은 예상 $((LEFT/60))분 · 100% 예상 $(hm $((NOW+LEFT)))"
 done
 TOTAL=$(( $(date +%s)-T0 ))
+echo FINISHED >> "$ST"
 echo "$(date '+%Y-%m-%d %H:%M') exp@$WHERE total=$TOTAL$REC" >> "$RT"; tail -40 "$RT" > "$RT.tmp" && mv "$RT.tmp" "$RT"      # 실행 시간 기록(다음 예상에 씀)
 { echo; echo "================ 실행 시간 기록($WHERE) ================"; echo "이번 시험 전체 $((TOTAL/60))분 $((TOTAL%60))초 ·$REC (초)"; } >> "$OUT"
 cat "$OUT"
