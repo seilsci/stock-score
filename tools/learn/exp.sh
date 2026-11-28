@@ -9,6 +9,8 @@ cd "$(dirname "$0")" || exit 1
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) WHERE=${RUN_WHERE:-pc};; *) WHERE=${RUN_WHERE:-cloud};; esac
 export STAGE3=0 STAGE4=0 STAGE5=0 STAGE6=0 STAGE7=0 STAGE8=0 STAGE9=0 STAGE10=0 STAGE11=0 STAGE12=0 STAGE13=0 STAGE14=1 NODE_NO_WARNINGS=1
 export AD8_HALVES="${AD8_HALVES:-6}"
+# 끝나면 결과(data/exp_result.txt)를 result/exp_result.txt로 올려 Claude가 바로 읽게 함(2026-11-28 사용자 요청). 올리지 않으려면: stock_exp.bat 대신 exp.sh에 --no-push
+PUSH=1; ARGS=(); for a in "$@"; do if [ "$a" = "--no-push" ]; then PUSH=0; else ARGS+=("$a"); fi; done; set -- "${ARGS[@]}"
 # 돌릴 묶음: 인자가 있으면 그것, 없으면 exp_batches.txt(Claude가 그때그때 바꿔 올림 → 사용자는 stock_exp.bat만 켜면 됨), 그것도 없으면 전부
 BATCHES="${*:-$(tr '\r\n' '  ' < exp_batches.txt 2>/dev/null)}"
 [ -z "${BATCHES// /}" ] && BATCHES="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28"
@@ -120,3 +122,8 @@ elif command -v clip >/dev/null 2>&1 && command -v iconv >/dev/null 2>&1; then
   { printf '\xff\xfe'; iconv -f UTF-8 -t UTF-16LE data/exp_result.txt; } | clip && echo "[결과를 클립보드에 복사했어요. 채팅에 붙여넣기 하세요]"
 fi
 echo "끝: $(date '+%H:%M')"
+if [ "$PUSH" = 1 ] && [ "$WHERE" = pc ]; then
+  mkdir -p result && cp data/exp_result.txt result/exp_result.txt && git -c core.safecrlf=false add result/exp_result.txt \
+    && git commit -q -m "시험 결과 ($(date '+%Y-%m-%d %H:%M'), 묶음 ${BATCHES})" && git pull --rebase --autostash -q && git push -q \
+    && echo "[결과를 올렸어요(result/exp_result.txt). Claude에게 '올렸어'라고 알려 주세요]" || echo "[결과 올리기 실패: 나중에 cd tools/learn && git add result && git commit -m 결과 && git push]"
+fi
