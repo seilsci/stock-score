@@ -28,7 +28,7 @@ var CFG = {
 };
 
 var HEAD = ['시장', '코드', '이름', '종류', '시총', '시총단위', '최근종가', '10이평',
-            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수', '확인', '익절', '판매이평'];   // 판매이평: 매도·유예 판단에 쓰는 이평(한국 6이평 · 미국 10이평). 갱신 시각은 S1:T1(R열은 판매이평이라 한 칸 띄움)
+            '전달종가', '전달10이평', '신호', '기준일', '개월수', '차트', '점수', '확인', '익절', '판매이평', '배당률'];   // 배당률(%): 네이버 종목 정보의 배당수익률(없으면 빈칸). 갱신 시각은 U1:V1(S열이 배당률이라 한 칸 더 띄움)
 
 /* ───────── 처음 한 번 실행 ───────── */
 function setup() {
@@ -99,8 +99,10 @@ function updateKR() {
   }
   var liq = CFG.LIQ_N ? buildLiq_(mons, CFG.LIQ_N) : null;               // LIQ_N > 0일 때만: 매달 거래대금 상위 LIQ_N의 문턱(한국 전체 한 묶음)
   var rows = [];
-  list.forEach(function (s, i) { if (mons[i]) { var r = makeRow_(s, mons[i], liq); if (r) rows.push(r); } });
+  list.forEach(function (s, i) { if (mons[i]) { var r = makeRow_(s, mons[i], liq); if (r) { r._s = s; rows.push(r); } } });
   T.lap('계산·점수', t);
+  t = new Date();
+  T.note(addDiv_(rows)); T.lap('배당률', t);
   t = new Date();
   var fl = flowCheck_(rows);                                              // 수급 규칙: 확인 후보 중 외국인·기관 같은 방향인 종목은 후보에서 뺌
   T.lap('수급확인', t); T.note(fl);
@@ -181,8 +183,10 @@ function updateUS() {
   }
   var liq = CFG.LIQ_N ? buildLiq_(mons, CFG.LIQ_N) : null;               // LIQ_N > 0일 때만: 매달 거래대금 상위 LIQ_N의 문턱(미국 한 묶음)
   var rows = [];
-  list.forEach(function (s, i) { if (mons[i]) { var r = makeRow_(s, mons[i], liq); if (r) rows.push(r); } });
+  list.forEach(function (s, i) { if (mons[i]) { var r = makeRow_(s, mons[i], liq); if (r) { r._s = s; rows.push(r); } } });
   T.lap('계산·점수', t);
+  t = new Date();
+  T.note(addDiv_(rows)); T.lap('배당률', t);
   rows.sort(function (a, b) { return b[4] - a[4]; });
   t = new Date();
   var wd = writeRows_('미국', rows);
@@ -584,7 +588,7 @@ function doGet(e) {
   ['한국', '미국'].forEach(function (n) {
     var sh = ss.getSheetByName(n);
     if (!sh || sh.getLastRow() < 2) return;
-    out.updated[n] = sh.getRange('T1').getValue();
+    out.updated[n] = sh.getRange('V1').getValue();
     var v = sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues();
     v.forEach(function (r) {
       var isSig = r[10] === '매수' || r[10] === '매도' || r[10] === '유예', cf = String(r[15] || ''), tpv = String(r[16] || '');
@@ -612,6 +616,25 @@ function doGet(e) {
 }
 
 /* ───────── 도구 ───────── */
+// 배당률(%): 네이버 종목 정보의 배당수익률(한국 m.stock.naver.com/api/stock/<코드>/integration, 미국·ETF api.stock.naver.com/stock/<로이터코드>/basic). 값이 없거나 받기 실패면 빈칸.
+function addDiv_(rows) {
+  var urls = rows.map(function (r) {
+    var s = r._s || {};
+    return s.market === 'US' ? 'https://api.stock.naver.com/stock/' + encodeURIComponent(s.reuters || s.code) + '/basic'
+                             : 'https://m.stock.naver.com/api/stock/' + r[1] + '/integration';
+  });
+  var bodies = fetchAll_(urls), n = 0;
+  rows.forEach(function (r, i) {
+    var y = '';
+    try {
+      var d = JSON.parse(bodies[i]), a = d.totalInfos || d.stockItemTotalInfos || [];
+      for (var k = 0; k < a.length; k++) if (a[k].code === 'dividendYieldRatio') { var v = parseFloat(String(a[k].value).replace(/[^0-9.\-]/g, '')); if (v >= 0) { y = Math.round(v * 100) / 100; n++; } break; }
+    } catch (e) {}
+    r[18] = y;
+  });
+  return '(배당률 ' + n + '/' + rows.length + ')';
+}
+
 function fetchAll_(urls) {
   var out = [];
   for (var i = 0; i < urls.length; i += CFG.BATCH) {
@@ -635,7 +658,7 @@ function writeRows_(name, rows) {
   if (fresh) {
     t = new Date();
     // 코드(005930)·기준일·갱신 시각이 숫자·날짜로 바뀌지 않게 텍스트로
-    ['B:D', 'F:F', 'K:L', 'N:N', 'Q:Q', 'S1:T1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
+    ['B:D', 'F:F', 'K:L', 'N:N', 'Q:Q', 'U1:V1'].forEach(function (a) { sh.getRange(a).setNumberFormat('@'); });
     sh.setFrozenRows(1);
     tm.push('서식 ' + sec(t));
   }
@@ -649,7 +672,7 @@ function writeRows_(name, rows) {
     Sheets.Spreadsheets.Values.batchUpdate({
       valueInputOption: 'RAW',                   // 코드 '005930'이 숫자로 바뀌지 않게 입력 그대로
       data: [{ range: q + '!A1', majorDimension: 'ROWS', values: values },
-             { range: q + '!S1:T1', majorDimension: 'ROWS', values: [['갱신', stamp]] }]
+             { range: q + '!U1:V1', majorDimension: 'ROWS', values: [['갱신', stamp]] }]
     }, id);
     tm.push('API쓰기 ' + sec(t));
     done = true;
@@ -657,7 +680,7 @@ function writeRows_(name, rows) {
   if (!done) {
     t = new Date(); sh.clearContents(); tm.push('지우기 ' + sec(t));
     t = new Date(); sh.getRange(1, 1, values.length, HEAD.length).setValues(values); tm.push('쓰기 ' + sec(t));
-    t = new Date(); sh.getRange('S1:T1').setValues([['갱신', stamp]]); tm.push('갱신시각 ' + sec(t));
+    t = new Date(); sh.getRange('U1:V1').setValues([['갱신', stamp]]); tm.push('갱신시각 ' + sec(t));
   }
   t = new Date(); cacheClear_(); tm.push('캐시 ' + sec(t));   // 새 데이터가 들어왔으니 저장해 둔 응답을 지움
   return '(' + tm.join(', ') + ')';
