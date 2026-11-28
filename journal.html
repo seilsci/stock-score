@@ -58,6 +58,8 @@ h1{font-size:18px;margin:0 0 2px;font-weight:700}
 .my-n{display:inline-block;border-radius:4px;font-variant-numeric:tabular-nums}.my-n.tk-up{animation:tkup 1s ease-out}.my-n.tk-dn{animation:tkdn 1s ease-out}
 @keyframes tkup{from{background:color-mix(in srgb,var(--buy) 40%,transparent)}to{background:transparent}}@keyframes tkdn{from{background:color-mix(in srgb,var(--sell) 40%,transparent)}to{background:transparent}}.my-lv.p{color:var(--buy)}.my-lv.n{color:var(--sell)}
 .my-rec{border-top:1px solid var(--line);margin-top:6px;padding-top:2px}
+.my-pre{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 2px}.my-pre button{padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--chip);color:var(--fg);font:inherit;font-size:13px;font-weight:700;cursor:pointer}.my-pre button.on{background:color-mix(in srgb,var(--buy) 16%,var(--card));border-color:var(--buy);color:var(--buy)}
+.pre-b{margin:6px 0 4px;border:1px solid var(--line);border-radius:10px;overflow:hidden}.pre-b .pr{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px}.pre-b .pr:last-child{border-bottom:none}.pre-b .pg{padding:5px 10px;font-size:11.5px;font-weight:700;background:var(--chip);color:var(--mut)}.pre-b .pn small{display:block;color:var(--mut);font-size:11.5px}.pre-b .pc{font-size:11.5px;font-weight:700;white-space:nowrap}.pre-b .pc.in{color:var(--buy)}.pre-b .pc.out{color:var(--sell)}
 .my-sgn{padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--fg);font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}.my-sgn.neg{background:color-mix(in srgb,var(--sell) 14%,var(--card));color:var(--sell);border-color:var(--sell)}
 .my-cashl{display:block;font-size:11.5px;color:var(--mut);margin:0 0 8px}.my-cashs{display:flex;align-items:center;gap:10px;margin-top:3px}.my-cashs input{width:150px;font:inherit;font-size:15px;font-weight:700;color:var(--fg);background:var(--chip);border:1px solid var(--line);border-radius:9px;padding:7px 9px;text-align:right}
 .lr-sc.no{cursor:default;color:var(--mut)}.lr-sc.no:hover{background:var(--chip);color:var(--mut)}.my-nt{font-size:11px;color:var(--mut)}
@@ -381,6 +383,8 @@ canvas{display:block;width:100%;height:230px}
     <div id="my-list"></div>
     <div id="my-rec" class="my-rec">
       <div class="my-h" style="margin-top:12px"><span class="my-t">내 보유 기준 추천 <span class="plan-tag">잠정</span></span><span class="my-c" id="my-rec-m"></span></div>
+      <div class="my-pre"><button type="button" id="my-pre-t">⏱ 마감 직전 모드 꺼짐</button><span class="my-c" id="my-pre-s"></span></div>
+      <div id="my-pre-b"></div>
       <div class="my-cashl">내 현금 (만원) <span class="my-cashs"><button type="button" class="my-sgn" id="my-cash-s" aria-label="현금 부호 바꾸기(+/−)">+</button><input id="my-cash" type="number" step="1" max="99999999999" min="-99999999999" placeholder="0"><em class="amt-kor" id="my-cash-k"></em></span></div>
       <div id="my-rec-b"></div>
     </div>
@@ -2237,6 +2241,7 @@ function myAutoFee(){                          // 수수료·세금 자동 계�
   if(!t.dataset.man){ t.value=MY_SIDE==='S'&&amt>0?Math.round(tax):''; }
   $('my-fa').textContent=f.dataset.man?'직접 입력':'자동'; $('my-ta').textContent=t.dataset.man?'직접 입력':'자동';
 }
+var MYPRE={on:false,rows:null,rateBack:null,t:0,busy:false,codes:null,flow:{},flowKey:'',flowT:0,flowBusy:false,ev:null}; try{ MYPRE.on=localStorage.getItem('jpre')==='1'; }catch(e){}
 var MYLIVE={}, MYLIVE_BUSY=false, MYLIVE_TIMER=null, MYLIVE_CODES='', MYSHOWN={};
 function myLiveDelay(){                       // 장이 열려 있으면 5초, 아니면 60초마다 받음(국내 09:00~15:30 KST, 미국 09:30~16:00 뉴욕, 평일)
   var codes=MYLIVE_CODES.split(',').filter(String); if(!codes.length) return 60000;
@@ -2246,13 +2251,20 @@ function myLiveDelay(){                       // 장이 열려 있으면 5초, �
   return ((hasKR&&open(kst,535,940))||(hasUS&&open(ny,565,965)))?5000:60000;
 }
 function myLiveSchedule(){ clearTimeout(MYLIVE_TIMER); MYLIVE_TIMER=MYLIVE_CODES?setTimeout(myLivePoll,myLiveDelay()):null; }
-function myLivePoll(){                        // 보유 종목 현재가를 시트(Apps Script ?live=)에서 받음: 국내=네이버(거의 실시간), 미국=야후(약 15분 지연)
+var MYLIVE_N=0, MYLIVE_HOLD={};
+function myLivePoll(){                        // 현재가를 시트(Apps Script ?live=)에서 받음: 국내=네이버(거의 실시간), 미국=야후. 마감 직전 모드에서는 25개씩 나눠 받고, 후보(보유 아닌 종목)의 미국 시세는 20초마다
   if(MYLIVE_BUSY) return; if(!MYLIVE_CODES){ myLiveSchedule(); return; }
   if(document.visibilityState==='hidden'){ myLiveSchedule(); return; }
-  MYLIVE_BUSY=true;
-  fetch(API+(API.indexOf('?')>=0?'&':'?')+'live='+encodeURIComponent(MYLIVE_CODES)).then(function(r){ return r.json(); }).then(function(o){ MYLIVE=Object.assign({},MYLIVE,o||{}); MYLIVE_BUSY=false; renderMy(); myLiveSchedule(); }).catch(function(){ MYLIVE_BUSY=false; myLiveSchedule(); });
+  MYLIVE_BUSY=true; MYLIVE_N++;
+  var all=MYLIVE_CODES.split(',').filter(String), codes=all.filter(function(c){ return /^\d{6}$/.test(c)||MYLIVE_HOLD[c]||MYLIVE_N%4===1; }), chunks=[];
+  for(var i=0;i<codes.length;i+=25) chunks.push(codes.slice(i,i+25));
+  Promise.all(chunks.map(function(ch){ return fetch(API+(API.indexOf('?')>=0?'&':'?')+'live='+encodeURIComponent(ch.join(','))).then(function(r){ return r.json(); }).catch(function(){ return null; }); }))
+    .then(function(rs){ rs.forEach(function(o){ if(o) MYLIVE=Object.assign({},MYLIVE,o); }); MYLIVE_BUSY=false; renderMy(); myLiveSchedule(); })
+    .catch(function(){ MYLIVE_BUSY=false; myLiveSchedule(); });
 }
-function myLiveStart(codes){                  // 보유 종목이 바뀌면 바로 한 번 받고, 이후 장 시간에는 5초마다 이어서 받음
+function myLiveStart(codes){                  // 보유 종목이 바뀌면 바로 한 번 받고, 이후 장 시간에는 5초마다 이어서 받음(마감 직전 모드면 후보·근접 종목도 같이)
+  MYLIVE_HOLD={}; codes.forEach(function(c){ MYLIVE_HOLD[c]=1; });
+  if(MYPRE.on&&MYPRE.codes){ var sn={}; codes.forEach(function(c){ sn[c]=1; }); MYPRE.codes.forEach(function(c){ if(!sn[c]){ sn[c]=1; codes=codes.concat([c]); } }); }
   var k=codes.join(','); if(k!==MYLIVE_CODES){ MYLIVE_CODES=k; if(k) myLivePoll(); else myLiveSchedule(); }
   else if(k&&!MYLIVE_TIMER&&!MYLIVE_BUSY) myLiveSchedule();
 }
@@ -2289,9 +2301,105 @@ function myRecLoad(keys){                     // 후보(시트 '확인' 행)·�
     keys.length?fetch(API+'?hold='+encodeURIComponent(keys.join(','))).then(function(r){ return r.json(); }).catch(function(){ return null; }):Promise.resolve(null)];
   Promise.all(ps).then(function(r){ if(r[3]) mergeLiveBars(r[3]); MYREC.api=r[2]; MYREC.t=Date.now(); MYREC.busy=false; renderMy(); });
 }
+
+/* ── 마감 직전 모드: 실시간 가격을 이번 달 종가로 넣어 후보·판매를 다시 계산(규칙은 Code.gs confirmInfo2_·planCore와 같음, 확정이 아니라 '지금 마감하면') ── */
+function myPreKey(r){ var us=r['시장']==='US'; return us?String(r['코드']).toUpperCase():r['코드']+(r['시장']==='KOSPI'?'.KS':'.KQ'); }
+function myPreLoad(){                          // 확인·근접 후보의 월봉과 금리 판단 기록(10분마다 새로)
+  if(!MYPRE.on||MYPRE.busy||(MYPRE.t&&Date.now()-MYPRE.t<600000)) return; MYPRE.busy=true;
+  fetch(API+(API.indexOf('?')>=0?'&':'?')+'pre=1').then(function(r){ return r.json(); }).then(function(o){
+    MYPRE.rows=(o&&o.rows)||[]; MYPRE.rateBack=(o&&o.rateBack)||[]; MYPRE.t=Date.now(); MYPRE.busy=false;
+    MYPRE.codes=MYPRE.rows.map(function(r){ return String(r['코드']).toUpperCase(); }); MYPRE.up=o&&o.updated; renderMy();
+  }).catch(function(){ MYPRE.t=Date.now(); MYPRE.rows=MYPRE.rows||[]; MYPRE.busy=false; MYPRE.err=true; renderMy(); });
+}
+function myPreEval(r){                         // 후보 행 하나를 실시간 가격으로 다시 계산 → {px, trig:{ym,sc}|null, near:{ym,ratio,align}|null, stale}
+  var cc=String(r['코드']).toUpperCase(), lv=MYLIVE[cc], ch=r['차트']; if(!ch||!ch.length) return null;
+  var us=r['시장']==='US', y=myPreKey(r), ym=myThisYm(), M=10;
+  var mon=ch.map(function(x){ return {ym:+x[0],open:+x[1],close:+x[4]}; }), n=mon.length;
+  if(mon[n-1].ym!==ym) return {px:lv?lv.px:null,trig:null,near:null,stale:true};
+  var px=lv&&lv.px>0?lv.px:mon[n-1].close; mon[n-1].close=px;
+  var c=mon.map(function(x){ return x.close; }), rb=MYPRE.rateBack||[];
+  var maAt=function(k,len){ if(k<len-1) return 0; var t=0; for(var i=k-len+1;i<=k;i++) t+=c[i]; return t/len; };
+  var trig=null, near=null;
+  for(var b=Math.max(M,24); b<=n-2; b++){
+    var mb=maAt(b,M), pm=maAt(b-1,M); if(!(c[b-1]<=pm&&c[b]>mb)) continue;
+    var p0=mon[b+1].open; if(!(p0>0)) continue;
+    var tp=false, cnt=0, alive=true, met=false, reach=false;
+    for(var j=b+1; j<=n-1&&alive; j++){
+      if(j===n-1) reach=true;
+      var ma=maAt(j,M), p=c[j];
+      if(ma){ if(p>=2*ma) tp=true; else if(tp){ alive=false; break; }
+        if(p<ma){ cnt++; var back=n-1-j; if(cnt>=(rb[back]?1:2)){ alive=false; break; } } else cnt=0; }
+      var a5=maAt(j,5), a20=maAt(j,20);
+      if(p/p0-1>=0.1&&a5&&a20&&ma&&a5>ma&&ma>a20){ met=true; if(j===n-1) trig={ym:mon[b].ym}; break; }
+    }
+    if(alive&&met&&trig&&trig.ym===mon[b].ym){ var sc=scoreFromBars(y,mon[b].ym,us); trig.sc=sc!=null?sc:(+r['점수']||0); }
+    else if(reach&&!met){ var rt=c[n-1]/p0-1, al=maAt(n-1,5)>maAt(n-1,M)&&maAt(n-1,M)>maAt(n-1,20), ma1=maAt(n-1,M);
+      if(rt>=0.06&&(!near||rt>near.ratio)) near={ym:mon[b].ym,ratio:rt,align:!!al,alive:alive,above:c[n-1]>ma1}; }
+    if(trig&&trig.sc==null) trig=null;
+  }
+  return {px:px,trig:trig,near:near,stale:false};
+}
+function myPreFlowNeed(codes){                 // 후보가 된 한국 종목의 이번 달 외국인·기관 순매수(60초마다 새로)
+  var key=codes.slice().sort().join(','); if(!key||MYPRE.flowBusy) return;
+  if(key===MYPRE.flowKey&&Date.now()-MYPRE.flowT<60000) return;
+  MYPRE.flowBusy=true; MYPRE.flowKey=key;
+  fetch(API+(API.indexOf('?')>=0?'&':'?')+'flow='+encodeURIComponent(codes.slice(0,12).join(','))).then(function(r){ return r.json(); }).then(function(o){ MYPRE.flow=Object.assign({},MYPRE.flow,o||{}); MYPRE.flowT=Date.now(); MYPRE.flowBusy=false; renderMy(); }).catch(function(){ MYPRE.flowT=Date.now(); MYPRE.flowBusy=false; });
+}
+function myPreCands(){                         // 실시간 기준 후보 목록(점수 순)과 변화 → {nc, ev}. 아직 못 받았으면 null
+  if(!MYPRE.on||!MYPRE.rows) return null;
+  var out=[], ev=[], krTrig=[];
+  MYPRE.rows.forEach(function(r){
+    var e=myPreEval(r); if(!e) return;
+    var cc=String(r['코드']).toUpperCase(), kr=r['시장']!=='US';
+    ev.push({r:r,e:e,cc:cc,kr:kr,sheet:r['신호']==='확인'});
+    if(e.trig&&kr) krTrig.push(cc);
+  });
+  if(krTrig.length) myPreFlowNeed(krTrig);
+  ev.forEach(function(x){
+    x.flow=null; if(x.e.trig&&x.kr){ var f=MYPRE.flow[x.cc]; if(f){ x.flow=f; x.flowOut=(f.fv>0&&f.iv>0)||(f.fv<0&&f.iv<0); } }
+    x.live=!!x.e.trig&&!x.flowOut;
+    if(x.live){ var r=x.r, us=r['시장']==='US'; out.push({y:myPreKey(r),name:r['이름'],us:us,px:x.e.px,score:x.e.trig.sc,brk:+x.e.trig.ym||null,row:r}); }
+  });
+  out.sort(function(a,b){ return (+b.score)-(+a.score); });
+  return {nc:out,ev:ev};
+}
+var MYLP=[];
+function myLivePatch(open){                    // 보유 종목의 이번 달 월봉 종가를 실시간 가격으로 잠시 바꿈(계산 뒤 되돌림)
+  MYLP=[]; if(!MYPRE.on) return; var ym=myThisYm();
+  open.forEach(function(p){ var cc=(p.code||'').toUpperCase(), lv=MYLIVE[cc], bk=myBarKey(p.code), u=bk&&barsOf(bk); if(!lv||!(lv.px>0)||!u) return;
+    var i=u.pos[ym]; if(i==null||i!==u.yms.length-1) return;
+    MYLP.push({u:u,i:i,c:u.c[i],h:u.h[i],l:u.l[i]}); u.c[i]=lv.px; u.h[i]=Math.max(u.h[i],lv.px); u.l[i]=Math.min(u.l[i],lv.px); });
+}
+function myLiveUnpatch(){ MYLP.forEach(function(q){ q.u.c[q.i]=q.c; q.u.h[q.i]=q.h; q.u.l[q.i]=q.l; }); MYLP=[]; }
+function myPreRender(R0){                      // 마감 직전 모드 안내·후보 변화 표
+  var btn=document.getElementById('my-pre-t'), st=document.getElementById('my-pre-s'), host=document.getElementById('my-pre-b'); if(!btn||!host) return;
+  btn.classList.toggle('on',MYPRE.on); btn.textContent=MYPRE.on?'⏱ 마감 직전 모드 켜짐':'⏱ 마감 직전 모드 꺼짐';
+  btn.onclick=function(){ MYPRE.on=!MYPRE.on; try{ localStorage.setItem('jpre',MYPRE.on?'1':'0'); }catch(e){} MYPRE.t=0; MYPRE.ev=null; MYLIVE_CODES=''; renderMy(); };
+  if(!MYPRE.on){ st.textContent='켜면 후보·보유 종목 시세로 지금 마감하면 어떻게 되는지 바로 계산해요'; host.innerHTML=''; return; }
+  var C=myPreCands(), now=new Date();
+  if(!C){ st.textContent=MYPRE.err?'후보를 못 받았어요(Apps Script 새 버전 배포 필요)':'후보를 불러오는 중…'; host.innerHTML=''; return; }
+  var lvT=0, lvN=0; Object.keys(MYLIVE).forEach(function(k){ lvT=Math.max(lvT,MYLIVE[k].t||0); lvN++; });
+  var ago=lvT?Math.max(0,Math.round((Date.now()-lvT)/1000)):null;
+  st.textContent='시세 '+lvN+'종목'+(ago!=null?' · '+ago+'초 전':'')+' · 후보 목록 '+(MYPRE.up&&MYPRE.up['한국']?String(MYPRE.up['한국']).slice(5,16):'');
+  var inN=C.nc.length, sheetN=C.ev.filter(function(x){ return x.sheet; }).length;
+  var line=function(x,cls,txt){ var e=x.e, p0r=e.near?e.near.ratio:null;
+    return '<div class="pr"><div class="pn">'+esc(x.r['이름'])+(x.r['시장']==='US'?' <small style="display:inline">미국</small>':'')+'<small>'+(e.px!=null?(x.r['시장']==='US'?pxS(e.px,true):Math.round(e.px).toLocaleString()+'원'):'가격 없음')+(e.trig?' · 점수 '+e.trig.sc:'')+(x.flow?' · 외 '+Math.round(x.flow.fv/1e8)+'억 / 기 '+Math.round(x.flow.iv/1e8)+'억':'')+'</small></div><div class="pc '+cls+'">'+txt+'</div></div>'; };
+  var h='<div class="pre-b"><div class="pg">지금 마감하면 후보 '+inN+'개 (시트 기준 '+sheetN+'개)</div>';
+  var ins=C.ev.filter(function(x){ return x.live; }).sort(function(a,b){ return b.e.trig.sc-a.e.trig.sc; });
+  ins.forEach(function(x){ h+=line(x,'in',x.sheet?'후보 유지':'새로 들어옴'); });
+  var outs=C.ev.filter(function(x){ return x.sheet&&!x.live; });
+  outs.forEach(function(x){ h+=line(x,'out',x.flowOut?'수급 제외(외·기관 같은 방향)':(x.e.stale?'월봉 갱신 대기':'조건 이탈')); });
+  var flowWait=C.ev.filter(function(x){ return x.e.trig&&x.kr&&!x.flow&&!x.sheet; });
+  var nears=C.ev.filter(function(x){ return !x.e.trig&&x.e.near&&!x.sheet; }).sort(function(a,b){ return b.e.near.ratio-a.e.near.ratio; }).slice(0,8);
+  if(nears.length){ h+='<div class="pg">근접 (+10%·정배열이 안 채워진 종목, 가까운 순)</div>'; nears.forEach(function(x){ var rt=x.e.near.ratio; h+=line(x,'',(rt*100>=0?'+':'')+(rt*100).toFixed(1)+'% / 10%'+(x.e.near.align?' · 정배열 O':' · 정배열 X')); }); }
+  if(flowWait.length) h+='<div class="pg">한국 신규 후보는 외국인·기관 수급을 확인 중이에요</div>';
+  h+='</div><p class="amt-note" style="margin:4px 0 6px">실시간 가격을 이번 달 종가로 가정한 값이에요. 장 마감(한국 15:30·미국 한국시간 새벽) 종가가 확정돼야 진짜 후보예요. 한국은 15:20~15:30 동시호가에서 크게 바뀔 수 있어요.</p>';
+  if(host._h!==h){ host._h=h; host.innerHTML=h; }
+}
 function myRecCompute(open){
   var api=MYREC.api; if(!api||!COSTS||!api.rows) return null;
-  var ym=myThisYm(), prev=myPrevYm(ym), fx=myFxNow(), holds=[], nobars=[], names={};
+  var ym=myThisYm(), prev=myPrevYm(ym), fx=myFxNow(), holds=[], nobars=[], names={}; myLivePatch(open);
+  try {
   open.forEach(function(p){ var bk=myBarKey(p.code); if(!bk){ nobars.push(p); return; } var d=p.open||'', by=+d.slice(0,4)*100+ +d.slice(5,7)||ym; names[bk]=p;
     holds.push({y:bk,name:p.name||p.code,buyYm:by,buyPx:p.cost/p.qty,curPx:0,sh:p.qty,basis:p.cost,score:null}); });
   var P=planCore({nowYm:ym,lastYm:prev,holds:holds,cash:MYCASH,dep:0,fx:fx,rateUp:api.rateUp===true,picks:[],N:4,usGainYtd:0,fd:true,cands:[]});
@@ -2299,11 +2407,14 @@ function myRecCompute(open){
   var remain=holds.filter(function(h){ return !sold[h.y]; });
   var rows=api.rows.filter(function(x){ return x['신호']==='확인'; }).sort(function(a,b){ return (+b['점수'])-(+a['점수']); });
   var nc=rows.map(function(r){ var us=r['시장']==='US'; return {y:us?r['코드']:r['코드']+(r['시장']==='KOSPI'?'.KS':'.KQ'),name:r['이름'],us:us,px:+r['최근종가'],score:(function(){ var l=localScore(us?r['코드']:r['코드']+(r['시장']==='KOSPI'?'.KS':'.KQ'),r); return l!=null?l:+r['점수']; })(),brk:+r['돌파월']||null,row:r}; });
+  var PC=myPreCands(); if(PC) nc=PC.nc;                                    // 마감 직전 모드: 실시간 가격으로 다시 계산한 후보
   var dnx=nextYmOf(ym), P2=planCore({nowYm:dnx,lastYm:ym,holds:remain,cash:P.cash1,dep:0,fx:fx,rateUp:false,picks:[],N:4,usGainYtd:0,fd:true,cands:nc});
   return {ym:ym,dnx:dnx,P:P,P2:P2,keep:remain.filter(function(h){ return !watchY[h.y]; }),nobars:nobars,names:names,nc:nc};
+  } finally { myLiveUnpatch(); }
 }
 function myRecRender(open){
   var host=document.getElementById('my-rec-b'); if(!host) return;
+  myPreLoad(); myPreRender();
   var cashEl=document.getElementById('my-cash'), ck=document.getElementById('my-cash-k');
   if(cashEl&&document.activeElement!==cashEl) if(MYCASH!==0){ CASHSIGN=MYCASH<0?-1:1; cashSignSave(); } cashEl.value=MYCASH!==0?Math.abs(Math.round(MYCASH/10000)):''; var sb=document.getElementById('my-cash-s'); if(sb){ sb.textContent=CASHSIGN<0?'−':'+'; sb.classList.toggle('neg',CASHSIGN<0); }
   if(ck) ck.textContent=MYCASH!==0?korSigned(Math.round(MYCASH/10000)):'';

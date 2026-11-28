@@ -423,17 +423,21 @@ function buildLiq_(mons, n) {
  * (익절 트레일 2배·유예 2달(금리 상승 중이면 1달)로 안 팔린 채) 이번 달 최근 종가 기준 +10% 이상이고 5>10>20 정배열이 "처음" 된 달이면 후보.
  * 점수 = 돌파 달 시점의 점수. 후보가 여러 돌파에서 나오면 점수가 가장 높은 것 하나. 돌려주는 값: 'YYYYMM|점수' 또는 ''
  * tools/learn/7_backtest.js confirmTrig와 같은 규칙으로 유지할 것 */
-function confirmInfo_(s, mon, liq) {
+function confirmInfo_(s, mon, liq) { return confirmInfo2_(s, mon, liq).c; }
+// 반환 {c: 확인 후보 '돌파월|점수' 또는 '', nr: 근접 후보 '돌파월|점수' 또는 ''}
+// 근접 = 돌파 뒤 판매·익절 조건에 안 걸리고 아직 조건(+10%·정배열)을 못 채웠지만 이번 달 가격이 다음 달 시가보다 +6% 이상인 종목(마감 직전 확인 화면용: 지금 가격이 월말 종가가 되면 후보가 될 수 있음)
+function confirmInfo2_(s, mon, liq) {
   var n = mon.length, M = CFG.MONTHS, c = mon.map(function (x) { return x.close; });
   var maAt = function (k, len) { return k >= len - 1 ? avg_(c.slice(k - len + 1, k + 1)) : null; };
-  var best = null, up = null;
+  var best = null, up = null, nbest = null;
   for (var b = Math.max(M, 24); b <= n - 2; b++) {
     var mb = maAt(b, M), pm = maAt(b - 1, M);
     if (!(c[b - 1] <= pm && c[b] > mb)) continue;                       // 돌파 달
     if (liq && !liq.has(mon, b)) continue;                              // 그 돌파 달에 거래대금 상위가 아니었으면 후보가 아님(백테스트는 그 달 상위인 종목의 돌파만 신호로 봄)
     var p0 = mon[b + 1].open; if (!(p0 > 0)) continue;
-    var tp = false, cnt = 0, alive = true, trig = false;
+    var tp = false, cnt = 0, alive = true, trig = false, reach = false;
     for (var j = b + 1; j <= n - 1 && alive; j++) {
+      if (j === n - 1) reach = true;                                    // 이번 달 전까지 살아 있음
       var ma = maAt(j, M), p = c[j];
       if (ma != null) {
         if (p >= 2 * ma) tp = true; else if (tp) { alive = false; break; }
@@ -450,9 +454,12 @@ function confirmInfo_(s, mon, liq) {
     if (alive && trig) {
       var sc = scoreMonthly_(mon.slice(0, b + 1), s);
       if (sc !== '' && (best === null || sc > best.sc)) best = { ym: mon[b].ym, sc: sc };
+    } else if (reach && !trig && c[n - 1] / p0 - 1 >= 0.06) {
+      var sc2 = scoreMonthly_(mon.slice(0, b + 1), s);
+      if (sc2 !== '' && (nbest === null || sc2 > nbest.sc)) nbest = { ym: mon[b].ym, sc: sc2 };
     }
   }
-  return best ? best.ym + '|' + best.sc : '';
+  return { c: best ? best.ym + '|' + best.sc : '', nr: nbest ? nbest.ym + '|' + nbest.sc : '' };
 }
 
 /* ───────── 수급 규칙(2026-11-27 채택) ─────────
@@ -461,7 +468,7 @@ function confirmInfo_(s, mon, liq) {
  * tools/learn/flow.js · 7_backtest.js(JOURNAL_FLOW)와 같은 규칙으로 유지할 것. 돌려주는 값: 로그용 요약 */
 function flowCheck_(rows) {
   var idx = [];
-  rows.forEach(function (r, i) { if (r[15]) idx.push(i); });
+  rows.forEach(function (r, i) { if (r[15] && String(r[15]).charAt(0) !== '~') idx.push(i); });   // '~'로 시작하는 건 근접 후보(확인 후보가 아님)라 건너뜀
   if (!idx.length) return '수급: 후보 없음';
   var bodies = fetchAll_(idx.map(function (i) { return 'https://m.stock.naver.com/api/stock/' + rows[i][1] + '/trend?pageSize=30'; }));
   var out = [], miss = 0;
@@ -513,7 +520,8 @@ function makeRow_(s, mon, liq) {
   // 매수·매도·유예 종목만 차트용 월봉 저장: [[YYYYMM, 시가, 고가, 저가, 종가, 거래량], ...]
   // 점수 계산에 쓴 월봉 전체를 보내야 사이트의 "점수 설명"이 시트 점수와 똑같이 계산됨
   var tp = n >= M + 1 ? tpInfo_(mon) : '';                                           // 익절(2배) 상태 — '도달|배율|YYYYMM' / '하락|배율|YYYYMM'
-  var conf = n >= 25 ? confirmInfo_(s, mon, liq) : '';                              // 확인 매수 후보('돌파월|점수') — 다음 달 첫날 사는 후보
+  var ci = n >= 25 ? confirmInfo2_(s, mon, liq) : { c: '', nr: '' };
+  var conf = ci.c || (ci.nr ? '~' + ci.nr : '');                                    // 확인 매수 후보('돌파월|점수') — 다음 달 첫날 사는 후보. 근접 후보는 앞에 '~'(마감 직전 확인 화면 전용, 일반 목록에는 안 나감)
   var chart = '';
   if (sig === '매수' || sig === '매도' || sig === '유예' || conf || tp) {
     chart = JSON.stringify(mon.map(function (x) {
@@ -547,7 +555,7 @@ function cachePut_(key, text) {
 }
 function cacheClear_() {
   var c = CacheService.getScriptCache();
-  ['sig', 'all'].forEach(function (k) {
+  ['sig', 'all', 'pre'].forEach(function (k) {
     var key = 'doGet:' + k, n = +c.get(key + ':n'), keys = [key + ':n'];
     for (var i = 0; i < n; i++) keys.push(key + ':' + i);
     c.removeAll(keys);
@@ -574,11 +582,56 @@ function holdRows_(param) {
   return { rows: rows };
 }
 
+/* ───────── 마감 직전 확인용 ─────────
+ * ?pre=1: 확인 후보('확인')와 근접 후보('근접')의 월봉 + 금리 판단 기록(rateBack[k] = k개월 전 시점의 '금리 상승 중' 여부).
+ * 화면(매매일지)이 실시간 가격을 이번 달 종가로 넣어 후보 조건을 다시 계산함(규칙은 confirmInfo2_와 같음) */
+function preRows_() {
+  var hit = cacheGet_('doGet:pre');
+  if (hit) { try { return JSON.parse(hit); } catch (err) { } }
+  var ss = SpreadsheetApp.getActive(), out = { updated: {}, rows: [], rateBack: [] };
+  for (var k = 0; k <= 36; k++) out.rateBack.push(rateAt_(k));
+  ['한국', '미국'].forEach(function (n) {
+    var sh = ss.getSheetByName(n);
+    if (!sh || sh.getLastRow() < 2) return;
+    out.updated[n] = sh.getRange('V1').getValue();
+    sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues().forEach(function (r) {
+      var cf = String(r[15] || ''); if (!cf) return;
+      var near = cf.charAt(0) === '~', pr = (near ? cf.slice(1) : cf).split('|');
+      var o = { '시장': r[0], '코드': r[1], '이름': r[2], '최근종가': r[6], '10이평': r[7], '기준일': r[11], '신호': near ? '근접' : '확인', '돌파월': pr[0], '점수': +pr[1], '판매이평': r[17] };
+      try { o['차트'] = JSON.parse(r[13]); } catch (err) { o['차트'] = null; }
+      if (o['차트']) out.rows.push(o);
+    });
+  });
+  cachePut_('doGet:pre', JSON.stringify(out));
+  return out;
+}
+/* ?flow=005930,000660,... (한국 6자리 코드, 최대 12개): 이번 달 외국인·기관 순매수 금액(수량×종가 합, 원) → { 코드: {fv, iv, days} }. 네이버 일별 투자자 매매(flowCheck_와 같은 계산), 60초 캐시 */
+function flowRows_(list) {
+  var codes = String(list).split(',').map(function (x) { return x.trim(); }).filter(function (x) { return /^\d{6}$/.test(x); }).slice(0, 12);
+  if (!codes.length) return {};
+  var ck = 'fl:' + codes.join(','), cache = CacheService.getScriptCache(), hit = cache.get(ck);
+  if (hit) { try { return JSON.parse(hit); } catch (err) { } }
+  var ym = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMM');
+  var bodies = fetchAll_(codes.map(function (c) { return 'https://m.stock.naver.com/api/stock/' + c + '/trend?pageSize=30'; }));
+  var out = {};
+  codes.forEach(function (c, i) {
+    var a = null; try { a = JSON.parse(bodies[i]); } catch (e) { }
+    if (!a || !a.length) return;
+    var fv = 0, iv = 0, days = 0;
+    a.forEach(function (x) { if (String(x.bizdate).indexOf(ym) !== 0) return; var p = num_(x.closePrice); fv += num_(x.foreignerPureBuyQuant) * p; iv += num_(x.organPureBuyQuant) * p; days++; });
+    if (days) out[c] = { fv: Math.round(fv), iv: Math.round(iv), days: days };
+  });
+  try { cache.put(ck, JSON.stringify(out), 60); } catch (err) { }
+  return out;
+}
+
 // ?all=1 이면 모든 종목, 아니면 매수·매도·유예 신호만
 function doGet(e) {
   if (e && e.parameter && e.parameter.q) return ContentService.createTextOutput(JSON.stringify(searchRows_(e.parameter.q))).setMimeType(ContentService.MimeType.JSON);
   if (e && e.parameter && e.parameter.live) return ContentService.createTextOutput(JSON.stringify(liveRows_(e.parameter.live))).setMimeType(ContentService.MimeType.JSON);
   if (e && e.parameter && e.parameter.px) return ContentService.createTextOutput(JSON.stringify(pxRows_(e.parameter.px))).setMimeType(ContentService.MimeType.JSON);
+  if (e && e.parameter && e.parameter.pre) return ContentService.createTextOutput(JSON.stringify(preRows_())).setMimeType(ContentService.MimeType.JSON);
+  if (e && e.parameter && e.parameter.flow) return ContentService.createTextOutput(JSON.stringify(flowRows_(e.parameter.flow))).setMimeType(ContentService.MimeType.JSON);
   if (e && e.parameter && e.parameter.hold) return ContentService.createTextOutput(JSON.stringify(holdRows_(e.parameter.hold))).setMimeType(ContentService.MimeType.JSON);
   var all = e && e.parameter && e.parameter.all;
   var key = 'doGet:' + (all ? 'all' : 'sig');
@@ -592,6 +645,7 @@ function doGet(e) {
     var v = sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues();
     v.forEach(function (r) {
       var isSig = r[10] === '매수' || r[10] === '매도' || r[10] === '유예', cf = String(r[15] || ''), tpv = String(r[16] || '');
+      if (cf.charAt(0) === '~') cf = '';                      // 근접 후보는 ?pre=1에서만
       if (!all && !isSig && !cf && !tpv) return;
       var o = {};
       HEAD.forEach(function (h, i) { o[h] = r[i] instanceof Date ? fmtDate_(r[i]) : r[i]; });
