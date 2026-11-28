@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45) || on(46)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45) || on(46) || on(47)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1482,6 +1482,46 @@ function build(c, which) {
         log(''); log('## 44 가장 나빴던 해: ' + mine.map(v => { const w = ys.map(Y => [Y, v.full.yearly[Y]]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1])[0]; return `${v.name.slice(0, 16)} ${w ? w[0] + ' ' + pc(w[1]) : '-'} (낙폭 ${pc(v.full.mdd)})`; }).join(' · '));
       }));
       posts.push(() => post12('44-', '44 옛 기간 포함'));
+    }
+    if (on(47)) {                                                              // ═════ 묶음 47: 남는 현금을 채권·금 ETF에(방향 전환기 방어) — 2005~ 자료로 2008·2009부터 확인(DATA=data_2003, data_2003/etf/*.json 필요; 야후 수정종가=배당 포함)
+      PFX = '47';
+      const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
+      const flowOK = drop(isSame)(mBase);
+      const E = {}; ['TLT', 'IEF', 'SHY', 'AGG', 'GLD'].forEach(n => { try { const m = {}; JSON.parse(require('fs').readFileSync(require('path').join(process.env.DATA || 'data', 'etf', n + '.json'), 'utf8')).forEach(r => { m[r[0]] = r[4]; }); E[n] = m; } catch (e) { E[n] = {}; } });
+      const eAt = (n, k) => E[n][ymOf(k)];
+      const eRet = (n, k) => { const a = eAt(n, k), b = eAt(n, k - 1); return a && b ? (a * fx(k)) / (b * fx(k - 1)) - 1 : null; };      // 원화 환산 월 수익률(배당 포함)
+      const eMa = (n, k, L) => { let s0 = 0; for (let j = k; j > k - L; j--) { const v = eAt(n, j); if (!v) return null; s0 += v; } return s0 / L; };
+      const above = (n, k) => { const a = eAt(n, k), m = eMa(n, k, 10); return a && m ? a > m : null; };                         // 월말 종가가 10이평 위인가(그 달 말까지의 값)
+      const one = n => ({ cashRetFn: k => eRet(n, k) ?? 0 });
+      const trend = n => ({ cashRetFn: k => (above(n, k - 1) ? eRet(n, k) ?? 0 : 0) });                                          // 10이평 위일 때만 담고 아니면 현금
+      const mix = (a, b) => ({ cashRetFn: k => ((eRet(a, k) ?? 0) + (eRet(b, k) ?? 0)) / 2 });
+      const mixT = (a, b) => ({ cashRetFn: k => ((above(a, k - 1) ? eRet(a, k) ?? 0 : 0) + (above(b, k - 1) ? eRet(b, k) ?? 0 : 0)) / 2 });
+      const best = { cashRetFn: k => { let bn = null, bv = 0; ['IEF', 'GLD'].forEach(n => { const a = eAt(n, k - 1), b = eAt(n, k - 7); if (a && b && a / b - 1 > bv) { bv = a / b - 1; bn = n; } }); return bn ? eRet(bn, k) ?? 0 : 0; } };    // 6개월 수익이 플러스인 것 중 가장 강한 쪽
+      const A = (sec, name, o) => add(S(sec), name, { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, ...(o || {}) } });
+      A('A 기준', '지금 규칙(현금 그대로)');
+      A('B 항상 담기', '남는 현금 → 단기국채(SHY)', one('SHY'));
+      A('B 항상 담기', '남는 현금 → 중기국채(IEF)', one('IEF'));
+      A('B 항상 담기', '남는 현금 → 장기국채(TLT)', one('TLT'));
+      A('B 항상 담기', '남는 현금 → 종합채권(AGG)', one('AGG'));
+      A('B 항상 담기', '남는 현금 → 금(GLD)', one('GLD'));
+      A('B 항상 담기', '남는 현금 → 중기국채·금 절반씩', mix('IEF', 'GLD'));
+      A('C 10이평 위일 때만', '중기국채(IEF) 10이평 위일 때만', trend('IEF'));
+      A('C 10이평 위일 때만', '장기국채(TLT) 10이평 위일 때만', trend('TLT'));
+      A('C 10이평 위일 때만', '금(GLD) 10이평 위일 때만', trend('GLD'));
+      A('C 10이평 위일 때만', '중기국채·금 각각 10이평 위일 때만 절반씩', mixT('IEF', 'GLD'));
+      A('D 가장 강한 쪽', '6개월 수익 플러스인 국채·금 중 가장 강한 것', best);
+      posts.push(() => safe('47 기간', () => {
+        const mine = V.filter(v => String(v.sec).startsWith('47-') && v.full && v.full.yearly);
+        const ys = YEARS_ALL.slice();
+        const per = [['처음 보는 기간 2005~2011', ys.filter(Y => Y < 2012)], ['2008~2009만', ys.filter(Y => Y === 2008 || Y === 2009)], ['2012~2026', ys.filter(Y => Y >= 2012)], ['전체 2005~2026', ys]];
+        log(''); log('## 47 구간별 연평균(남는 현금을 채권·금에)');
+        log('방식'.padEnd(46) + per.map(([n]) => n.padStart(20)).join(''));
+        mine.forEach(v => log(v.name.slice(0, 42).padEnd(46) + per.map(([, Ys]) => pc(cagrOver(v.full.yearly, Ys)).padStart(20)).join('')));
+        log(''); log('## 47 해마다(2005~2011)');
+        log('방식'.padEnd(46) + ys.filter(Y => Y < 2012).map(Y => String(Y).padStart(9)).join(''));
+        mine.forEach(v => log(v.name.slice(0, 42).padEnd(46) + ys.filter(Y => Y < 2012).map(Y => pc(v.full.yearly[Y] ?? NaN).padStart(9)).join('')));
+      }));
+      posts.push(() => post12('47-', '47 남는 현금을 채권·금에'));
     }
     if (on(46)) {                                                              // ═════ 묶음 46: 처음 보는 기간(2005~2011)에서 금리 규칙·유예 길이·익절·판매 이평을 다시 확인(DATA=data_2003 필요). 지금 규칙 한국6·미국10+수급 기준
       PFX = '46';
