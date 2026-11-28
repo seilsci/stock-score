@@ -90,6 +90,14 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 .y9-c p{color:var(--mut)}
 .y9-f{background:var(--seg);padding:8px 10px;text-align:center}
 .lg-bar{height:6px;background:var(--line);margin:6px 0 2px}.lg-bar i{display:block;height:100%;background:var(--acc)}
+.bt-nx{background:var(--card);border:1px solid var(--line);padding:12px}
+.nx-r{display:grid;grid-template-columns:118px 1fr 92px;gap:8px;align-items:center;margin:6px 0;font-size:12.5px}
+.nx-n{font-weight:600}.nx-b{height:10px;background:var(--line)}.nx-b i{display:block;height:100%}
+.nx-r.up .nx-b i{background:var(--buy)}.nx-r.dn .nx-b i{background:var(--sell)}.nx-b i.unk{width:100%;background:repeating-linear-gradient(90deg,var(--sell) 0 4px,transparent 4px 8px);opacity:.5}
+.nx-r b{text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px}.nx-r.up b{color:var(--buy)}.nx-r.dn b{color:var(--sell)}
+.nx-s{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.nx-s div{border:1px solid var(--line);padding:8px;text-align:center}
+.nx-s span{display:block;font-size:11px;color:var(--mut)}.nx-s b{display:block;font-size:17px;margin-top:2px}
+@media(max-width:360px){.nx-r{grid-template-columns:96px 1fr 80px}}
 .bt-ls{margin:0;padding:0;list-style:none}
 .bt-ls li{background:var(--card);border:1px solid var(--line);padding:9px 12px;margin:0 0 6px;font-size:13px;line-height:1.6}
 .bt-ls li b{color:var(--acc)}
@@ -107,7 +115,7 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
 @media(max-width:380px){.bt-grid{grid-template-columns:minmax(0,1fr)}.bt-bar{grid-template-columns:96px 1fr 48px}}
 </style>
 <link rel="stylesheet" href="theme.css?v=1127m">
-<style>.lg-c,.bt-y9,.y9-c,.bt-k,.bt-bars,.bt-ev,.bt-x,.bt-yr,.bt-ls li{border-radius:0}</style>
+<style>.bt-nx,.nx-s div,.lg-c,.bt-y9,.y9-c,.bt-k,.bt-bars,.bt-ev,.bt-x,.bt-yr,.bt-ls li{border-radius:0}</style>
 </head>
 <body>
 <main>
@@ -211,6 +219,16 @@ h1{font-size:18px;margin:0 0 2px;text-align:center}
     <div class="y9-f">🐎 방향이 바뀌는 해엔 조금씩 잃고, 추세가 긴 해에 크게 번다 · 금리 규칙은 처음 보는 기간에서도 도움(연 +8.5% vs 끄면 +5.6%) → 그대로</div>
   </div>
 </div>
+
+  <div class="bt-h"><span class="dot" style="background:var(--hold)"></span>숫자에 안 들어간 것들<em>좋은 쪽과 나쁜 쪽</em></div>
+  <div class="bt-nx">
+    <div class="nx-r up"><span class="nx-n">🪙 배당 재투자</span><div class="nx-b"><i style="width:68%"></i></div><b>+1.8 ~ 2.3%p</b></div>
+    <div class="nx-r up"><span class="nx-n">🏦 남는 현금 이자</span><div class="nx-b"><i style="width:19%"></i></div><b>+0.3 ~ 0.6%p</b></div>
+    <div class="nx-r dn"><span class="nx-n">🪦 상장폐지 빠짐</span><div class="nx-b"><i style="width:34%"></i></div><b>−0.1 ~ −1.1%p</b></div>
+    <div class="nx-r dn"><span class="nx-n">🚫 거래정지로 0</span><div class="nx-b"><i class="unk"></i></div><b>크기 모름</b></div>
+    <div class="nx-s"><div><span>합치면</span><b>연 약 +1%p</b></div><div><span>지수와의 차이</span><b>거의 그대로</b></div></div>
+    <p class="bt-note">지수도 배당을 뺀 가격 지수라서 양쪽에 같은 플러스가 붙어요. 그래서 현실 기대치는 연 +10~14% 그대로.</p>
+  </div>
 
   <div class="bt-h"><span class="dot" style="background:var(--hold)"></span>배운 것</div>
   <div class="bt-lg">
