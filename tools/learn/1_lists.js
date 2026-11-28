@@ -29,6 +29,7 @@ async function pages(base) {
     (await pages(`https://api.stock.naver.com/stock/exchange/${ex}/marketValue?`)).filter(x => !EXCLUDE_US.test(x.stockName)).forEach(x =>
       us.push({ mk: 'US', code: x.symbolCode, name: x.stockName, type: x.stockEndType || 'stock',
                 cap: num(x.marketValue), y: String(x.symbolCode).replace(/\s+/g, '-') }));
+  try { const E = JSON.parse(fs.readFileSync(path.join(__dirname, 'us_etf.json'))); if (process.env.US_ETF !== '0') E.etfs.forEach(e => us.push({ mk: 'US', code: e.y, name: e.name, type: 'etf', cap: e.cap, y: e.y })); } catch (e) { console.error('us_etf.json 없음: 미국 ETF 없이 진행(node 1b_us_etf.js로 만들 수 있음)'); }      // 미국 ETF(순자산을 시총처럼 순위에 넣음, 끄려면 US_ETF=0)
   kr.sort((a, b) => b.cap - a.cap); us.sort((a, b) => b.cap - a.cap);
   const krSel = kr.filter(x => x.mk === 'KOSPI').slice(0, KOSPI_N).concat(kr.filter(x => x.mk === 'KOSDAQ').slice(0, KOSDAQ_N));
   const list = krSel.concat(us.slice(0, US_N));
