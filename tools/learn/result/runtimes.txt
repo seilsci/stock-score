@@ -20,3 +20,4 @@
 2026-11-27 09:54 exp@pc total=43 b37=43
 2026-11-27 10:04 exp@pc total=151 b38=151
 2026-11-27 10:27 learn@pc total=896 build=11 train=7 explore=117 check=8 backtest=730 download=887 limit=0
+2026-11-28 14:31 learn@pc total=1111 build=148 train=8 explore=124 check=7 backtest=771 download=1098 limit=0
