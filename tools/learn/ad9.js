@@ -1470,7 +1470,7 @@ function build(c, which) {
         const ys = YEARS_ALL.slice();
         const idxY = (key, Y) => { const a = idxAt(key, mi((Y - 1) * 100 + 12)), b2 = idxAt(key, mi(Y * 100 + 12)) || idxAt(key, END); return a > 0 && b2 > 0 ? b2 / a - 1 : null; };
         const IX = [['코스피', 'ks'], ['S&P500', 'sp'], ['나스닥100', 'nq']];
-        log(''); log(`## 44 해마다 수익률(${ys[0]}~${ys[ys.length - 1]}, 월 100만원 적립 시간가중 · 지수는 가격 지수 연간 변화, 배당 없음)`);
+        log(''); log(`## 44 해마다 수익률(${ys[0]}~${ys[ys.length - 1]}, 월 100만원 적립 시간가중 · 지수는 TR(배당 포함) 연간 변화 — 코스피는 2009-03~ KODEX 200 TR·그 전은 가격 지수)`);
         log('연도   ' + mine.map(v => v.name.slice(0, 16).padStart(17)).join('') + IX.map(([n]) => n.padStart(10)).join(''));
         ys.forEach(Y => log(`${Y}${Y < 2012 ? '*' : ' '}  ` + mine.map(v => pc(v.full.yearly[Y] ?? NaN).padStart(17)).join('') + IX.map(([, k]) => { const r = idxY(k, Y); return (r == null ? '-' : pc(r)).padStart(10); }).join('')));
         log('(* = 규칙을 고를 때 쓴 적 없는 기간)');
@@ -1631,7 +1631,7 @@ function build(c, which) {
         const ys = YEARS_ALL.slice();
         const idxY = (key, Y) => { const a = idxAt(key, mi((Y - 1) * 100 + 12)), b2 = idxAt(key, mi(Y * 100 + 12)) || idxAt(key, END); return a > 0 && b2 > 0 ? b2 / a - 1 : null; };
         const IX = [['코스피', 'ks'], ['S&P500', 'sp'], ['나스닥100', 'nq']];
-        log(''); log(`## 45 해마다 수익률(${ys[0]}~${ys[ys.length - 1]}, 시간가중, 지수는 가격 지수)`);
+        log(''); log(`## 45 해마다 수익률(${ys[0]}~${ys[ys.length - 1]}, 시간가중, 지수는 TR(배당 포함))`);
         log('연도   ' + mine.map(v => v.name.slice(0, 16).padStart(17)).join('') + IX.map(([n]) => n.padStart(10)).join(''));
         ys.forEach(Y => log(`${Y}${Y < 2012 ? '*' : ' '}  ` + mine.map(v => pc(v.full.yearly[Y] ?? NaN).padStart(17)).join('') + IX.map(([, k]) => { const r = idxY(k, Y); return (r == null ? '-' : pc(r)).padStart(10); }).join('')));
         log('(* = 규칙을 고를 때 쓴 적 없는 기간)');
