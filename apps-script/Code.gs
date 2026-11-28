@@ -116,6 +116,9 @@ function updateKR() {
 // tools/learn/1_lists.js의 EXCLUDE와 같은 규칙으로 유지할 것
 var EXCLUDE_RE = /채권|국채|국고채|회사채|특수은행채|금융채|국공채|통안채|크레딧|하이일드|단기자금|금리|머니마켓|레버리지|인버스|곱버스|\b[23]X\b|1\.5X/;
 
+// 미국: 채권·지방채·우선주 중심의 폐쇄형 펀드(가격이 거의 안 움직이는 채권형). tools/learn/1_lists.js의 EXCLUDE_US와 같게 유지
+var EXCLUDE_US_RE = /Muni|Municipal|Bond Trust|(Fund|Fd|Closed).*(High Yield|High Income|Floating Rate|Credit|Loan|Treasury|Mortgage|Duration|Preferred|Income Solutions|Dynamic Income|Corporate & Income|Multi-Sector|Core Bond)|(High Yield|High Income|Floating Rate|Credit|Loan|Treasury|Preferred|Income Solutions|Dynamic Income|Corporate & Income|Multi-Sector|Core Bond).*(Fund|Fd|Closed)/i;
+
 function naverTop_(market, n) {
   var out = [];
   for (var page = 1; out.length < n; page++) {
@@ -199,7 +202,7 @@ function naverUSTop_(n) {
     if (!txt) return;
     (JSON.parse(txt).stocks || []).forEach(function (x) {
       var cap = num_(x.marketValue);                       // 단위: 천 달러
-      if (cap > 0) all.push({
+      if (cap > 0 && !EXCLUDE_US_RE.test(x.stockName)) all.push({
         market: 'US', code: x.symbolCode, reuters: x.reutersCode,
         yahoo: String(x.symbolCode).replace(/\s+/g, '-'),
         name: x.stockName, type: x.stockEndType || 'stock',

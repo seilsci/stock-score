@@ -11,6 +11,8 @@ const US_N = +process.env.US_N || (WIDE ? 3000 : 500);
 // 제외 종목: 채권·금리·머니마켓 등 가격이 거의 안 움직이는 상품, 레버리지·인버스(음의 복리). apps-script/Code.gs의 EXCLUDE_RE와 같게 유지
 const EXCLUDE = /채권|국채|국고채|회사채|특수은행채|금융채|국공채|통안채|크레딧|하이일드|단기자금|금리|머니마켓|레버리지|인버스|곱버스|\b[23]X\b|1\.5X/;
 
+const EXCLUDE_US = /Muni|Municipal|Bond Trust|(Fund|Fd|Closed).*(High Yield|High Income|Floating Rate|Credit|Loan|Treasury|Mortgage|Duration|Preferred|Income Solutions|Dynamic Income|Corporate & Income|Multi-Sector|Core Bond)|(High Yield|High Income|Floating Rate|Credit|Loan|Treasury|Preferred|Income Solutions|Dynamic Income|Corporate & Income|Multi-Sector|Core Bond).*(Fund|Fd|Closed)/i;      // 미국: 채권·지방채·우선주 중심 폐쇄형 펀드 제외(apps-script/Code.gs EXCLUDE_US_RE와 같게 유지)
+
 async function pages(base) {
   const first = await getJSON(base + 'page=1&pageSize=100');
   const n = Math.ceil(first.totalCount / 100), out = [first];
@@ -24,7 +26,7 @@ async function pages(base) {
       kr.push({ mk: m, code: x.itemCode, name: x.stockName, type: x.stockEndType, cap: num(x.marketValue),
                 y: x.itemCode + (m === 'KOSPI' ? '.KS' : '.KQ') }));
   for (const ex of ['NASDAQ', 'NYSE', 'AMEX'])
-    (await pages(`https://api.stock.naver.com/stock/exchange/${ex}/marketValue?`)).forEach(x =>
+    (await pages(`https://api.stock.naver.com/stock/exchange/${ex}/marketValue?`)).filter(x => !EXCLUDE_US.test(x.stockName)).forEach(x =>
       us.push({ mk: 'US', code: x.symbolCode, name: x.stockName, type: x.stockEndType || 'stock',
                 cap: num(x.marketValue), y: String(x.symbolCode).replace(/\s+/g, '-') }));
   kr.sort((a, b) => b.cap - a.cap); us.sort((a, b) => b.cap - a.cap);
