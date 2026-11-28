@@ -235,7 +235,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (opt.banMonths && !h._part) banUntil.set(h.y, k + opt.banMonths);
     let got, taxR = 0, etfTx = 0;
     if (h.us) { const pr = v * (1 - usFee), Y = yOfK(k); usGain[Y] = (usGain[Y] || 0) + pr - h.basis; got = pr; }
-    else { taxR = (h.etf && C.kr.etf_exempt ? 0 : krTax(C, ymOf(k))); got = v * (1 - C.kr.commission - taxR); if (h.etf && C.kr.etf_gain_tax && etfTaxable(h.y)) { etfTx = Math.max(0, got - h.basis) * C.kr.etf_gain_tax; got -= etfTx; const Yf = yOfK(k); finInc[Yf] = (finInc[Yf] || 0) + etfTx / C.kr.etf_gain_tax; } if (opt.krGainTax) krGain[yOfK(k)] = (krGain[yOfK(k)] || 0) + got - h.basis; }
+    else { taxR = (h.etf && C.kr.etf_exempt ? 0 : krTax(C, ymOf(k))); got = v * (1 - C.kr.commission - taxR); if (h.etf && C.kr.etf_gain_tax && etfTaxable(h.y)) { etfTx = Math.max(0, got - h.basis) * C.kr.etf_gain_tax; got -= etfTx; const Yf = yOfK(k); finInc[Yf] = (finInc[Yf] || 0) + etfTx / C.kr.etf_gain_tax; finWh[Yf] = (finWh[Yf] || 0) + etfTx; } if (opt.krGainTax) krGain[yOfK(k)] = (krGain[yOfK(k)] || 0) + got - h.basis; }
     if (cur) cur.sells.push({ y: h.y, buyYm: h.buyYm, us: h.us, sh: h.sh, px: h.last, fx: h.us ? fxf(k) : null, gross: v,
       feeRate: h.us ? usFee : C.kr.commission, fee: v * (h.us ? usFee : C.kr.commission), taxRate: taxR, tax: v * taxR, etfTax: etfTx,
       amt: got, basis: h.basis, ret: got / h.basis - 1, reason: reason || 'ma10' });
@@ -249,6 +249,15 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     let L = 0; const N = opt.splitN; for (const [sk, v] of soldAt) { const d = b - sk; if (d >= 1 && d < N) L += v * (1 - d / N); } return L;
   };
   const usTax = Y => C.us.cg_tax_rate * Math.max(0, (usGain[Y] || 0) - C.us.cg_exemption_krw) + (opt.krGainTax ? opt.krGainTax.rate * Math.max(0, (krGain[Y] || 0) - opt.krGainTax.exempt) : 0);
+  const finWh = {}, finPaid = {};                                        // 금융소득(배당+해외형 ETF 차익) 연 합계는 finInc, 이미 원천징수로 낸 세금은 finWh
+  const finExtra = Y => {                                                // 금융소득종합과세(opt.finTax, 다음 해 5월 납부): 금융소득이 전부 소득이라고 가정, 2,000만원 초과 때 (2,000만원×14% + (초과분−기본공제)×누진세율)×1.1 − 이미 원천징수한 세금
+    if (!(opt.finTax && opt.taxMay) || finPaid[Y]) return 0;
+    const F = finInc[Y] || 0, T = C.kr.fin_threshold || 20000000; if (F <= T) return 0;
+    const B = Math.max(0, F - T - (C.kr.fin_basic_ded || 0)); let tx = 0, lo = 0;
+    for (const [hi, r] of (C.kr.fin_brackets || [[14e6, .06], [50e6, .15], [88e6, .24], [150e6, .35], [300e6, .38], [500e6, .40], [1e9, .42], [Infinity, .45]])) { if (B > lo) tx += (Math.min(B, hi) - lo) * r; lo = hi; }
+    return Math.max(0, (T * 0.14 + tx) * (1 + (C.kr.fin_local || 0.1)) - (finWh[Y] || 0));
+  };
+  const dueTax = Y => usTax(Y) + finExtra(Y);
   const sellPart = (h, k, fr, reason) => {                 // 일부만 팔기(부분 익절·비중 줄이기): 수수료·세금은 팔린 몫만큼
     if (!(fr > 0) || fr >= 1) { if (fr >= 1) { cash += sellCash(h, k, reason); h.sh = 0; h.basis = 0; } return; }
     const hh = Object.assign({}, h, { sh: h.sh * fr, basis: h.basis * fr, _part: true });
@@ -366,7 +375,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (opt.sellFd) { const nk = []; for (const h of holds) { if (h.pendK != null && h.pendK <= k) { const pf = fdPx(h.y, k); if (pf > 0) h.last = pf; cash += sellCash(h, k, h.pendReason); } else nk.push(h); } holds = nk; }      // 미룬 판매를 이달 첫날 종가에 실행          // 현금 이자(월 단위, 세금 제외): 놀고 있는 현금에 연 이율/12를 더함
     if (opt.firstDay && k > START) {                                              // 지난달 신호 → 이번 달 첫날 종가에 체결(입금·세금 처리 전 현금)
       // 12월 첫날 구매: 그해 11월까지 실현한 미국 주식 이익에 나올 양도세를 미리 떼어 두고 남은 돈으로 산다(12월 말에 세금이 모자라 보유 종목을 억지로 팔지 않게). opt.taxReserve=false면 예전 방식
-      const TXM = opt.taxMay ? 4 : 11, rsv = (opt.taxReserve !== false && (k - 1) % 12 === TXM) ? Math.min(Math.max(0, cash), usTax(opt.taxMay ? yOfK(k) - 1 : yOfK(k))) : 0;      // opt.taxMay: 실제 납부 시기(다음 해 5월)에 맞춤 — 5월 첫날 구매 때 전년도 양도세 몫을 떼어 둠
+      const TXM = opt.taxMay ? 4 : 11, rsv = (opt.taxReserve !== false && (k - 1) % 12 === TXM) ? Math.min(Math.max(0, cash), dueTax(opt.taxMay ? yOfK(k) - 1 : yOfK(k))) : 0;      // opt.taxMay: 실제 납부 시기(다음 해 5월)에 맞춤 — 5월 첫날 구매 때 전년도 양도세 몫을 떼어 둠
       cash -= rsv; doBuys(k - 1, k, (o, r) => (opt.fdPxFn ? (opt.fdPxFn(r.y, k) || fdPx(r.y, k)) : opt.fdOpen ? fdOpen(r.y, k) : fdPx(r.y, k))); cash += rsv;
     }
     const keep = [], stM = stNow();
@@ -375,7 +384,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       const p = h.px.m.get(k); if (p !== undefined) h.last = p;
       if (opt.divFn && !(opt.divSkipBuy && h.buyK === k)) {                       // 배당 시험: 그달 배당락이 있는 보유 종목의 배당을 (세후) 현금으로 받음 — 다음 달 구매에 재투자됨
         const d = opt.divFn(h.y, k);
-        if (d > 0) { const gross = h.sh * d * (h.us ? fxf(k) : 1), dtx = gross * (h.us ? (opt.divTaxUS || 0) : (opt.divTaxKR || 0)), net = gross - dtx; cash += net; divTotal += net; finInc[yOfK(k)] = (finInc[yOfK(k)] || 0) + gross;      // 배당(세후)을 받고, 금융소득(배당+해외형 ETF 차익) 연 합계에 세전 금액을 더함
+        if (d > 0) { const gross = h.sh * d * (h.us ? fxf(k) : 1), dtx = gross * (h.us ? (opt.divTaxUS || 0) : (opt.divTaxKR || 0)), net = gross - dtx; cash += net; divTotal += net; finInc[yOfK(k)] = (finInc[yOfK(k)] || 0) + gross; finWh[yOfK(k)] = (finWh[yOfK(k)] || 0) + dtx;      // 배당(세후)을 받고, 금융소득(배당+해외형 ETF 차익) 연 합계에 세전 금액을 더함
           if (cur) cur.divs.push({ y: h.y, us: h.us, sh: h.sh, per: d, gross, tax: dtx, net }); }
       }
       h.peak = Math.max(h.peak || h.buyPx || 0, h.last || 0);
@@ -463,11 +472,11 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (opt.taxPresell && (k - 1) % 12 === (opt.taxMay ? 3 : 10)) {        // 양도세 몫 미리 확보: 11월 말에 (이번 달 입금을 빼고) 현금이 올해 양도세보다 적으면 모자란 만큼 미리 판다 → 12월 말에 억지로 비율 판매하거나 12월·1월 구매를 못 하는 일을 막음
       const Yp = opt.taxMay ? yOfK(k) - 1 : yOfK(k), exMa = h => (opt.exitMaFn ? opt.exitMaFn(h, k) : (opt.exitMaN ? maAtN(h.px, k, opt.exitMaN) : ma10(h.px, k))), relOf = h => { const m = exMa(h); return m ? h.last / m : 9; };
       const pri = h => ((h.graceCnt || 0) > 0 ? [0, relOf(h), 0] : [1, h.buyScore ?? 0, relOf(h)]);       // 1순위 이평 아래라 유예 중인 종목(많이 아래인 것부터), 2순위 점수가 낮은 것부터(같으면 이평에 가까운 것부터)
-      while (holds.length && usTax(Yp) - cash > 0) {
+      while (holds.length && dueTax(Yp) - cash > 0) {
         let best = null, bp = null; for (const h of holds) { const p = pri(h); if (!bp || p[0] < bp[0] || (p[0] === bp[0] && (p[1] < bp[1] || (p[1] === bp[1] && p[2] < bp[2])))) { best = h; bp = p; } }
         // 필요한 만큼만 판다: n주를 팔았을 때 (그 이익에 붙는 세금까지 계산해) 현금이 세금 이상이 되는 가장 작은 n(정수 주). 다 팔아도 모자라면 전부 팔고 다음 종목으로
         const perGot = best.us ? best.last * fxf(k) * (1 - usFee) : best.last * (1 - C.kr.commission - ((best.etf && C.kr.etf_exempt) ? 0 : krTax(C, ymOf(k)))), gPer = (best.us && !opt.taxMay) ? perGot - best.basis / best.sh : 0;      // taxMay면 지금 파는 이익은 올해 몫이라 전년도 세금에 영향 없음
-        const ok = n => cash + n * perGot >= C.us.cg_tax_rate * Math.max(0, (usGain[Yp] || 0) + n * gPer - C.us.cg_exemption_krw);
+        const ok = n => cash + n * perGot >= C.us.cg_tax_rate * Math.max(0, (usGain[Yp] || 0) + n * gPer - C.us.cg_exemption_krw) + finExtra(Yp);
         let lo = 1, hi = Math.ceil(best.sh); while (lo < hi) { const mid = (lo + hi) >> 1; if (ok(mid)) hi = mid; else lo = mid + 1; }
         const n = Math.min(lo, best.sh);
         if (n >= best.sh) { const got = sellCash(best, k, 'taxPresell'); cash += got; presellN++; presellAmt += got; holds = holds.filter(x => x !== best); }
@@ -481,8 +490,8 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     else cash += depK;
     if (depK > 0) deposits++;                            // 입금을 먼저 받는다: 12월에는 이 돈으로 양도세를 먼저 내고 남은 돈으로 산다
     if ((k - 1) % 12 === (opt.taxMay ? 4 : 11)) {       // 12월 말(opt.taxMay면 다음 해 5월 말): 미국 주식 실현 손익에 양도세(기본공제 후)를 냄
-      const Y = opt.taxMay ? yOfK(k) - 1 : yOfK(k), tax = usTax(Y); usGain[Y] = 0; krGain[Y] = 0; taxTotal += tax;
-      if (cur) cur.tax = tax;
+      const Y = opt.taxMay ? yOfK(k) - 1 : yOfK(k), fx2 = finExtra(Y), tax = usTax(Y) + fx2; usGain[Y] = 0; krGain[Y] = 0; finPaid[Y] = true; taxTotal += tax;
+      if (cur) { cur.tax = tax - fx2; cur.finTax = fx2; }
       if (tax > 0) {
         if (cash >= tax) cash -= tax;
         else { taxShortN++; taxShortAmt += tax - cash; let hv = 0; for (const h of holds) hv += val(h, k); const f = hv > 0 ? Math.min(1, (tax - cash) / hv) : 0; for (const h of holds) h.sh *= 1 - f; cash = 0; }
@@ -512,7 +521,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   const kNow = mi(CUR), curY = Math.floor(CUR / 100);
   holds.forEach(h => { h.last = h.px.lastK >= END ? h.px.lastC : h.last; });
   let hv = 0; for (const h of holds) hv += val(h, kNow);
-  const unpaidTax = Object.keys(usGain).reduce((t, y) => t + usTax(+y), 0);      // 아직 안 낸 해(올해, taxMay면 5월 전의 작년 몫 포함)의 세금
+  const unpaidTax = Object.keys(usGain).reduce((t, y) => t + usTax(+y), 0) + Object.keys(finInc).reduce((t, y) => t + finExtra(+y), 0);      // 아직 안 낸 해(올해, taxMay면 5월 전의 작년 몫 포함)의 세금
   const nowV = cash + hv - unpaidTax;
   // 전부 팔았다고 가정한 세후 금액(수수료·거래세·미국 양도세 반영)
   let liq = cash, gl = usGain[curY] || 0;
@@ -521,7 +530,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     if (h.us) { const pr = v * (1 - usFee); liq += pr; gl += pr - h.basis; }
     else { const gk = v * (1 - C.kr.commission - (h.etf && C.kr.etf_exempt ? 0 : krTax(C, curY))); liq += gk - ((h.etf && C.kr.etf_gain_tax && etfTaxable(h.y)) ? Math.max(0, gk - h.basis) * C.kr.etf_gain_tax : 0); }
   }
-  liq -= Object.keys(usGain).reduce((t, y) => t + (+y === curY ? 0 : usTax(+y)), 0) + C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
+  liq -= Object.keys(usGain).reduce((t, y) => t + (+y === curY ? 0 : usTax(+y)), 0) + Object.keys(finInc).reduce((t, y) => t + (+y === curY ? 0 : finExtra(+y)), 0) + C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
   return { rets, cfs, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN, divTotal, injected, taxShortN, taxShortAmt, presellN, presellAmt, finInc };
 }
@@ -1503,7 +1512,7 @@ if (process.env.STAGE14 !== '0') {
     }));
     m.forEach(a => a.sort((x, y) => y.s - x.s)); poolCache.set(key, m); return m;
   };
-  const REALX = process.env.AD9_REAL === '1' ? { taxMay: true, taxPresell: true, divFn: divOf, divTaxUS: 0.15, divTaxKR: 0.154 } : {};      // 새 규칙으로 다시(exp.sh 100번대): 양도세 5월 납부·4월 말 미리 확보·세후 배당(번호별 시험이 따로 정한 옵션이 우선)
+  const REALX = process.env.AD9_REAL === '1' ? { taxMay: true, finTax: true, taxPresell: true, divFn: divOf, divTaxUS: 0.15, divTaxKR: 0.154 } : {};      // 새 규칙으로 다시(exp.sh 100번대): 양도세 5월 납부·4월 말 미리 확보·세후 배당(번호별 시험이 따로 정한 옵션이 우선)
   const simOpt = (rule, extra) => ({ lotSize: true, lotAll: true, fill: true, firstDay: true, ...REALX, ...(rule.tp ? { tpTrail: rule.tp } : {}), ...(rule.grace ? { grace: rule.grace, graceRate: !!rule.rate } : {}), ...(rule.rateFn ? { rateFn: rule.rateFn, graceRate: true } : {}), ...(rule.revFn ? { revFn: rule.revFn } : {}), ...extra });
   const run14 = (v, filt) => {
     let cand = v.cand; if (filt) cand = ym => v.cand(ym).filter(filt);
@@ -2111,14 +2120,15 @@ if (FLOW) { let tot = 0, nvM = 0; flowOut.forEach(v => { tot += v; }); confirmMa
 const jCand = JOURNAL_STRAT === 'confirm' ? (ym => confirmMap.get(ym) || []) : (ym => scored[kA].get(ym) || []);
 const JOURNAL_EXIT_MA = process.env.JOURNAL_EXIT_MA || 'kr6us10';        // 판매 기준 이평: kr6us10 = 한국 6이평 · 미국 10이평(2026-11-27 채택, 익절 트레일·후보 풀은 10이평 그대로), ma10 = 예전 방식
 const journalExitMa = JOURNAL_EXIT_MA === 'kr6us10' ? { exitMaFn: (h, k) => maAtJ(h.px, k, /\.(KS|KQ)$/.test(h.y) ? 6 : 10) } : {};
+const JOURNAL_FINTAX = process.env.JOURNAL_FINTAX !== '0';                 // 금융소득종합과세(2,000만원 초과분)를 실제 납부 시기(다음 해 5월)에 내는 계산. 끄려면 JOURNAL_FINTAX=0
 const JOURNAL_TAXMAY = process.env.JOURNAL_TAXMAY !== '0';                 // 양도세 납부 시기: 실제(다음 해 5월)에 맞춤(2026-11-28 사용자 요청). 끄려면 JOURNAL_TAXMAY=0(옛 방식: 12월 말)
 const JOURNAL_PRESELL = process.env.JOURNAL_PRESELL !== '0';               // 양도세 몫 미리 확보(2026-11-28 채택, 묶음 49): 11월 말 입금 전 현금이 올해 양도세보다 적으면 미리 팖. 끄려면 JOURNAL_PRESELL=0
 const JOURNAL_DIV = process.env.JOURNAL_DIV !== '0';                        // 배당과 배당세(미국 15%·한국 15.4%) 반영(2026-11-28 사용자 요청): 그달 배당락이 있는 보유 종목의 세후 배당을 월말에 현금으로 받음(실제 입금은 1~2개월 늦을 수 있어 약간 낙관). 끄려면 JOURNAL_DIV=0
-const journalSim = simulate(ym => jCand(ym).slice(0, 4), 4, C1, { tpTrail: 2, grace: 2, graceRate: true, rateFn: rateJ, ...journalExitMa, taxPresell: JOURNAL_PRESELL, taxMay: JOURNAL_TAXMAY, ...(JOURNAL_DIV ? { divFn: divOf, divTaxUS: 0.15, divTaxKR: 0.154 } : {}), lotSize: true, lotAll: true, fill: true, cand: jCand, firstDay: JOURNAL_STRAT === 'confirm', log: true });   // 실제 주문 가능한 정수 주(한국·미국), 못 사면 다음 점수 순위를 사고, 추천이 모자라면 있는 만큼 나눔
+const journalSim = simulate(ym => jCand(ym).slice(0, 4), 4, C1, { tpTrail: 2, grace: 2, graceRate: true, rateFn: rateJ, ...journalExitMa, taxPresell: JOURNAL_PRESELL, taxMay: JOURNAL_TAXMAY, finTax: JOURNAL_FINTAX, ...(JOURNAL_DIV ? { divFn: divOf, divTaxUS: 0.15, divTaxKR: 0.154 } : {}), lotSize: true, lotAll: true, fill: true, cand: jCand, firstDay: JOURNAL_STRAT === 'confirm', log: true });   // 실제 주문 가능한 정수 주(한국·미국), 못 사면 다음 점수 순위를 사고, 추천이 모자라면 있는 만큼 나눔
 const listData = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const nameMap = new Map(listData.map(s => [s.y, { name: s.name, market: s.mk, code: s.code }]));
 const journal = {
-  meta: { flowRule: JOURNAL_FLOW, taxPresell: JOURNAL_PRESELL, taxMay: JOURNAL_TAXMAY, etfTax: !!C1.kr.etf_gain_tax, dividends: JOURNAL_DIV, strategy: JOURNAL_STRAT === 'confirm' ? '10이평 돌파 후 +10% 이상 + 5>10>20 정배열 매수' + (JOURNAL_FLOW ? '(외국인·기관 같은 방향인 한국 종목 제외)' : '') + ' · tp2x트레일 · 한국 6이평/미국 10이평 이탈 금리유예2달 · 다음 달 첫날 구매' : 'A4 tp2x트레일+금리유예2달', firstDay: JOURNAL_STRAT === 'confirm', dep: 1000000, made: new Date().toISOString() },
+  meta: { flowRule: JOURNAL_FLOW, taxPresell: JOURNAL_PRESELL, taxMay: JOURNAL_TAXMAY, finTax: JOURNAL_FINTAX && JOURNAL_TAXMAY, etfTax: !!C1.kr.etf_gain_tax, dividends: JOURNAL_DIV, strategy: JOURNAL_STRAT === 'confirm' ? '10이평 돌파 후 +10% 이상 + 5>10>20 정배열 매수' + (JOURNAL_FLOW ? '(외국인·기관 같은 방향인 한국 종목 제외)' : '') + ' · tp2x트레일 · 한국 6이평/미국 10이평 이탈 금리유예2달 · 다음 달 첫날 구매' : 'A4 tp2x트레일+금리유예2달', firstDay: JOURNAL_STRAT === 'confirm', dep: 1000000, made: new Date().toISOString() },
   features: F,
   trades: (journalSim.trades || []).map(t => ({
     y: t.y, name: nameMap.get(t.y)?.name || t.y, market: nameMap.get(t.y)?.market || '',
@@ -2146,7 +2156,7 @@ progress('매매일지', 1); process.stdout.write('\n');
   const candsOf = (ymKey, k) => jCand(ymKey).slice(0, CAND_N).map(e => { const o = px(e.r.y), p = JOURNAL_STRAT === 'confirm' ? (fdPx(e.r.y, k + 1) ?? undefined) : o.m.get(k); return p === undefined ? null : { y: e.r.y, name: nm(e.r.y), us: e.r.x[US] === 1, etf: e.r.x[ETF] === 1, px: p, score: +e.s.toFixed(4), brk: e.brk || null }; }).filter(Boolean);   // confirm이면 px = 다음 달 첫날 종가(그 달 말에 확정된 후보를 다음 달 첫날 삼)
   for (const [ym, m] of (journalSim.ledger || new Map())) {
     months[ym] = {
-      dep: m.dep, tax: r0(m.tax), cash: r0(m.cash), holdVal: r0(m.holdVal), fx: +m.fx.toFixed(2),
+      dep: m.dep, tax: r0(m.tax), finTax: r0(m.finTax || 0), cash: r0(m.cash), holdVal: r0(m.holdVal), fx: +m.fx.toFixed(2),
       divs: (m.divs || []).map(x => ({ y: x.y, name: nm(x.y), us: x.us, sh: x.sh, per: +x.per.toPrecision(5), gross: r0(x.gross), tax: r0(x.tax), net: r0(x.net) })), finYtd: r0(m.finYtd || 0),   // 받은 배당(세후)·세금, 올해 금융소득(배당+해외형 ETF 차익) 누적
       rateUp: rateJ(m.k) === true,                    // 그달 기준금리 상승 중(판매 유예를 건너뛰는 조건): 시작 시점을 바꿔 다시 계산할 때 판매 시점을 구하는 데 씀
       cands: candsOf(ym, m.k),                            // 그달 점수 상위 후보 12개: 못 사면 다음 순위로 채우는 계산(시작 시점 바꾸기)에 씀
@@ -2158,7 +2168,7 @@ progress('매매일지', 1); process.stdout.write('\n');
       order: m.order || []
     };
   }
-  fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { excludeHeld: true, firstDay: JOURNAL_STRAT === 'confirm', taxPresell: JOURNAL_PRESELL, taxMay: JOURNAL_TAXMAY, etfTax: !!C1.kr.etf_gain_tax, dividends: JOURNAL_DIV, strategy: JOURNAL_STRAT, dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 사면 다음 점수 순위, 추천이 모자라면 있는 만큼 나눔' }, months }));
+  fs.writeFileSync(path.join(DATA, 'ledger.json'), JSON.stringify({ meta: { excludeHeld: true, firstDay: JOURNAL_STRAT === 'confirm', taxPresell: JOURNAL_PRESELL, taxMay: JOURNAL_TAXMAY, finTax: JOURNAL_FINTAX && JOURNAL_TAXMAY, etfTax: !!C1.kr.etf_gain_tax, dividends: JOURNAL_DIV, strategy: JOURNAL_STRAT, dep: DEP, made: new Date().toISOString(), orders: '정수 주(한국·미국), 못 사면 다음 점수 순위, 추천이 모자라면 있는 만큼 나눔' }, months }));
   if (JOURNAL_DIV) {                                       // 일지 화면용 배당(divs.json): 장부의 후보·구매 종목별 월별 주당 배당(그 종목 통화). 시작 시점을 바꿔 다시 계산할 때 보유 종목의 배당을 구하는 데 씀
     const syms = new Set(); Object.values(months).forEach(m => { m.cands.forEach(c => syms.add(c.y)); m.buys.forEach(b => syms.add(b.y)); });
     const dv = {}; syms.forEach(y => { divOf(y, 0); const m = DIVC.get(y); if (!m || !m.size) return; const o = {}; for (const [kk, a] of m) o[ymOf(kk)] = +a.toPrecision(5); dv[y] = o; });
