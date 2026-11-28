@@ -782,10 +782,10 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
       else { g.moveTo(x,yy); g.lineTo(x-5,yy-9); g.lineTo(x+5,yy-9); }
       g.closePath(); g.fill();
       var pr=prs[q];
-      if(pr!=null&&pr>0){                                                       // 체결가 높이는 점선으로: 그 달부터 오른쪽 가격 칸까지 + 가격 칸에 숫자
+      if(pr!=null&&pr>0){                                                       // 체결가 높이는 점선으로: 그래프 전체 폭 + 가격 칸에 숫자
         var ly=Y(Math.min(hi,Math.max(lo,pr)));
-        g.save(); g.strokeStyle=up?buyC:sellC; g.lineWidth=1.2; g.globalAlpha=.8; g.setLineDash([4,3]);
-        g.beginPath(); g.moveTo(x,ly); g.lineTo(W2-R,ly); g.stroke(); g.restore();
+        g.save(); g.strokeStyle=up?buyC:sellC; g.lineWidth=1.6; g.globalAlpha=1; g.setLineDash([5,3]);
+        g.beginPath(); g.moveTo(L,ly); g.lineTo(W2-R,ly); g.stroke(); g.restore();
         tags.push({y:ly,t:fmtP(pr),c:up?buyC:sellC});
       }
     }
