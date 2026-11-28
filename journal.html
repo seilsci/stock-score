@@ -771,29 +771,40 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
   if(sellYm && !evS[sellYm]) addE(evS,pS,sellYm,null);
   var haloC=cssv('--card')||'#fff', buyPxHint=null;
   var fmtP=function(v){ return v>=1000?Math.round(v).toLocaleString():v>=100?v.toFixed(1):v.toFixed(2); };
+  var tags=[];                                                                   // 오른쪽 가격 칸에 붙일 체결가 표(그래프를 가리지 않게 숫자는 캔들 영역 밖에 적음)
   var mark=function(ym, up, cnt, prs){
     var p=posOf(ym); if(p<s0||p>e) return;
-    var x=X(p);
+    var x0=X(p), both=!!(evB[ym]&&evS[ym]);                                      // 같은 달에 사고 팔았으면 화살표를 좌우로 벌려 겹치지 않게
+    var x=both?x0+(up?-9:9):x0;
     for(var q=0;q<cnt;q++){
       var pr=prs[q], has=pr!=null&&pr>0;
       var tip=has?Y(Math.min(hi,Math.max(lo,pr))):(up?Y(u.l[p])+4+q*11:Y(u.h[p])-4-q*11);   // 체결가를 알면 화살촉이 그 가격에 닿게, 모르면 예전처럼 캔들 아래·위
-      var d=up?1:-1, w=7, hh=12;
-      if(has){                                                                  // 체결가 위치를 가로 눈금 선으로도 표시(보는 사람이 정확한 높이를 찾기 쉽게)
-        g.save(); g.strokeStyle=up?buyC:sellC; g.lineWidth=1.2; g.globalAlpha=.85; g.setLineDash([3,3]);
-        g.beginPath(); g.moveTo(x-w-14,tip); g.lineTo(x+w+14,tip); g.stroke(); g.restore();
+      var d=up?1:-1, w=6, hh=11, col=up?buyC:sellC;
+      if(has){                                                                  // 체결가 높이를 오른쪽 가격 칸까지 옅은 점선으로 이어 줌
+        g.save(); g.strokeStyle=col; g.lineWidth=1; g.globalAlpha=.45; g.setLineDash([3,3]);
+        g.beginPath(); g.moveTo(x+w+2,tip); g.lineTo(W2-R,tip); g.stroke(); g.restore();
+        tags.push({y:tip,t:fmtP(pr),c:col});
       }
       g.beginPath(); g.moveTo(x,tip); g.lineTo(x-w,tip+d*hh); g.lineTo(x+w,tip+d*hh); g.closePath();
-      g.lineWidth=2.4; g.strokeStyle=haloC; g.stroke();                         // 흰 테두리로 캔들 위에서도 눈에 띄게
-      g.fillStyle=up?buyC:sellC; g.fill();
-      if(has){                                                                  // 체결가 숫자(화살표 옆, 가장자리면 반대쪽)
-        var lab=fmtP(pr); g.font='bold 10px -apple-system,sans-serif'; g.textBaseline='middle';
-        var right=x<W2-R-60; g.textAlign=right?'left':'right'; var tx=x+(right?w+3:-w-3), ty2=tip+d*(hh*0.55);
-        g.lineWidth=3; g.strokeStyle=haloC; g.strokeText(lab,tx,ty2); g.fillStyle=up?buyC:sellC; g.fillText(lab,tx,ty2); g.textBaseline='alphabetic'; g.textAlign='left';
-      }
+      g.lineWidth=2.2; g.strokeStyle=haloC; g.stroke();                         // 배경색 테두리로 캔들 위에서도 눈에 띄게
+      g.fillStyle=col; g.fill();
     }
   };
   Object.keys(evB).forEach(function(k){ mark(k,true,evB[k],pB[k]); });
   Object.keys(evS).forEach(function(k){ mark(k,false,evS[k],pS[k]); });
+  if(tags.length){                                                              // 가격 표: 위에서부터 훑으며 겹치면 아래로 밀어냄
+    tags.sort(function(a,b){ return a.y-b.y; });
+    var th=14, prev=-1e9;
+    tags.forEach(function(t){ t.ty=Math.max(t.y,prev+th); prev=t.ty; });
+    var over=prev+th/2-(T+ph); if(over>0){ var nxt=1e9; for(var i=tags.length-1;i>=0;i--){ tags[i].ty=Math.min(tags[i].ty,nxt-th,T+ph-th/2); nxt=tags[i].ty; } }
+    g.font='bold 10px -apple-system,sans-serif'; g.textBaseline='middle'; g.textAlign='left';
+    tags.forEach(function(t){
+      var tw=g.measureText(t.t).width+8, tx=W2-R+2;
+      g.fillStyle=t.c; g.beginPath(); g.moveTo(tx,t.y); g.lineTo(tx+4,t.ty-th/2); g.lineTo(tx+tw,t.ty-th/2); g.lineTo(tx+tw,t.ty+th/2); g.lineTo(tx+4,t.ty+th/2); g.closePath(); g.fill();
+      g.fillStyle='#fff'; g.fillText(t.t,tx+5,t.ty+0.5);
+    });
+    g.textBaseline='alphabetic';
+  }
   if(canPan){                                                                   // 아래 가는 막대: 전체 기간 중 지금 보는 위치(옆으로 끌면 이동)
     var tl=L, tw=W2-L-R, ty=H-3, tot=yms.length;
     g.strokeStyle=line; g.lineWidth=3; g.lineCap='round'; g.beginPath(); g.moveTo(tl,ty); g.lineTo(tl+tw,ty); g.stroke();
