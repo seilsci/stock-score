@@ -22,8 +22,10 @@ const sig = v => +(+v).toPrecision(8);
   try {
     const sp = await adjSeries('^SP500TR'), nq = await adjSeries('QQQ'), kd = await adjSeries('069500.KS');
     const kp = {}; Object.assign(kp, out.ks);                                                    // ^KS11 가격(from 이후)
-    const k0 = Math.min(...Object.keys(kd).map(Number)), ratio = kd[k0] / (out.ks[k0] || kp[k0]);   // KODEX 200 첫 달에 가격 지수를 맞춰 이어 붙임
-    const ks = {}; Object.keys(out.ks).forEach(m => { if (+m < k0) ks[m] = sig(out.ks[m] * ratio); }); Object.keys(kd).forEach(m => { if (+m >= from) ks[m] = sig(kd[m]); });
+    const kdm = Object.keys(kd).map(Number).sort((x, y) => x - y), mi = m => Math.floor(m / 100) * 12 + (m % 100);
+    let k0 = kdm[kdm.length - 1]; for (let i = kdm.length - 1; i > 0; i--) { if (mi(kdm[i]) - mi(kdm[i - 1]) !== 1) break; k0 = kdm[i - 1]; }      // KODEX 200은 2007-02~2009-02 자료가 비어 있음 → 끊김 없이 이어진 가장 이른 달부터만 쓰고 그 전은 ^KS11 가격으로 이어 붙임
+    const ratio = kd[k0] / (out.ks[k0] || kp[k0]);   // KODEX 200 첫 달에 가격 지수를 맞춰 이어 붙임
+    const ks = {}; Object.keys(out.ks).forEach(m => { if (+m < k0) ks[m] = sig(out.ks[m] * ratio); }); Object.keys(kd).forEach(m => { if (+m >= from && +m >= k0) ks[m] = sig(kd[m]); });
     const pick = o => { const r = {}; Object.keys(o).forEach(m => { if (+m >= from) r[m] = sig(o[m]); }); return r; };
     trOut.ks = ks; trOut.sp = pick(sp); trOut.nq = pick(nq);
     ['ks', 'sp', 'nq'].forEach(k => { out[k + 'P'] = out[k]; out[k] = trOut[k]; console.log(`${k} TR: ${Object.keys(out[k]).length}개월`); });

@@ -255,6 +255,12 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     const F = finInc[Y] || 0, T = C.kr.fin_threshold || 20000000; if (F <= T) return 0;
     const B = Math.max(0, F - T - (C.kr.fin_basic_ded || 0)); let tx = 0, lo = 0;
     for (const [hi, r] of (C.kr.fin_brackets || [[14e6, .06], [50e6, .15], [88e6, .24], [150e6, .35], [300e6, .38], [500e6, .40], [1e9, .42], [Infinity, .45]])) { if (B > lo) tx += (Math.min(B, hi) - lo) * r; lo = hi; }
+    if (typeof opt.finOther === 'number') {                              // 시험 63: 다른 소득(연봉 등)이 있다고 가정 — 금융소득이 그 위에 쌓임. 산출세액 = max(①(다른 소득+금융소득−2,000만원−공제)에 누진세율+2,000만원×14%, ②(다른 소득−공제)에 누진세율+금융소득×14%)×1.1, 다른 소득의 세금(급여에서 이미 냄)과 원천징수한 세금은 뺌
+      const O = opt.finOther, ded = C.kr.fin_basic_ded || 0, br = C.kr.fin_brackets || [[14e6, .06], [50e6, .15], [88e6, .24], [150e6, .35], [300e6, .38], [500e6, .40], [1e9, .42], [Infinity, .45]];
+      const prog = Bx => { let t = 0, l = 0; for (const [hi, r] of br) { if (Bx > l) t += (Math.min(Bx, hi) - l) * r; l = hi; } return t; };
+      const loc = 1 + (C.kr.fin_local || 0.1), taxA = prog(Math.max(0, O + F - T - ded)) + T * 0.14, taxB = prog(Math.max(0, O - ded)) + F * 0.14;
+      return Math.max(0, (Math.max(taxA, taxB) - prog(Math.max(0, O - ded))) * loc - (finWh[Y] || 0));
+    }
     return Math.max(0, (T * 0.14 + tx) * (1 + (C.kr.fin_local || 0.1)) - (finWh[Y] || 0));
   };
   const dueTax = Y => usTax(Y) + finExtra(Y);
@@ -365,12 +371,15 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     const kl = opt.splitN > 1 ? Math.min(Math.max(0, cash), lockedAt(k)) : 0; cash -= kl;      // 나눠 넣기: 아직 차례가 안 된 매도 대금은 이번 구매에 안 씀
     try { doBuys0(sigK, k, priceAt); } finally { cash += kc + kl; }
   };
-  let pend = null, fdMiss = 0, tlhN = 0, taxTotal = 0, coSkipN = 0, divTotal = 0, taxShortN = 0, taxShortAmt = 0, presellN = 0, presellAmt = 0; const finInc = {};
+  let pend = null, fdMiss = 0, tlhN = 0, taxTotal = 0, finTaxTotal = 0, coSkipN = 0, divTotal = 0, taxShortN = 0, taxShortAmt = 0, presellN = 0, presellAmt = 0; const finInc = {};
   let eqIdx = 1, eqPeak = 1; const eqHist = [], cfs = [];               // 시험용 상태: 전략 수익곡선(시간가중)·최고점·현금흐름
   const stNow = () => { const n = rets.length; let r12 = 1; for (let i = Math.max(0, n - 12); i < n; i++) r12 *= 1 + rets[i].r; const L = opt.eqMaN || 10, a = eqHist.slice(-L), ma = a.length >= L ? a.reduce((s, x) => s + x, 0) / L : null; const rr12 = rets.slice(-12).map(x => x.r), mu12 = rr12.length ? rr12.reduce((s, x) => s + x, 0) / rr12.length : 0, vol12 = rr12.length >= 6 ? Math.sqrt(rr12.reduce((s, x) => s + (x - mu12) ** 2, 0) / rr12.length) * Math.sqrt(12) : null; return { dd: eqIdx / eqPeak - 1, ret12: r12 - 1, nM: n, vol12, eqBelow: ma != null && eqIdx < ma, eqIdx, eqHist }; };
   for (let k = START; k <= END; k++) {
     cur = led ? { k, dep, sells: [], buys: [], skipped: [], order: [], tax: 0, divs: [] } : null;
     if (opt.cashRateFn && k > START) cash += cash * Math.max(0, opt.cashRateFn(k) || 0) / 12;
+    if (opt.cashRetIdleFn && k > START) {                                       // 3층 구조: 자산의 thr 비율까지와 아직 안 낸 세금 몫은 현금으로 두고, 그 위로 오래 놀리는 현금만 채권·금 등에 넣음(그 달 수익률 ret)
+      const q = opt.cashRetIdleFn(k, stNow()); if (q && q.ret) { let hv0 = 0; for (const h of holds) hv0 += val(h, k); const cy = yOfK(k); let unp = 0; for (const y of new Set([...Object.keys(usGain), ...Object.keys(finInc)])) if (+y !== cy || !opt.taxMay) unp += dueTax(+y);
+        const idle = Math.max(0, cash - (q.thr || 0) * (cash + hv0) - unp); cash += idle * q.ret; } }
     if (opt.cashRetFn && k > START) cash *= 1 + (opt.cashRetFn(k, stNow()) || 0);                              // 놀고 있는 현금을 지수에 넣어 둠(그 달 지수 수익률)
     if (opt.sellFd) { const nk = []; for (const h of holds) { if (h.pendK != null && h.pendK <= k) { const pf = fdPx(h.y, k); if (pf > 0) h.last = pf; cash += sellCash(h, k, h.pendReason); } else nk.push(h); } holds = nk; }      // 미룬 판매를 이달 첫날 종가에 실행          // 현금 이자(월 단위, 세금 제외): 놀고 있는 현금에 연 이율/12를 더함
     if (opt.firstDay && k > START) {                                              // 지난달 신호 → 이번 달 첫날 종가에 체결(입금·세금 처리 전 현금)
@@ -490,7 +499,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
     else cash += depK;
     if (depK > 0) deposits++;                            // 입금을 먼저 받는다: 12월에는 이 돈으로 양도세를 먼저 내고 남은 돈으로 산다
     if ((k - 1) % 12 === (opt.taxMay ? 4 : 11)) {       // 12월 말(opt.taxMay면 다음 해 5월 말): 미국 주식 실현 손익에 양도세(기본공제 후)를 냄
-      const Y = opt.taxMay ? yOfK(k) - 1 : yOfK(k), fx2 = finExtra(Y), tax = usTax(Y) + fx2; usGain[Y] = 0; krGain[Y] = 0; finPaid[Y] = true; taxTotal += tax;
+      const Y = opt.taxMay ? yOfK(k) - 1 : yOfK(k), fx2 = finExtra(Y), tax = usTax(Y) + fx2; usGain[Y] = 0; krGain[Y] = 0; finPaid[Y] = true; taxTotal += tax; finTaxTotal += fx2;
       if (cur) { cur.tax = tax - fx2; cur.finTax = fx2; }
       if (tax > 0) {
         if (cash >= tax) cash -= tax;
@@ -532,7 +541,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   }
   liq -= Object.keys(usGain).reduce((t, y) => t + (+y === curY ? 0 : usTax(+y)), 0) + Object.keys(finInc).reduce((t, y) => t + (+y === curY ? 0 : finExtra(+y)), 0) + C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
-  return { rets, cfs, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN, divTotal, injected, taxShortN, taxShortAmt, presellN, presellAmt, finInc };
+  return { rets, cfs, deposits, depAmt: dep, val: nowV, liq, trades, snapshots, ledger: led, fdMiss, tlhN, taxTotal, coSkipN, divTotal, injected, taxShortN, taxShortAmt, presellN, presellAmt, finInc, finTaxTotal };
 }
 function irr(deposits, val, dep = DEP) {                       // 월 입금 기준 연환산 내부수익률
   const f = r => { let t = 0; for (let j = 0; j < deposits; j++) t += dep * Math.pow(1 + r, deposits - j); return t - val; };

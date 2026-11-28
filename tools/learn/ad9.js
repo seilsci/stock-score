@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45) || on(46) || on(47) || on(49)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45) || on(46) || on(47) || on(49) || on(62) || on(63)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1505,7 +1505,26 @@ function build(c, which) {
       }));
       posts.push(() => post12('49-', '49 양도세 몫 미리 확보'));
     }
-    if (on(47)) {                                                              // ═════ 묶음 47: 남는 현금을 채권·금 ETF에(방향 전환기 방어) — 2005~ 자료로 2008·2009부터 확인(DATA=data_2003, data_2003/etf/*.json 필요; 야후 수정종가=배당 포함)
+    if (on(63)) {                                                              // ═════ 묶음 63: 금융소득종합과세에 다른 소득(연봉 등)이 있다고 가정 — 새 규칙(AD9_REAL=1 → 번호 163)으로, 지금 규칙(한국6·미국10+수급) 기준
+      PFX = '63';
+      const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
+      const flowOK = drop(isSame)(mBase);
+      const F = (sec, name, o) => add(S(sec), name, { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, taxMay: true, taxPresell: true, ...o } });
+      F('A 기준', '종합과세 안 냄(금융소득 세금 무시)', { finTax: false });
+      F('A 기준', '금융소득만 있다고 가정(지금 일지 방식)', { finTax: true });
+      [[0, '다른 소득 0원(같은 식 검산)'], [3000, '다른 소득 연 3,000만원'], [5000, '다른 소득 연 5,000만원'], [8800, '다른 소득 연 8,800만원'], [15000, '다른 소득 연 1.5억원'], [30000, '다른 소득 연 3억원']].forEach(([m, nm]) => F('B 다른 소득', nm, { finTax: true, finOther: m * 1e4 }));
+      posts.push(() => safe('63 세금', () => {
+        const mine = V.filter(v => String(v.sec).startsWith('63-') && v.full && v.full.yearly), ys = YEARS_ALL.slice();
+        const per = [['2012~', ys.filter(Y => Y >= 2012)], ['전체', ys]];
+        log(''); log('## 63 금융소득종합과세(다른 소득 가정별) — 연평균 · 5월에 낸 종합과세 추가분 합계 · 낸 해 수 · 최종 평가액 · 마지막 달 평가');
+        log('방식'.padEnd(44) + per.map(([n]) => n.padStart(10)).join('') + '  종합과세 합계  낸 해 수   양도세 포함 세금 합계');
+        mine.forEach(v => { const o = simOpt(v.rule, v.o || {}), sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand, log: true });
+          const LK = sm.ledger ? [...sm.ledger.keys()].sort() : [], yrs = LK.filter(k => (sm.ledger.get(k).finTax || 0) > 0).length;
+          log(v.name.slice(0, 40).padEnd(44) + per.map(([, Ys]) => pc(cagrOver(v.full.yearly, Ys)).padStart(10)).join('') + `  ${String(Math.round((sm.finTaxTotal || 0) / 1e4).toLocaleString()).padStart(10)}만  ${String(yrs).padStart(5)}해  ${String(Math.round((sm.taxTotal || 0) / 1e4).toLocaleString()).padStart(12)}만  최종 ${Math.round((sm.val || 0) / 1e6) / 100}억`); });
+      }));
+      posts.push(() => post12('63-', '63 금융소득종합과세(다른 소득 가정)'));
+    }
+    if (on(47) || on(62)) {                                                    // ═════ 묶음 47(·62 공용 도구): 남는 현금을 채권·금 ETF에(방향 전환기 방어) — 2005~ 자료로 2008·2009부터 확인(DATA=data_2003, data_2003/etf/*.json 필요; 야후 수정종가=배당 포함)
       PFX = '47';
       const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
       const flowOK = drop(isSame)(mBase);
@@ -1520,6 +1539,7 @@ function build(c, which) {
       const mixT = (a, b) => ({ cashRetFn: k => ((above(a, k - 1) ? eRet(a, k) ?? 0 : 0) + (above(b, k - 1) ? eRet(b, k) ?? 0 : 0)) / 2 });
       const best = { cashRetFn: k => { let bn = null, bv = 0; ['IEF', 'GLD'].forEach(n => { const a = eAt(n, k - 1), b = eAt(n, k - 7); if (a && b && a / b - 1 > bv) { bv = a / b - 1; bn = n; } }); return bn ? eRet(bn, k) ?? 0 : 0; } };    // 6개월 수익이 플러스인 것 중 가장 강한 쪽
       const A = (sec, name, o) => add(S(sec), name, { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, ...(o || {}) } });
+      if (on(47)) {
       A('A 기준', '지금 규칙(현금 그대로)');
       A('B 항상 담기', '남는 현금 → 단기국채(SHY)', one('SHY'));
       A('B 항상 담기', '남는 현금 → 중기국채(IEF)', one('IEF'));
@@ -1544,6 +1564,30 @@ function build(c, which) {
         mine.forEach(v => log(v.name.slice(0, 42).padEnd(46) + ys.filter(Y => Y < 2012).map(Y => pc(v.full.yearly[Y] ?? NaN).padStart(9)).join('')));
       }));
       posts.push(() => post12('47-', '47 남는 현금을 채권·금에'));
+      }
+      if (on(62)) {                                                              // ═════ 묶음 62: 남는 현금 3층 구조(양도세 몫·다음 달 구매 돈은 현금, 자산의 일정 비율을 넘는 오래 놀린 현금만 중기국채·금에) — 2005~ 자료(DATA=data_2003)
+        PFX = '62';
+        const mixR = k => ((eRet('IEF', k) ?? 0) + (eRet('GLD', k) ?? 0)) / 2, gR = k => eRet('GLD', k) ?? 0, iR = k => eRet('IEF', k) ?? 0;
+        const mixTR = k => ((above('IEF', k - 1) ? eRet('IEF', k) ?? 0 : 0) + (above('GLD', k - 1) ? eRet('GLD', k) ?? 0 : 0)) / 2;
+        const idle = (thr, f) => ({ cashRetIdleFn: k => ({ thr, ret: f(k) }) });
+        A('A 기준', '지금 규칙(현금 그대로)');
+        A('B 전부 넣기(47 방식)', '남는 현금 전부 → 중기국채·금 절반씩', mix('IEF', 'GLD'));
+        [0.5, 0.3, 0.2, 0.1].forEach(t => A('C 3층: 오래 놀린 현금만', `자산의 ${Math.round(t * 100)}% 넘는 현금만 → 중기국채·금 절반씩`, idle(t, mixR)));
+        A('D 3층 · 다른 자산', '자산의 30% 넘는 현금만 → 금(GLD)만', idle(0.3, gR));
+        A('D 3층 · 다른 자산', '자산의 30% 넘는 현금만 → 중기국채(IEF)만', idle(0.3, iR));
+        A('D 3층 · 다른 자산', '자산의 30% 넘는 현금만 → 중기국채·금 각각 10이평 위일 때만', idle(0.3, mixTR));
+        posts.push(() => safe('62 기간', () => {
+          const mine = V.filter(v => String(v.sec).startsWith('62-') && v.full && v.full.yearly), ys = YEARS_ALL.slice();
+          const per = [['처음 보는 기간 2005~2011', ys.filter(Y => Y < 2012)], ['2008~2009만', ys.filter(Y => Y === 2008 || Y === 2009)], ['2012~2026', ys.filter(Y => Y >= 2012)], ['전체 2005~2026', ys]];
+          log(''); log('## 62 구간별 연평균(남는 현금 3층 구조)');
+          log('방식'.padEnd(54) + per.map(([n]) => n.padStart(20)).join(''));
+          mine.forEach(v => log(v.name.slice(0, 50).padEnd(54) + per.map(([, Ys]) => pc(cagrOver(v.full.yearly, Ys)).padStart(20)).join('')));
+          log(''); log('## 62 해마다(2005~2011)');
+          log('방식'.padEnd(54) + ys.filter(Y => Y < 2012).map(Y => String(Y).padStart(9)).join(''));
+          mine.forEach(v => log(v.name.slice(0, 50).padEnd(54) + ys.filter(Y => Y < 2012).map(Y => pc(v.full.yearly[Y] ?? NaN).padStart(9)).join('')));
+        }));
+        posts.push(() => post12('62-', '62 남는 현금 3층 구조'));
+      }
     }
     if (on(46)) {                                                              // ═════ 묶음 46: 처음 보는 기간(2005~2011)에서 금리 규칙·유예 길이·익절·판매 이평을 다시 확인(DATA=data_2003 필요). 지금 규칙 한국6·미국10+수급 기준
       PFX = '46';

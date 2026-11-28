@@ -3,6 +3,7 @@
 # 지금 data/ 의 월봉(raw2, 2000년부터)·환율·금리·수급을 복사하고, 신호(MIN_YM=200301)·첫날 가격(FD_P1=2003-01)·지수(BENCH_FROM=200301)를 옛 기간까지 다시 만듦.
 cd "$(dirname "$0")" || exit 1
 D=$PWD/data_2003
+[ -d "$D" ] && ( export DATA="$D" BENCH_FROM=200301 NODE_USE_ENV_PROXY=1; node 8b_bench.js > "$D/mk_bench.log" 2>&1 )      # 지수 자료는 매번 새로 만듦(코스피 TR 이어 붙이기 수정 반영)
 if [ -f "$D/events.csv" ] && [ -f "$D/bars.json" ] && [ -d "$D/first" ] && [ -d "$D/etf" ]; then echo "data_2003 이미 있음"; exit 0; fi
 mkdir -p "$D"
 for f in lists.json macro.json rates.json fx.json; do [ -f data/$f ] && cp -n data/$f "$D/"; done
