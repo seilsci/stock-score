@@ -34,5 +34,8 @@ function firstDays(j) {
       m && m.length ? ok++ : none++;
     } catch (e) { fail++; }
   }, '첫날가격');
+  const yc = {}, ex = {}; let nf = 0, ne = 0;                                  // 연도별 점검: 그 해에 첫날 가격이 있는 종목 수(받기가 제대로 됐는지 중간에도 볼 수 있게)
+  for (const s of list) { const f = file(s.y); if (!fs.existsSync(f)) continue; let a = []; try { a = JSON.parse(fs.readFileSync(f)); } catch (e) {} if (!a.length) continue; nf++; if (s.type === 'etf') ne++; const ys = new Set(a.map(x => String(x[0]).slice(0, 4))); ys.forEach(y => { yc[y] = (yc[y] || 0) + 1; }); }
+  console.log(`첫날 가격 연도별 종목 수(받은 파일 ${nf}/${list.length}, 그중 미국 ETF ${ne}): ` + Object.keys(yc).sort().map(y => y + ' ' + yc[y]).join(' · '));
   console.log(`첫날 가격: 새로 ${ok}, 이미 있음 ${skip}, 데이터 없음 ${none}, 실패 ${fail}` + (fail ? ' → 다시 실행하면 실패한 것만 이어서 받음' : ''));
 })();
