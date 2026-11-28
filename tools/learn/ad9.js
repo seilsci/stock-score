@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45) || on(46) || on(47)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45) || on(46) || on(47) || on(49)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1482,6 +1482,24 @@ function build(c, which) {
         log(''); log('## 44 가장 나빴던 해: ' + mine.map(v => { const w = ys.map(Y => [Y, v.full.yearly[Y]]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1])[0]; return `${v.name.slice(0, 16)} ${w ? w[0] + ' ' + pc(w[1]) : '-'} (낙폭 ${pc(v.full.mdd)})`; }).join(' · '));
       }));
       posts.push(() => post12('44-', '44 옛 기간 포함'));
+    }
+    if (on(49)) {                                                              // ═════ 묶음 49: 양도세 몫 미리 확보 — 11월 말(입금 제외)에 현금이 올해 양도세보다 적으면 모자란 만큼 미리 판다(1순위 이평 아래 유예 중, 2순위 점수 낮은 순) → 12월 말 비율 판매·12월·1월 구매 못 함 방지
+      PFX = '49';
+      const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
+      const flowOK = drop(isSame)(mBase);
+      add(S('A 규칙'), '지금(모자라면 12월 말에 보유 종목을 비율대로 판매)', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6 } });
+      add(S('B 미리 확보'), '11월 말 세금 몫 미리 확보(유예 중 → 점수 낮은 순)', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, taxPresell: true } });
+      posts.push(() => safe('49 세금 몫', () => {
+        const mine = V.filter(v => String(v.sec).startsWith('49-') && v.full && v.full.yearly), ys = YEARS_ALL.slice();
+        const per = [['처음 보는 기간', ys.filter(Y => Y < 2012)], ['2012~', ys.filter(Y => Y >= 2012)], ['전체', ys]];
+        log(''); log('## 49 양도세 몫 미리 확보 — 연평균·세금 부족·미리 판 건수·구매 못 한 달');
+        log('방식'.padEnd(50) + per.map(([n]) => n.padStart(14)).join('') + '  세금 부족(건/금액)  미리 판(건/금액)  구매 0건 달');
+        mine.forEach(v => { const o = simOpt(v.rule, v.o || {}), sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand, log: true });
+          const LK = sm.ledger ? [...sm.ledger.keys()].sort() : []; const z = LK.filter((k, i) => i > 0 && (sm.ledger.get(k).buys || []).length === 0);
+          const ps = LK.flatMap(k => (sm.ledger.get(k).sells || []).filter(x => x.reason === 'taxPresell').map(x => k + ' ' + (x.name || x.y) + ' ' + (x.ret * 100).toFixed(0) + '%'));
+          log(v.name.slice(0, 46).padEnd(50) + per.map(([, Ys]) => pc(cagrOver(v.full.yearly, Ys)).padStart(14)).join('') + `  ${String(sm.taxShortN).padStart(4)}건 ${Math.round((sm.taxShortAmt || 0) / 1e4).toLocaleString().padStart(7)}만  ${String(sm.presellN).padStart(4)}건 ${Math.round((sm.presellAmt || 0) / 1e4).toLocaleString().padStart(8)}만  ${z.length}달 (${z.join(' ')})` + (ps.length ? '\n    미리 판 종목: ' + ps.join(' / ') : '')); });
+      }));
+      posts.push(() => post12('49-', '49 양도세 몫 미리 확보'));
     }
     if (on(47)) {                                                              // ═════ 묶음 47: 남는 현금을 채권·금 ETF에(방향 전환기 방어) — 2005~ 자료로 2008·2009부터 확인(DATA=data_2003, data_2003/etf/*.json 필요; 야후 수정종가=배당 포함)
       PFX = '47';

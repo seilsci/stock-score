@@ -456,8 +456,8 @@ var FEAT_DESC = {
   c_ma60:'60이평 대비 종가',hi12_break:'12개월 신고가 돌파',vol_max36:'36개월 최대 거래량 대비',
   prev_fail:'최근 돌파 실패 횟수',ma_up6:'6개월 중 이평 상승 개월',close_pos:'고저 중 종가 위치',gap_prev:'전달 이평 대비'
 };
-var REASON_S = { ma10:'이평 아래', tpTrail:'익절 트레일', 'ma10-금리인상':'이평 아래+금리↑', 'ma10-유예만료':'이평 아래+유예' };
-var REASON = { ma10:'판매 이평 아래', tpTrail:'익절(2배 도달 후 하락)', 'ma10-금리인상':'판매 이평 아래+금리인상', 'ma10-유예만료':'판매 이평 아래+유예만료' };
+var REASON_S = { ma10:'이평 아래', tpTrail:'익절 트레일', 'ma10-금리인상':'이평 아래+금리↑', 'ma10-유예만료':'이평 아래+유예', taxPresell:'세금 몫 미리 확보' };
+var REASON = { ma10:'판매 이평 아래', tpTrail:'익절(2배 도달 후 하락)', 'ma10-금리인상':'판매 이평 아래+금리인상', 'ma10-유예만료':'판매 이평 아래+유예만료', taxPresell:'양도세 몫을 미리 마련하려고 판매(11월 말)' };
 
 function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function fmt(ym){ var s=String(ym); return s.slice(0,4)+'-'+s.slice(4); }
@@ -1520,6 +1520,22 @@ function planCore(o){
       cash+=got;
     } else if(status) watch.push({y:h.y,name:h.name||h.y,us:us,buyYm:h.buyYm});
   });
+  if(+o.nowYm%100===11 && o.taxPresell!==false){                                            // 11월 말: (이번 달 입금을 빼고) 현금이 올해 양도세보다 적으면 모자란 만큼 미리 판다(12월 말에 억지로 팔거나 12월·1월 구매를 못 하는 일을 막음). 1순위 이평 아래라 유예 중인 종목, 2순위 점수 낮은 종목(같으면 이평에 가까운 것)
+    var g11=o.usGainYtd||0; sells.forEach(function(x){ if(x.us) g11+=x.amt-x.basis; });
+    var taxOf11=function(g){ return C.us.cg_tax_rate*Math.max(0,g-C.us.cg_exemption_krw); };
+    var soldK={}; sells.forEach(function(x){ soldK[x.y]=1; });
+    var pool=[]; holdsAll.forEach(function(h){
+      if(soldK[h.y]) return; var b=barsOf(h.y); if(!b) return; var iN=b.pos[o.nowYm]; if(iN==null) return;
+      var pr=b.cs[iN], xm=exitMaAt(b.cs,iN,h.y), us2=isUSy(h.y), rel=xm?pr/xm:9, grace=!!(xm!=null&&pr<xm);
+      pool.push({h:h,price:pr,us:us2,pri:grace?[0,rel,0]:[1,(h.score==null?0:+h.score),rel]});
+    });
+    while(taxOf11(g11)-cash>0 && pool.length){
+      var bi=0; pool.forEach(function(q,i){ var a=q.pri, c2=pool[bi].pri; if(a[0]<c2[0]||(a[0]===c2[0]&&(a[1]<c2[1]||(a[1]===c2[1]&&a[2]<c2[2])))) bi=i; });
+      var q=pool.splice(bi,1)[0], h2=q.h, fxv2=q.us?o.fx:1, val2=h2.sh*q.price*fxv2, feeR2=q.us?usFee:krFee, taxR2=q.us?0:(isEtfHold(h2)?0:krTaxY(+o.nowYm)), got2=val2*(1-feeR2-taxR2);
+      sells.push({y:h2.y,name:h2.name||h2.y,us:q.us,sh:h2.sh,px:q.price,fxUsed:q.us?o.fx:null,gross:val2,fee:val2*feeR2,feeRate:feeR2,tax:val2*taxR2,taxRate:taxR2,amt:got2,basis:h2.basis,ret:got2/h2.basis-1,reason:'taxPresell',buyYm:h2.buyYm,buyPx:h2.buyPx});
+      cash+=got2; if(q.us) g11+=got2-h2.basis; watch=watch.filter(function(w){ return w.y!==h2.y; });
+    }
+  }
   var taxPaid=0;
   if(+o.nowYm%100===12){                                                                    // 12월: 그해 미국 주식 실현 이익에서 250만원 공제 후 22%를 입금 전에 냄
     var gain=o.usGainYtd||0; sells.forEach(function(x){ if(x.us) gain+=x.amt-x.basis; });
@@ -1838,6 +1854,16 @@ function simulateFrom(S){
       } else keep.push(h);
     });
     holds=keep;
+    if(mo===11 && LED0.meta.taxPresell){                                         // 11월 말 양도세 몫 미리 확보(백테스트와 같은 규칙, 새 장부만)
+      var taxOfN=function(){ return C.us.cg_tax_rate*Math.max(0,(usGain[Y]||0)-C.us.cg_exemption_krw); };
+      while(holds.length && taxOfN()-cash>0){
+        var bj=0, bpr=null; holds.forEach(function(h,j){ var bb2=barsOf(h.y), ii=bb2&&bb2.pos[ym], pr=closeAt(h.y,ym,h.last), xm=(bb2&&ii!=null)?exitMaAt(bb2.cs,ii,h.y):null, rel=xm?pr/xm:9, p=(xm!=null&&pr<xm)?[0,rel,0]:[1,(h.score==null?0:+h.score),rel]; if(!bpr||p[0]<bpr[0]||(p[0]===bpr[0]&&(p[1]<bpr[1]||(p[1]===bpr[1]&&p[2]<bpr[2])))){ bpr=p; bj=j; } });
+        var hh=holds.splice(bj,1)[0], px2=closeAt(hh.y,ym,hh.last), val3=hh.sh*px2*(hh.us?fx:1), feeR3=hh.us?usFee:krFee, taxR3=hh.us?0:(hh.etf?0:krTaxY(+ym)), got3=val3*(1-feeR3-taxR3);
+        if(hh.us) usGain[Y]=(usGain[Y]||0)+got3-hh.basis;
+        sells.push({y:hh.y,name:hh.name,us:hh.us,sh:hh.sh,px:px2,fxUsed:hh.us?fx:null,gross:val3,fee:val3*feeR3,feeRate:feeR3,tax:val3*taxR3,taxRate:taxR3,amt:got3,basis:hh.basis,ret:got3/hh.basis-1,reason:'taxPresell',buyYm:hh.buyYm});
+        cash+=got3;
+      }
+    }
     var tax=0, depM=(ym===yms[0]?curInit():dep);                                     // 첫 달에는 첫달 투자금만 넣고(그 달 월 불입금은 따로 안 더함), 이후 매달 월 불입금
     cash+=depM;                                                                     // 입금을 먼저 받고
     if(mo===12){                                                                   // 12월 세금을 먼저 낸 뒤 남은 돈으로 산다
