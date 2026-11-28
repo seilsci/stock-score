@@ -9,7 +9,9 @@ const rows = lines.filter(l => l.includes(` ${kind}@${where} `)).map(l => { cons
 const med = a => { if (!a.length) return null; const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
 if (kind === 'exp') {
   const v = rows.slice(-3).map(r => r['b' + arg]).filter(x => x > 0);
-  console.log(Math.round(med(v) || 70));
+  // 기록이 없는 묶음의 기본값(PC 실측·추정, 초): 옛 기간(44~48·144~147)은 자료가 이미 있을 때의 값, 61은 events를 두 번 만드는 값
+  const DEF = { 15: 1050, 28: 2400, 44: 150, 45: 45, 46: 45, 47: 45, 48: 60, 61: 420, 144: 75, 145: 45, 146: 45, 147: 45, 59: 670, 56: 55, 60: 50 };
+  console.log(Math.round(med(v) || DEF[+arg] || 70));
 } else if (kind === 'learn') {
   const full = rows.filter(r => !r.limit && r.total > 0).slice(-5);
   if (!full.length) { console.log(''); process.exit(0); }

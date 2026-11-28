@@ -107,7 +107,9 @@ for B in $BATCHES; do
     echo "── 묶음 $B 실행 오류(data/exp_run_$B.log 마지막 줄을 결과에 적어 둠) — 다음 묶음으로 계속"
   fi
   SEC=$(( $(date +%s)-TB )); REC="$REC b$B=$SEC"
-  DONE_N=$((DONE_N+1)); DONE_EXP=$((DONE_EXP + $(prev_b $B))); DONE_REAL=$((DONE_REAL+SEC))
+  DONE_N=$((DONE_N+1)); DONE_REAL=$((DONE_REAL+SEC))
+  # 자료 만들기가 섞인 묶음(첫 실행에 오래 걸림)은 실측을 예상으로 쳐서 남은 예상이 부풀지 않게 함
+  case " 15 28 44 61 144 " in *" $B "*) DONE_EXP=$((DONE_EXP+SEC));; *) DONE_EXP=$((DONE_EXP + $(prev_b $B)));; esac
   # 단계 진행 표시: 끝난 묶음의 실측/예상 비율로 남은 예상을 고침
   RATIO=$(awk -v r=$DONE_REAL -v e=$DONE_EXP 'BEGIN{ if(e<=0) print 1; else printf "%.3f", r/e }')
   LEFT=$(awk -v t=$EXP_TOT -v d=$DONE_EXP -v q=$RATIO 'BEGIN{ printf "%d", (t-d)*q }')
