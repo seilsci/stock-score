@@ -18,6 +18,9 @@ if (process.env.FUND !== '0' && fs.existsSync(path.join(DATA, 'sec'))) {
 const { MODELS: ALLM } = modelDefs(F);
 const MODELS = ALLM.filter(M => 'ABEF'.includes(M.n[0]));
 const DEP = +process.env.DEPOSIT || 1000000;
+// ETF 매매차익세(2026-11-28): 국내 상장 ETF 중 국내주식형이 아닌 것(해외주식·채권·금·원자재·커버드콜·TDF)은 팔 때 차익에 15.4%(costs.json kr.etf_gain_tax). 국내주식형은 비과세. 이름으로 구분(journal.html etfTaxable과 같은 규칙)
+const ETF_TAXRE = /미국|나스닥|S&P|필라델피아|글로벌|월드|선진국|신흥|차이나|중국|항셍|일본|니케이|인도|니프티|베트남|유럽|대만|브라질|러시아|국고채|회사채|금융채|특수은행채|채권|단기채|머니마켓|CD금리|KOFR|TDF|금현물|금선물|KRX금|은선물|원유|구리|WTI|골드|커버드콜|인버스|레버리지/;
+const etfTaxable = (() => { let m = null; return y => { if (!m) { try { m = new Map(JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json'), 'utf8')).map(x => [x.y, x.name])); } catch (e) { m = new Map(); } } return ETF_TAXRE.test(m.get(y) || ''); }; })();
 const C1 = JSON.parse(fs.readFileSync(path.join(__dirname, 'costs.json'), 'utf8'));          // 실제 비용·세금
 const C0 = { kr: { commission: 0, sell_tax: {}, etf_exempt: true }, us: { commission: 0, fx_spread: 0, cg_tax_rate: 0, cg_exemption_krw: 0 } };   // 비용 없음(비교용)
 const START_Y = +process.env.BT_START || 2012;                                // 첫 보고 연도(첫 입금은 그 전해 12월 말)
@@ -230,11 +233,11 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   const sellCash = (h, k, reason) => {                   // 한 종목을 팔아 현금으로: 수수료·거래세·(미국) 손익 기록
     const v = val(h, k);
     if (opt.banMonths && !h._part) banUntil.set(h.y, k + opt.banMonths);
-    let got, taxR = 0;
+    let got, taxR = 0, etfTx = 0;
     if (h.us) { const pr = v * (1 - usFee), Y = yOfK(k); usGain[Y] = (usGain[Y] || 0) + pr - h.basis; got = pr; }
-    else { taxR = (h.etf && C.kr.etf_exempt ? 0 : krTax(C, ymOf(k))); got = v * (1 - C.kr.commission - taxR); if (opt.krGainTax) krGain[yOfK(k)] = (krGain[yOfK(k)] || 0) + got - h.basis; }
+    else { taxR = (h.etf && C.kr.etf_exempt ? 0 : krTax(C, ymOf(k))); got = v * (1 - C.kr.commission - taxR); if (h.etf && C.kr.etf_gain_tax && etfTaxable(h.y)) { etfTx = Math.max(0, got - h.basis) * C.kr.etf_gain_tax; got -= etfTx; } if (opt.krGainTax) krGain[yOfK(k)] = (krGain[yOfK(k)] || 0) + got - h.basis; }
     if (cur) cur.sells.push({ y: h.y, buyYm: h.buyYm, us: h.us, sh: h.sh, px: h.last, fx: h.us ? fxf(k) : null, gross: v,
-      feeRate: h.us ? usFee : C.kr.commission, fee: v * (h.us ? usFee : C.kr.commission), taxRate: taxR, tax: v * taxR,
+      feeRate: h.us ? usFee : C.kr.commission, fee: v * (h.us ? usFee : C.kr.commission), taxRate: taxR, tax: v * taxR, etfTax: etfTx,
       amt: got, basis: h.basis, ret: got / h.basis - 1, reason: reason || 'ma10' });
     if (trades && h.buyYm) trades.push({ y: h.y, buyYm: h.buyYm, sellYm: ymOf(k), buyPx: h.buyPx, sellPx: h.last,
       ret: got / h.basis - 1, score: h.buyScore, feats: h.buyFeats, reason: reason || 'ma10' });
@@ -515,7 +518,7 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
   for (const h of holds) {
     const v = val(h, kNow);
     if (h.us) { const pr = v * (1 - usFee); liq += pr; gl += pr - h.basis; }
-    else liq += v * (1 - C.kr.commission - (h.etf && C.kr.etf_exempt ? 0 : krTax(C, curY)));
+    else { const gk = v * (1 - C.kr.commission - (h.etf && C.kr.etf_exempt ? 0 : krTax(C, curY))); liq += gk - ((h.etf && C.kr.etf_gain_tax && etfTaxable(h.y)) ? Math.max(0, gk - h.basis) * C.kr.etf_gain_tax : 0); }
   }
   liq -= Object.keys(usGain).reduce((t, y) => t + (+y === curY ? 0 : usTax(+y)), 0) + C.us.cg_tax_rate * Math.max(0, gl - C.us.cg_exemption_krw);
   rets.push({ k: kNow, r: nowV / prevAfter - 1, partial: true });
@@ -2112,7 +2115,7 @@ const journalSim = simulate(ym => jCand(ym).slice(0, 4), 4, C1, { tpTrail: 2, gr
 const listData = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
 const nameMap = new Map(listData.map(s => [s.y, { name: s.name, market: s.mk, code: s.code }]));
 const journal = {
-  meta: { flowRule: JOURNAL_FLOW, taxPresell: JOURNAL_PRESELL, taxMay: JOURNAL_TAXMAY, strategy: JOURNAL_STRAT === 'confirm' ? '10이평 돌파 후 +10% 이상 + 5>10>20 정배열 매수' + (JOURNAL_FLOW ? '(외국인·기관 같은 방향인 한국 종목 제외)' : '') + ' · tp2x트레일 · 한국 6이평/미국 10이평 이탈 금리유예2달 · 다음 달 첫날 구매' : 'A4 tp2x트레일+금리유예2달', firstDay: JOURNAL_STRAT === 'confirm', dep: 1000000, made: new Date().toISOString() },
+  meta: { flowRule: JOURNAL_FLOW, taxPresell: JOURNAL_PRESELL, taxMay: JOURNAL_TAXMAY, etfTax: !!C1.kr.etf_gain_tax, strategy: JOURNAL_STRAT === 'confirm' ? '10이평 돌파 후 +10% 이상 + 5>10>20 정배열 매수' + (JOURNAL_FLOW ? '(외국인·기관 같은 방향인 한국 종목 제외)' : '') + ' · tp2x트레일 · 한국 6이평/미국 10이평 이탈 금리유예2달 · 다음 달 첫날 구매' : 'A4 tp2x트레일+금리유예2달', firstDay: JOURNAL_STRAT === 'confirm', dep: 1000000, made: new Date().toISOString() },
   features: F,
   trades: (journalSim.trades || []).map(t => ({
     y: t.y, name: nameMap.get(t.y)?.name || t.y, market: nameMap.get(t.y)?.market || '',

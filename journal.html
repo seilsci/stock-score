@@ -340,7 +340,7 @@ canvas{display:block;width:100%;height:230px}
         <div class="jf-mini"><u>1주 값이 배정액보다 비싸면 → 다음 순위</u><u>후보가 4개보다 적으면 → 있는 종목끼리 나눔</u><u>남는 돈 → 현금으로 이월</u></div></div></div>
     </div>
     <div class="jf-grid">
-      <div class="jf-c"><div class="jf-ic">💸</div><strong>비용·세금</strong><p>수수료(한국 0.015%, 미국 0.35%), 한국 매도 거래세(연도별), 미국 양도세는 모두 반영. 미국 종목은 월말 환율로 원화 환산</p></div>
+      <div class="jf-c"><div class="jf-ic">💸</div><strong>비용·세금</strong><p>수수료(한국 0.015%, 미국 0.35%), 한국 매도 거래세(연도별), 미국 양도세(다음 해 5월 납부)는 모두 반영. 해외·채권·금 등 국내주식형이 아닌 ETF는 팔 때 매매차익 15.4%도 반영(국내주식형 ETF는 비과세). 미국 종목은 월말 환율로 원화 환산</p></div>
       <div class="jf-c"><div class="jf-ic">📊</div><strong>지수와 비교</strong><p>같은 입금으로 코스피·S&amp;P500·나스닥100(원화 환산)을 매달 말에 샀다면의 평가금 (배당·수수료·세금 제외)</p></div>
       <div class="jf-c"><div class="jf-ic">🔁</div><strong>시작 시점 바꾸기</strong><p>고른 달부터 빈손으로 시작해 같은 규칙으로 다시 계산. 시작한 달은 입금만 하고 구매는 다음 달 첫날</p></div>
       <div class="jf-c"><div class="jf-ic">🔮</div><strong>예정 달(잠정)</strong><p>지금 가격을 월말 종가로 가정해 미리 계산한 값. 월말까지 가격·후보에 따라 바뀔 수 있음</p></div>
@@ -1123,7 +1123,7 @@ function renderLedger(){
     var bpx=bb?pxS(bb.px,x.us):(buyTr?pxS(buyTr.buyPx,x.us):'-'), bamt=bb?bb.amt:x.basis;
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
     var cost='− 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span>'
-      +(x.tax>0?' − 거래세 '+won(x.tax)+' <span class="meta">('+(x.taxRate*100).toFixed(2)+'%)</span>':'')
+      +(x.tax>0?' − 거래세 '+won(x.tax)+' <span class="meta">('+(x.taxRate*100).toFixed(2)+'%)</span>':'')+(x.etfTax>0?' − ETF 매매차익세 '+won(x.etfTax)+' <span class="meta">(15.4%)</span>':'')
       +' = <b>'+won(x.amt)+'</b>'+(x.us?'<br><span class="meta">미국 양도세는 한 해 이익을 모아 다음 해 5월(옛 장부는 12월)에 한꺼번에 계산해 "세금" 줄에서 뺍니다</span>':'');
     add('sell','판매'+(FD?'(월말)':''),esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
       calc+'<br>'+cost+'<br><span class="'+(x.ret>=0?'p':'n')+'">수익 '+pc(x.ret)+'</span> · '+esc(rr)
@@ -1515,8 +1515,8 @@ function planCore(o){
     }
     var us=isUSy(h.y);
     if(reason){
-      var fxv=us?o.fx:1, val=h.sh*price*fxv, feeR=us?usFee:krFee, taxR=us?0:(isEtfHold(h)?0:krTaxY(+o.nowYm)), got=val*(1-feeR-taxR);
-      sells.push({y:h.y,name:h.name||h.y,us:us,sh:h.sh,px:price,fxUsed:us?o.fx:null,gross:val,fee:val*feeR,feeRate:feeR,tax:val*taxR,taxRate:taxR,amt:got,basis:h.basis,ret:got/h.basis-1,reason:reason,buyYm:h.buyYm,buyPx:h.buyPx});
+      var fxv=us?o.fx:1, val=h.sh*price*fxv, feeR=us?usFee:krFee, taxR=us?0:(isEtfHold(h)?0:krTaxY(+o.nowYm)), got=val*(1-feeR-taxR), etfTx=us?0:etfGainTax(h.name,isEtfHold(h),got,h.basis); got-=etfTx;
+      sells.push({y:h.y,name:h.name||h.y,us:us,sh:h.sh,px:price,fxUsed:us?o.fx:null,gross:val,fee:val*feeR,feeRate:feeR,tax:val*taxR,taxRate:taxR,etfTax:etfTx,amt:got,basis:h.basis,ret:got/h.basis-1,reason:reason,buyYm:h.buyYm,buyPx:h.buyPx});
       cash+=got;
     } else if(status) watch.push({y:h.y,name:h.name||h.y,us:us,buyYm:h.buyYm});
   });
@@ -1534,8 +1534,8 @@ function planCore(o){
       var q=pool[bi], h2=q.h, fxv2=q.us?o.fx:1, feeR2=q.us?usFee:krFee, taxR2=q.us?0:(isEtfHold(h2)?0:krTaxY(+o.nowYm));
       var perGot=q.price*fxv2*(1-feeR2-taxR2), gPer=0, gNow=g11, cNow=cash;      // 필요한 만큼만(정수 주) 판다: 그 이익의 세금까지 넣어 현금이 세금 이상이 되는 가장 작은 주 수
       var okN=function(n){ return cNow+n*perGot>=taxOf11(gNow+n*gPer); }, lo=1, hi=Math.ceil(h2.sh); while(lo<hi){ var mid=(lo+hi)>>1; if(okN(mid)) hi=mid; else lo=mid+1; }
-      var nSell=Math.min(lo,h2.sh), whole=nSell>=h2.sh, fr=nSell/h2.sh, val2=nSell*q.price*fxv2, got2=val2*(1-feeR2-taxR2), basis2=h2.basis*fr;
-      sells.push({y:h2.y,name:h2.name||h2.y,us:q.us,sh:nSell,px:q.price,fxUsed:q.us?o.fx:null,gross:val2,fee:val2*feeR2,feeRate:feeR2,tax:val2*taxR2,taxRate:taxR2,amt:got2,basis:basis2,ret:got2/basis2-1,reason:'taxPresell',buyYm:h2.buyYm,buyPx:h2.buyPx,part:!whole});
+      var nSell=Math.min(lo,h2.sh), whole=nSell>=h2.sh, fr=nSell/h2.sh, val2=nSell*q.price*fxv2, got2=val2*(1-feeR2-taxR2), basis2=h2.basis*fr, etfTx2=q.us?0:etfGainTax(h2.name,isEtfHold(h2),got2,basis2); got2-=etfTx2;
+      sells.push({y:h2.y,name:h2.name||h2.y,us:q.us,sh:nSell,px:q.price,fxUsed:q.us?o.fx:null,gross:val2,fee:val2*feeR2,feeRate:feeR2,tax:val2*taxR2,taxRate:taxR2,etfTax:etfTx2,amt:got2,basis:basis2,ret:got2/basis2-1,reason:'taxPresell',buyYm:h2.buyYm,buyPx:h2.buyPx,part:!whole});
       cash+=got2; if(whole){ pool.splice(bi,1); watch=watch.filter(function(w){ return w.y!==h2.y; }); } else break;
     }
   }
@@ -1560,6 +1560,9 @@ function planCore(o){
   return {sells:sells,watch:watch,buys:buys,skipped:skipped,tax:taxPaid,cash0:o.cash,cashAfterSell:cash,cash1:cash1,cashEnd:c,fdRsv:fdRsv,fdGain:fdGain};
 }
 
+var ETF_TAXRE=/미국|나스닥|S&P|필라델피아|글로벌|월드|선진국|신흥|차이나|중국|항셍|일본|니케이|인도|니프티|베트남|유럽|대만|브라질|러시아|국고채|회사채|금융채|특수은행채|채권|단기채|머니마켓|CD금리|KOFR|TDF|금현물|금선물|KRX금|은선물|원유|구리|WTI|골드|커버드콜|인버스|레버리지/;
+function etfTaxable(name){ return ETF_TAXRE.test(name||''); }      // 국내 상장 ETF 중 국내주식형이 아닌 것(해외·채권·금·커버드콜 등)은 팔 때 매매차익에 15.4%(백테스트 7_backtest.js와 같은 규칙)
+function etfGainTax(name,etf,netGot,basis){ var r=COSTS.kr&&COSTS.kr.etf_gain_tax; return (etf&&r&&etfTaxable(name))?Math.max(0,netGot-basis)*r:0; }
 function usGainOfYear(Y){                 // Y년 한 해 미국 주식 실현 이익(판매금 - 구매금액). 양도세는 다음 해 5월에 이 값으로 계산
   var g=0; Object.keys(LED.months).forEach(function(ym){ if(+ym.slice(0,4)===+Y) LED.months[ym].sells.forEach(function(x){ if(x.us) g+=x.amt-x.basis; }); }); return g;
 }
@@ -1724,7 +1727,7 @@ function renderPlanView(){
     var buyTr=DATA.trades.filter(function(t){ return t.y===x.y&&String(t.buyYm)===String(x.buyYm); })[0];
     var sv=scoreOf(x.y,x.buyYm), buyScore=sv!=null?sv:((buyTr?rawPct(buyTr.score):null) ?? '-');
     var calc=qtyS(x.sh,x.us)+' × '+pxS(x.px,x.us)+(x.us?' × '+Math.round(x.fxUsed).toLocaleString()+'원/$':'')+' = <b>'+won(x.gross)+'</b>';
-    var cost='− 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span>'+(x.tax>0?' − 거래세 '+won(x.tax)+' <span class="meta">('+(x.taxRate*100).toFixed(2)+'%)</span>':'')+' = <b>'+won(x.amt)+'</b>'+(x.us?'<br><span class="meta">미국 양도세는 12월에 한꺼번에 계산해 뺍니다</span>':'');
+    var cost='− 수수료 '+won(x.fee)+' <span class="meta">('+(x.feeRate*100).toFixed(x.us?2:3)+'%)</span>'+(x.tax>0?' − 거래세 '+won(x.tax)+' <span class="meta">('+(x.taxRate*100).toFixed(2)+'%)</span>':'')+(x.etfTax>0?' − ETF 매매차익세 '+won(x.etfTax)+' <span class="meta">(15.4%)</span>':'')+' = <b>'+won(x.amt)+'</b>'+(x.us?'<br><span class="meta">미국 양도세는 12월에 한꺼번에 계산해 뺍니다</span>':'');
     row('sell','판매 예정'+(FDP?'(월말)':''),esc(x.name)+(x.us?' <span class="lr-b">미국</span>':''),
       calc+'<br>'+cost+'<br><span class="'+(x.ret>=0?'p':'n')+'">수익 '+pc(x.ret)+'</span> · '+esc(rr)
       +'<br><b>구매 '+fmt(x.buyYm)+'</b> · '+pxS(x.buyPx,x.us)+'에 매수 · '+hm+'개월 보유<br>구매금액 '+won(x.basis)
@@ -1855,9 +1858,9 @@ function simulateFrom(S){
     }                                          // 첫날 구매: 지난달 말에 확정된 후보를 이달 첫날(지난달 말 현금으로) 삼
     holds.forEach(function(h){
       if(h.exit && h.exit<=ym){                                              // 판매
-        var px=closeAt(h.y,ym,h.last), val=h.sh*px*(h.us?fx:1), feeR=h.us?usFee:krFee, taxR=h.us?0:(h.etf?0:krTaxY(+ym)), got=val*(1-feeR-taxR);
+        var px=closeAt(h.y,ym,h.last), val=h.sh*px*(h.us?fx:1), feeR=h.us?usFee:krFee, taxR=h.us?0:(h.etf?0:krTaxY(+ym)), got=val*(1-feeR-taxR), etfTx=(h.us||!LED0.meta.etfTax)?0:etfGainTax(h.name,h.etf,got,h.basis); got-=etfTx;
         if(h.us) usGain[Y]=(usGain[Y]||0)+got-h.basis;
-        sells.push({y:h.y,name:h.name,us:h.us,sh:h.sh,px:px,fxUsed:h.us?fx:null,gross:val,fee:val*feeR,feeRate:feeR,tax:val*taxR,taxRate:taxR,amt:got,basis:h.basis,ret:got/h.basis-1,reason:h.exitReason,buyYm:h.buyYm});
+        sells.push({y:h.y,name:h.name,us:h.us,sh:h.sh,px:px,fxUsed:h.us?fx:null,gross:val,fee:val*feeR,feeRate:feeR,tax:val*taxR,taxRate:taxR,etfTax:etfTx,amt:got,basis:h.basis,ret:got/h.basis-1,reason:h.exitReason,buyYm:h.buyYm});
         cash+=got;
       } else keep.push(h);
     });
@@ -1868,9 +1871,9 @@ function simulateFrom(S){
         var bj=0, bpr=null; holds.forEach(function(h,j){ var bb2=barsOf(h.y), ii=bb2&&bb2.pos[ym], pr=closeAt(h.y,ym,h.last), xm=(bb2&&ii!=null)?exitMaAt(bb2.cs,ii,h.y):null, rel=xm?pr/xm:9, p=(xm!=null&&pr<xm)?[0,rel,0]:[1,(h.score==null?0:+h.score),rel]; if(!bpr||p[0]<bpr[0]||(p[0]===bpr[0]&&(p[1]<bpr[1]||(p[1]===bpr[1]&&p[2]<bpr[2])))){ bpr=p; bj=j; } });
         var hh=holds[bj], px2=closeAt(hh.y,ym,hh.last), feeR3=hh.us?usFee:krFee, taxR3=hh.us?0:(hh.etf?0:krTaxY(+ym)), perG=px2*(hh.us?fx:1)*(1-feeR3-taxR3), gP=(hh.us&&!TM)?perG-hh.basis/hh.sh:0, gN=usGain[TM?Y-1:Y]||0, cN=cash;
         var okM=function(n){ return cN+n*perG>=C.us.cg_tax_rate*Math.max(0,gN+n*gP-C.us.cg_exemption_krw); }, lo2=1, hi2=Math.ceil(hh.sh); while(lo2<hi2){ var md=(lo2+hi2)>>1; if(okM(md)) hi2=md; else lo2=md+1; }
-        var nS=Math.min(lo2,hh.sh), whole3=nS>=hh.sh, fr3=nS/hh.sh, val3=nS*px2*(hh.us?fx:1), got3=val3*(1-feeR3-taxR3), basis3=hh.basis*fr3;
+        var nS=Math.min(lo2,hh.sh), whole3=nS>=hh.sh, fr3=nS/hh.sh, val3=nS*px2*(hh.us?fx:1), got3=val3*(1-feeR3-taxR3), basis3=hh.basis*fr3, etfTx3=(hh.us||!LED0.meta.etfTax)?0:etfGainTax(hh.name,hh.etf,got3,basis3); got3-=etfTx3;
         if(hh.us) usGain[Y]=(usGain[Y]||0)+got3-basis3;
-        sells.push({y:hh.y,name:hh.name,us:hh.us,sh:nS,px:px2,fxUsed:hh.us?fx:null,gross:val3,fee:val3*feeR3,feeRate:feeR3,tax:val3*taxR3,taxRate:taxR3,amt:got3,basis:basis3,ret:got3/basis3-1,reason:'taxPresell',buyYm:hh.buyYm,part:!whole3});
+        sells.push({y:hh.y,name:hh.name,us:hh.us,sh:nS,px:px2,fxUsed:hh.us?fx:null,gross:val3,fee:val3*feeR3,feeRate:feeR3,tax:val3*taxR3,taxRate:taxR3,etfTax:etfTx3,amt:got3,basis:basis3,ret:got3/basis3-1,reason:'taxPresell',buyYm:hh.buyYm,part:!whole3});
         cash+=got3; if(whole3) holds.splice(bj,1); else { hh.sh-=nS; hh.basis-=basis3; break; }
       }
     }
@@ -1893,7 +1896,7 @@ function simulateFrom(S){
     holds.forEach(function(h){ h.last=closeAt(h.y,ym,h.last); hv+=h.sh*h.last*(h.us?fx:1); });
     months[ym]={dep:depM,tax:Math.round(tax),cash:Math.round(cash),holdVal:Math.round(hv),fx:fx,
       buys:buys.map(function(x){ return Object.assign({},x,{amt:Math.round(x.amt),gross:Math.round(x.gross),fee:Math.round(x.fee)}); }),
-      sells:sells.map(function(x){ return Object.assign({},x,{amt:Math.round(x.amt),basis:Math.round(x.basis),gross:Math.round(x.gross),fee:Math.round(x.fee),tax:Math.round(x.tax)}); }),
+      sells:sells.map(function(x){ return Object.assign({},x,{amt:Math.round(x.amt),basis:Math.round(x.basis),gross:Math.round(x.gross),fee:Math.round(x.fee),tax:Math.round(x.tax),etfTax:Math.round(x.etfTax||0)}); }),
       skipped:skipped.map(function(x){ return Object.assign({},x,{one:Math.round(x.one),per:Math.round(x.per)}); }),
       cands:M0.cands||[]};                                                      // 그달 말 확정 후보(원래 장부 값): 마지막 달이면 이번 달 첫날 구매·예정 주문 계산에 씀
     snaps[ym]=holds.map(function(h){ return {y:h.y,name:h.name,buyYm:h.buyYm,buyPx:h.buyPx,curPx:h.last,sh:h.sh,basis:h.basis,ret:h.last/h.buyPx-1,score:h.score}; });
