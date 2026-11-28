@@ -1,6 +1,6 @@
 // 2·3단계: 과거 매수 신호 전부 찾기 + 정답(12개월 유지) + 후보 지표 → data/events.csv
 const { fs, path, DATA, RAW, progress } = require('./common');
-const list = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json')));
+const list = JSON.parse(fs.readFileSync(path.join(DATA, 'lists.json'))).filter(x => !(process.env.NO_US_ETF === '1' && x.mk === 'US' && x.type === 'etf'));      // NO_US_ETF=1: 미국 ETF를 뺀 events(시험 61: 미국 ETF 넣기/빼기 비교)
 const load = y => { try { return JSON.parse(fs.readFileSync(path.join(RAW, y.replace(/[^A-Za-z0-9.\-]/g, '_') + '.json'))); } catch (e) { return null; } };
 const now = new Date(), CUR = now.getFullYear() * 100 + now.getMonth() + 1;   // 이번 달(진행 중)
 const HOLD = 12;
