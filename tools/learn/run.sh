@@ -44,6 +44,7 @@ PFROM=$B2c PTO=$B3 node 2m_flow_naver.js | tee -a $LOG || true      # 한국 수
 done_ "월봉·첫날 가격·거시 지표 받기 (2/8)"
 LAST=$(date +%s)
 PFROM=$B3 PTO=$B4 node 3_build.js | tee -a $LOG
+echo "· 배당 받기(이미 받은 종목은 건너뜀, 처음이면 10분 안팎)"; node 2f_div.js | tee -a $LOG || true      # 야후 배당 → data/div: 일지·백테스트가 보유 종목의 세후 배당을 현금으로 받는 데 씀(실패해도 계속: 그 종목은 배당 0)
 done_ "매수 신호·정답·지표 (3/8)"; mark build
 PFROM=$B4 PTO=$B5 node 4_train.js | tee -a $LOG
 [ "$SCORE_MODEL" = gbm ] && { PFROM=$B4 PTO=$B5 node 4b_gbm.js | tee -a $LOG; }       # 사이트용 트리 점수 모델 → data/gbm.json (gbm 채택 때만. result/에 gbm.json이 있으면 사이트가 트리로 바뀜)
@@ -65,7 +66,7 @@ echo; say "100% 완료 · 보고서: tools/learn/data/report.txt"
 if [ -n "$LIMIT" ]; then say "시험 실행(LIMIT)이라 올리지 않아요."; exit 0; fi
 if [ $YES = 0 ]; then A=n; else A=y; fi        # 묻지 않음: 기본은 올림(--no-push면 안 올림)
 if [ "$A" = "y" ] || [ "$A" = "Y" ]; then
-  mkdir -p result; [ -f $D/runtimes.txt ] && cp $D/runtimes.txt result/; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; [ "$SCORE_MODEL" = gbm ] && [ -f $D/gbm.json ] && cp $D/gbm.json result/; for f in trades.json bars.json ledger.json traits.txt bench.json; do [ -f $D/$f ] && cp $D/$f result/ || true; done
+  mkdir -p result; [ -f $D/runtimes.txt ] && cp $D/runtimes.txt result/; cp $D/weights.json $D/report.txt $D/explore.txt $D/check.txt $D/backtest.txt result/; [ "$SCORE_MODEL" = gbm ] && [ -f $D/gbm.json ] && cp $D/gbm.json result/; for f in trades.json bars.json ledger.json divs.json traits.txt bench.json; do [ -f $D/$f ] && cp $D/$f result/ || true; done
   git -c core.safecrlf=false add result
   git commit -q -m "학습 결과: 월봉 10이평 매수 신호 가중치 ($(date '+%Y-%m-%d'))" && git pull --rebase --autostash -q && git push -q && say "■ 올림 끝 (8/8). Claude에게 '올렸어'라고 알려 주세요."
 else
