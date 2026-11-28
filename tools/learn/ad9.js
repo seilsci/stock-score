@@ -1487,17 +1487,19 @@ function build(c, which) {
       PFX = '49';
       const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
       const flowOK = drop(isSame)(mBase);
-      add(S('A 규칙'), '지금(모자라면 12월 말에 보유 종목을 비율대로 판매)', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6 } });
-      add(S('B 미리 확보'), '11월 말 세금 몫만큼만 미리 판다(유예 중 → 점수 낮은 순)', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, taxPresell: true } });
+      add(S('A 12월 말 납부(예전 가정)'), '12월 말 납부 · 모자라면 비율 판매', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6 } });
+      add(S('A 12월 말 납부(예전 가정)'), '12월 말 납부 · 11월 말 모자란 만큼만 미리 판다', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, taxPresell: true } });
+      add(S('B 5월 납부(실제)'), '5월 납부 · 모자라면 5월 말 비율 판매', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, taxMay: true } });
+      add(S('B 5월 납부(실제)'), '5월 납부 · 4월 말 모자란 만큼만 미리 판다', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, taxMay: true, taxPresell: true } });
       posts.push(() => safe('49 세금 몫', () => {
         const mine = V.filter(v => String(v.sec).startsWith('49-') && v.full && v.full.yearly), ys = YEARS_ALL.slice();
         const per = [['처음 보는 기간', ys.filter(Y => Y < 2012)], ['2012~', ys.filter(Y => Y >= 2012)], ['전체', ys]];
         log(''); log('## 49 양도세 몫 미리 확보 — 연평균·세금 부족·미리 판 건수·구매 못 한 달');
-        log('방식'.padEnd(50) + per.map(([n]) => n.padStart(14)).join('') + '  세금 부족(건/금액)  미리 판(건/금액)  구매 0건 달');
+        log('방식'.padEnd(54) + per.map(([n]) => n.padStart(14)).join('') + '  세금 부족(건/금액)  미리 판(건/금액)  구매 0건 달');
         mine.forEach(v => { const o = simOpt(v.rule, v.o || {}), sm = simulate(ym => v.cand(ym).slice(0, 4), 4, C1, { ...o, cand: v.cand, log: true });
           const LK = sm.ledger ? [...sm.ledger.keys()].sort() : []; const z = LK.filter((k, i) => i > 0 && (sm.ledger.get(k).buys || []).length === 0);
           const ps = LK.flatMap(k => (sm.ledger.get(k).sells || []).filter(x => x.reason === 'taxPresell').map(x => k + ' ' + (x.name || x.y) + ' ' + (x.ret * 100).toFixed(0) + '%'));
-          log(v.name.slice(0, 46).padEnd(50) + per.map(([, Ys]) => pc(cagrOver(v.full.yearly, Ys)).padStart(14)).join('') + `  ${String(sm.taxShortN).padStart(4)}건 ${Math.round((sm.taxShortAmt || 0) / 1e4).toLocaleString().padStart(7)}만  ${String(sm.presellN).padStart(4)}건 ${Math.round((sm.presellAmt || 0) / 1e4).toLocaleString().padStart(8)}만  ${z.length}달 (${z.join(' ')})` + (ps.length ? '\n    미리 판 종목: ' + ps.join(' / ') : '')); });
+          log(v.name.slice(0, 50).padEnd(54) + per.map(([, Ys]) => pc(cagrOver(v.full.yearly, Ys)).padStart(14)).join('') + `  ${String(sm.taxShortN).padStart(4)}건 ${Math.round((sm.taxShortAmt || 0) / 1e4).toLocaleString().padStart(7)}만  ${String(sm.presellN).padStart(4)}건 ${Math.round((sm.presellAmt || 0) / 1e4).toLocaleString().padStart(8)}만  ${z.length}달 (${z.join(' ')})` + (ps.length ? '\n    미리 판 종목: ' + ps.join(' / ') : '')); });
       }));
       posts.push(() => post12('49-', '49 양도세 몫 미리 확보'));
     }
