@@ -1503,7 +1503,8 @@ if (process.env.STAGE14 !== '0') {
     }));
     m.forEach(a => a.sort((x, y) => y.s - x.s)); poolCache.set(key, m); return m;
   };
-  const simOpt = (rule, extra) => ({ lotSize: true, lotAll: true, fill: true, firstDay: true, ...(rule.tp ? { tpTrail: rule.tp } : {}), ...(rule.grace ? { grace: rule.grace, graceRate: !!rule.rate } : {}), ...(rule.rateFn ? { rateFn: rule.rateFn, graceRate: true } : {}), ...(rule.revFn ? { revFn: rule.revFn } : {}), ...extra });
+  const REALX = process.env.AD9_REAL === '1' ? { taxMay: true, taxPresell: true, divFn: divOf, divTaxUS: 0.15, divTaxKR: 0.154 } : {};      // 새 규칙으로 다시(exp.sh 100번대): 양도세 5월 납부·4월 말 미리 확보·세후 배당(번호별 시험이 따로 정한 옵션이 우선)
+  const simOpt = (rule, extra) => ({ lotSize: true, lotAll: true, fill: true, firstDay: true, ...REALX, ...(rule.tp ? { tpTrail: rule.tp } : {}), ...(rule.grace ? { grace: rule.grace, graceRate: !!rule.rate } : {}), ...(rule.rateFn ? { rateFn: rule.rateFn, graceRate: true } : {}), ...(rule.revFn ? { revFn: rule.revFn } : {}), ...extra });
   const run14 = (v, filt) => {
     let cand = v.cand; if (filt) cand = ym => v.cand(ym).filter(filt);
     const o = simOpt(v.rule || RULE0, v.o || {}), N = v.N || 4;
