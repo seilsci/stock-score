@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45) || on(46)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1482,6 +1482,32 @@ function build(c, which) {
         log(''); log('## 44 가장 나빴던 해: ' + mine.map(v => { const w = ys.map(Y => [Y, v.full.yearly[Y]]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1])[0]; return `${v.name.slice(0, 16)} ${w ? w[0] + ' ' + pc(w[1]) : '-'} (낙폭 ${pc(v.full.mdd)})`; }).join(' · '));
       }));
       posts.push(() => post12('44-', '44 옛 기간 포함'));
+    }
+    if (on(46)) {                                                              // ═════ 묶음 46: 처음 보는 기간(2005~2011)에서 금리 규칙·유예 길이·익절·판매 이평을 다시 확인(DATA=data_2003 필요). 지금 규칙 한국6·미국10+수급 기준
+      PFX = '46';
+      const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
+      const mkR = (g, rt, mo, tp) => ({ tp: tp === undefined ? 2 : tp, grace: g, rate: rt, ...(rt ? { rateFn: chg('dgs10', mo || 6) } : {}), rateName: rt ? `국채10년 ${mo || 6}개월` : '금리 없음' });
+      const KRn = n => (h, k) => maAtN(h.px, k, isKR(h.y) ? n : 10);
+      const VV = (sec, name, rule, o = {}) => { const m = mk({ ck: 'p46' + sec + name }, rule); add(S(sec), name, { cand: drop(isSame)(m), rule, o: { exitMaFn: KR6, ...o } }); };
+      VV('A 기준', '지금 규칙', mkR(2, true));
+      VV('B 금리 규칙', '금리 판단 없음', mkR(2, false));
+      [3, 9, 12].forEach(mo => VV('B 금리 규칙', `금리 ${mo}개월 기준`, mkR(2, true, mo)));
+      [1, 3, 4].forEach(g => VV('C 유예 달 수', `유예 ${g === 1 ? '없음(즉시)' : g + '달'}(금리 판단 포함)`, mkR(g, true)));
+      [1, 2, 3].forEach(g => VV('C 유예 달 수', `유예 ${g === 1 ? '없음(즉시)' : g + '달'}(금리 판단 없음)`, mkR(g, false)));
+      [[0, '익절 없음'], [3, '익절 3배']].forEach(([tp, nm]) => VV('D 익절', nm, mkR(2, true, 6, tp)));
+      [5, 7, 8].forEach(n => VV('E 한국 판매 이평', `한국 ${n}이평 · 미국 10이평`, mkR(2, true), { exitMaFn: KRn(n) }));
+      posts.push(() => safe('46 기간', () => {
+        const mine = V.filter(v => String(v.sec).startsWith('46-') && v.full && v.full.yearly);
+        const ys = YEARS_ALL.slice();
+        const per = [['처음 보는 기간 2005~2011', ys.filter(Y => Y < 2012)], ['2008~2009만', ys.filter(Y => Y === 2008 || Y === 2009)], ['2012~2026', ys.filter(Y => Y >= 2012)], ['전체 2005~2026', ys]];
+        log(''); log('## 46 구간별 연평균(처음 보는 기간에서 규칙 요소 다시 확인)');
+        log('방식'.padEnd(44) + per.map(([n]) => n.padStart(20)).join(''));
+        mine.forEach(v => log(v.name.slice(0, 40).padEnd(44) + per.map(([, Ys]) => pc(cagrOver(v.full.yearly, Ys)).padStart(20)).join('')));
+        log(''); log('## 46 해마다(2005~2011)');
+        log('방식'.padEnd(44) + ys.filter(Y => Y < 2012).map(Y => String(Y).padStart(9)).join(''));
+        mine.forEach(v => log(v.name.slice(0, 40).padEnd(44) + ys.filter(Y => Y < 2012).map(Y => pc(v.full.yearly[Y] ?? NaN).padStart(9)).join('')));
+      }));
+      posts.push(() => post12('46-', '46 처음 보는 기간 재확인'));
     }
     if (on(45)) {                                                              // ═════ 묶음 45: 남는 현금을 지수에 두기 — 규칙을 고른 적 없는 2005~2011 포함(DATA=data_2003 필요). 특히 2008·2009에서 어떻게 되는지
       PFX = '45';
