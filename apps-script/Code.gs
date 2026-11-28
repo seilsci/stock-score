@@ -114,7 +114,7 @@ function updateKR() {
 
 // 제외 종목: 채권·금리(CD·KOFR)·머니마켓·단기채 등 가격이 거의 안 움직이는 상품, 레버리지·인버스(음의 복리)
 // tools/learn/1_lists.js의 EXCLUDE와 같은 규칙으로 유지할 것
-var EXCLUDE_RE = /채권|국채|통안채|금리|머니마켓|레버리지|인버스|곱버스|\b[23]X\b/;
+var EXCLUDE_RE = /채권|국채|국고채|회사채|특수은행채|금융채|국공채|통안채|크레딧|하이일드|단기자금|금리|머니마켓|레버리지|인버스|곱버스|\b[23]X\b|1\.5X/;
 
 function naverTop_(market, n) {
   var out = [];
