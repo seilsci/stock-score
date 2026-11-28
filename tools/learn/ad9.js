@@ -1361,7 +1361,7 @@ function build(c, which) {
   // ═════ 묶음 35: 한국 수급(외국인·기관 순매수) — KRX [12010] 투자자별 순매수(2k_flow.js로 받음, data/krx_flow/<YYYYMM>.json)로 한국 후보를 거르거나 순서를 바꿈 (10이평 · 한국6·미국10 각각)
   //   확인(구매 결정) 달 말까지의 값만 씀(그달 수급은 마지막 거래일 장 마감 뒤 공개, 구매는 다음 달 첫날 종가). 미국 종목·자료 없는 한국 종목은 '중립'(거르지 않음, 순위 가운데).
   //   매수 우위 비율 = 순매수대금 ÷ (매수대금 + 매도대금) — 그 투자자의 거래 중 사는 쪽이 얼마나 많았나(−1~+1). 백분위는 그달 KRX 전 종목 중 순위.
-  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45) || on(46) || on(47) || on(49) || on(62) || on(63)) {
+  if (on(35) || on(36) || on(37) || on(39) || on(40) || on(41) || on(42) || on(43) || on(44) || on(45) || on(46) || on(47) || on(49) || on(62) || on(63) || on(64) || on(65)) {
     let PFX = '35'; const S = n => `${PFX}-${n}`;
     const FL = new Map();
     const flMonth = k => {                                                       // 그 달(k) 파일 → {f:Map, i:Map, pf:정렬된 외국인 비율, pfi:정렬된 합 비율}
@@ -1504,6 +1504,84 @@ function build(c, which) {
           log(v.name.slice(0, 50).padEnd(54) + per.map(([, Ys]) => pc(cagrOver(v.full.yearly, Ys)).padStart(14)).join('') + `  ${String(sm.taxShortN).padStart(4)}건 ${Math.round((sm.taxShortAmt || 0) / 1e4).toLocaleString().padStart(7)}만  ${String(sm.presellN).padStart(4)}건 ${Math.round((sm.presellAmt || 0) / 1e4).toLocaleString().padStart(8)}만  ${z.length}달 (${z.join(' ')})` + `  ETF 판매 ${etfAll}건 중 매매차익세 ${etfN}건 ${Math.round(etfT / 1e4).toLocaleString()}만` + (ps.length ? '\n    미리 판 종목: ' + ps.join(' / ') : '')); });
       }));
       posts.push(() => post12('49-', '49 양도세 몫 미리 확보'));
+    }
+    if (on(64) || on(65)) {                                                    // ═════ 묶음 64(한국 재무: DART)·65(한국 공매도: KRX) — 둘 다 한국 종목 후보에만 적용, 미국·자료 없음은 중립. 기준 규칙 = 지금 규칙(한국6·미국10 + 수급)
+      const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
+      const flowOK = drop(isSame)(mBase);
+      const F = (sec, name, cand) => add(S(sec), name, { cand, rule: rule10, o: { exitMaFn: KR6 } });
+      const hash01 = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 100000) / 100000; };
+      const flowPass = e => { const v = isSame(e.r.y, e.cj); return v == null || !v; };                                           // 수급 규칙(같은 방향이면 제외)을 통과했나
+      const filt = g => wrap(mBase, arr => arr.filter(e => { if (!flowPass(e)) return false; const v = g(e.r.y, e.cj); return v == null || v; }));          // 수급 규칙 + g가 거짓이면 제외(null=자료 없음은 유지)
+      const mixOwn = g => wrap(mBase, a0 => { const a = a0.filter(flowPass), rk = f => { const r = new Map(); [...a].sort((x, y) => f(y) - f(x)).forEach((e, i) => r.set(e, i)); return r; }; const r1 = rk(e => e.s), r2 = rk(e => g(e.r.y, e.cj) ?? 0.5); return [...a].sort((x, y) => (r1.get(x) + r2.get(x)) - (r1.get(y) + r2.get(y))); });
+      const share = (g) => { let t = 0, d = 0; mBase.forEach(a => a.forEach(e => { if (!isKR(e.r.y) || !flowPass(e)) return; const v = g(e.r.y, e.cj); if (v == null) return; t++; if (!v) d++; })); return t ? d / t : 0; };   // 제외 비율(무작위 대조용)
+      const randDrop = (g, seed) => { const p = share(g); return wrap(mBase, arr => arr.filter(e => { if (!flowPass(e)) return false; if (!isKR(e.r.y) || g(e.r.y, e.cj) == null) return true; return hash01(seed + '|' + e.r.y + '|' + e.cj) >= p; })); };
+      const pctOf = (arr, r) => { let lo = 0, hi = arr.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < r) lo = mid + 1; else hi = mid; } return lo / arr.length; };
+      if (on(64)) {
+        PFX = '64';
+        const DT = new Map();
+        const dartRec = y => { const c = String(y).slice(0, 6); if (DT.has(c)) return DT.get(c); let v = null; try { v = JSON.parse(fs.readFileSync(path.join(DATA, 'dart', c + '.json'), 'utf8')).r.slice().sort((a, b) => (a.filed || 0) - (b.filed || 0)); } catch (e) {} DT.set(c, v); return v; };
+        const dartM = (y, k) => {                                              // 신호 달 말까지 공시된 가장 최근 사업보고서 지표(한국만). 공시일 > 그 달 말이면 안 씀
+          if (!isKR(y)) return null; const a = dartRec(y); if (!a || !a.length) return null; const lim = ymOf(k) * 100 + 31; let cur = null;
+          for (const r of a) if (r.filed && r.filed <= lim && (!cur || r.y >= cur.y)) cur = r;
+          if (!cur) return null; const prev = a.find(r => r.y === cur.y - 1 && r.filed && r.filed <= lim) || null;
+          return { oi: cur.oi, ni: cur.ni, margin: cur.rev > 0 && cur.oi != null ? cur.oi / cur.rev : null, debt: cur.eq > 0 && cur.liab != null ? cur.liab / cur.eq : null, growth: prev && prev.oi > 0 && cur.oi != null ? cur.oi / prev.oi - 1 : null, y: cur.y };
+        };
+        let have = 0, total = 0; mBase.forEach(a => a.forEach(e => { if (isKR(e.r.y)) { total++; if (dartM(e.r.y, e.cj)) have++; } }));
+        const ok = (f) => (y, k) => { const v = dartM(y, k); if (!v) return null; const r = f(v); return r == null ? null : r; };   // f가 true면 통과
+        const A1 = ok(v => v.oi == null ? null : v.oi >= 0), A2 = ok(v => v.ni == null ? null : v.ni >= 0), A3 = ok(v => v.oi == null || v.ni == null ? null : v.oi > 0 && v.ni > 0);
+        const B1 = ok(v => v.debt == null ? null : v.debt <= 2), B2 = ok(v => v.debt == null ? null : v.debt <= 4);
+        const C1 = ok(v => v.margin == null ? null : v.margin >= 0.05), C2 = ok(v => v.margin == null ? null : v.margin >= 0.10);
+        const D1 = ok(v => v.growth == null ? null : v.growth > 0);
+        F('기준', '지금 규칙(한국6·미국10 + 수급) 기준', flowOK);
+        F('A 흑자', '영업이익 적자인 한국 종목 제외', filt(A1)); F('A 흑자', '순이익 적자인 한국 종목 제외', filt(A2)); F('A 흑자', '영업이익·순이익 둘 다 흑자인 한국 종목만', filt(A3));
+        F('B 부채', '부채비율 200% 넘는 한국 종목 제외', filt(B1)); F('B 부채', '부채비율 400% 넘는 한국 종목 제외', filt(B2));
+        F('C 이익률', '영업이익률 5% 미만 한국 종목 제외', filt(C1)); F('C 이익률', '영업이익률 10% 미만 한국 종목 제외', filt(C2));
+        F('D 증가', '영업이익이 전년보다 줄어든(또는 적자 전환) 한국 종목 제외', filt(D1));
+        F('E 순위', '점수 순위와 영업이익률 순위의 평균(한국만, 높을수록 좋게)', mixOwn((y, k) => { const v = dartM(y, k); return v && v.margin != null ? v.margin : null; }));
+        F('F 대조', '영업이익 흑자인 한국 종목 제외(적자만 삼) — 대조', filt((y, k) => { const r = A1(y, k); return r == null ? null : !r; }));
+        for (const sd of ['a', 'b', 'c']) F('G 무작위 제외 대조', `영업이익·순이익 흑자 기준과 같은 비율을 무작위로 제외(씨앗 ${sd})`, randDrop(A3, 'd' + sd));
+        posts.push(() => { log(''); log('## 64 채택 기준(미리 정함): 연평균·해마다 이긴 해(≥10/14)·낙폭·3·5년 최악 창·상위 10거래 뺀 평균이 모두 좋아지고, 같은 비율 무작위 제외 대조(G)보다 뚜렷이 좋을 때만 채택. 하나라도 어긋나면 채택 안 함(결과를 보고 기준을 바꾸지 않음).'); });
+        posts.push(() => { post12('64-', '64 한국 재무(DART)'); safe('64 진단', () => {
+          const byY = {}; mBase.forEach(arr => arr.forEach(e => { if (!isKR(e.r.y)) return; const Y = Math.floor(e.r.ym / 100), o = byY[Y] || (byY[Y] = { n: 0, h: 0 }); o.n++; if (dartM(e.r.y, e.cj)) o.h++; }));
+          log(''); log('## 64 연결 진단 — 한국 후보 중 재무 값이 연결된 비율(DART 전체 재무제표 API는 2015년 사업연도부터라 2016년 신호부터): ' + Object.keys(byY).sort().map(Y => `${Y} ${byY[Y].h}/${byY[Y].n}`).join(' · '));
+          log(`## 64 한국 후보 ${total}건 중 연결 ${have}건(${total ? (have / total * 100).toFixed(0) : 0}%)` + (have === 0 ? ' → 자료 없음: DART_KEY를 넣고 node 2n_dart.js 먼저 실행' : ''));
+          const base = V.find(v => String(v.sec).startsWith('64-기준')); if (!base) return;
+          const sm = simulate(ym => base.cand(ym).slice(0, 4), 4, C1, { ...simOpt(base.rule, base.o || {}), cand: base.cand, log: true }, DEP), by = { '없음(자료 없음·미국)': [], '영업이익 적자': [], '이익률 0~5%': [], '이익률 5~10%': [], '이익률 10%↑': [] };
+          (sm.trades || []).filter(t => t.ret != null && t.buyYm).forEach(t => { const v = dartM(t.y, mi(t.buyYm) - 1); const key = !v || v.margin == null ? '없음(자료 없음·미국)' : v.oi < 0 ? '영업이익 적자' : v.margin < 0.05 ? '이익률 0~5%' : v.margin < 0.10 ? '이익률 5~10%' : '이익률 10%↑'; by[key].push(t.ret); });
+          log(''); log('## 64 실제 거래(지금 규칙)를 구매 전달 말에 알 수 있던 영업이익률 구간으로 나눈 성과(전체 기간)'); log('구간                      거래 수   이긴 거래   평균 수익   중앙값');
+          Object.entries(by).forEach(([k2, a]) => { if (!a.length) { log(k2.padEnd(24) + '      0'); return; } const sd = [...a].sort((x, y) => x - y); log(k2.padEnd(24) + String(a.length).padStart(6) + `   ${(a.filter(x => x > 0).length / a.length * 100).toFixed(0).padStart(5)}%   ${pc(a.reduce((t, x) => t + x, 0) / a.length).padStart(8)}   ${pc(sd[Math.floor(sd.length / 2)]).padStart(8)}`); });
+        }); });
+      }
+      if (on(65)) {
+        PFX = '65';
+        const KS = new Map();
+        const ksMonth = k => {                                                 // 그 달 종목별 공매도 비율(공매도 거래량÷전체 거래량). 거래량 10만 주 미만은 뺌
+          if (KS.has(k)) return KS.get(k); let v = null;
+          try { const j = JSON.parse(fs.readFileSync(path.join(DATA, 'krx_short', ymOf(k) + '.json'), 'utf8')), m = new Map(), arr = []; for (const [c, a] of Object.entries(j.d || {})) if (a[1] >= 1e5) { const r = a[0] / a[1]; m.set(c, r); arr.push(r); } arr.sort((x, y) => x - y); if (arr.length > 200) v = { m, arr }; } catch (e) {}
+          KS.set(k, v); return v;
+        };
+        const ksRatio = (y, k) => { if (!isKR(y)) return null; const v = ksMonth(k); const r = v && v.m.get(String(y).slice(0, 6)); return r == null ? null : r; };
+        const ksPct = (y, k) => { const r = ksRatio(y, k); return r == null ? null : pctOf(ksMonth(k).arr, r); };
+        const ksChg = (y, k) => { const a = ksPct(y, k); if (a == null) return null; let t = 0, n = 0; for (let i = 1; i <= 3; i++) { const b = ksPct(y, k - i); if (b != null) { t += b; n++; } } return n ? a - t / n : null; };
+        let have = 0, total = 0; mBase.forEach(a => a.forEach(e => { if (isKR(e.r.y)) { total++; if (ksPct(e.r.y, e.cj) != null) have++; } }));
+        const P = f => (y, k) => { const p = ksPct(y, k); return p == null ? null : f(p); };
+        F('기준', '지금 규칙(한국6·미국10 + 수급) 기준', flowOK);
+        [0.1, 0.2, 0.3].forEach(q => F('A 높은 종목 제외', `공매도 비율 상위 ${q * 100}% 한국 종목 제외`, filt(P(p => p < 1 - q))));
+        [0.5, 0.7].forEach(q => F('B 낮은 종목만', `공매도 비율 하위 ${q * 100}% 안인 한국 종목만`, filt(P(p => p <= q))));
+        F('C 대조', '공매도 비율 상위 20%인 한국 종목만(나머지 한국은 제외)', filt(P(p => p >= 0.8)));
+        F('D 증가', '공매도 비율 순위가 최근 3개월 평균보다 0.2 넘게 올라간 한국 종목 제외', filt((y, k) => { const c = ksChg(y, k); return c == null ? null : c < 0.2; }));
+        F('E 절대 비율', '월 공매도 비율이 5% 넘는 한국 종목 제외', filt((y, k) => { const r = ksRatio(y, k); return r == null ? null : r <= 0.05; }));
+        F('E 절대 비율', '월 공매도 비율이 10% 넘는 한국 종목 제외', filt((y, k) => { const r = ksRatio(y, k); return r == null ? null : r <= 0.10; }));
+        F('F 순위', '점수 순위와 공매도 낮은 순위의 평균', mixOwn((y, k) => { const p = ksPct(y, k); return p == null ? null : 1 - p; }));
+        F('F 순위', '점수 순위와 공매도 높은 순위의 평균(대조)', mixOwn((y, k) => ksPct(y, k)));
+        for (const sd of ['a', 'b', 'c']) F('G 무작위 제외 대조', `상위 20% 제외와 같은 비율을 무작위로 제외(씨앗 ${sd})`, randDrop(P(p => p < 0.8), 'k' + sd));
+        posts.push(() => { log(''); log('## 65 채택 기준(미리 정함): 연평균·해마다 이긴 해(≥10/14)·낙폭·3·5년 최악 창·상위 10거래 뺀 평균이 모두 좋아지고 같은 비율 무작위 제외 대조(G)보다 뚜렷이 좋을 때만 채택. 공매도 자료는 금지 기간(2020-03~2021-05, 2023-11~2025-03)이 비어 있어 그 달은 판단에서 빠짐.'); });
+        posts.push(() => { post12('65-', '65 한국 공매도(KRX)'); safe('65 진단', () => {
+          const byY = {}; mBase.forEach(arr => arr.forEach(e => { if (!isKR(e.r.y)) return; const Y = Math.floor(e.r.ym / 100), o = byY[Y] || (byY[Y] = { n: 0, h: 0 }); o.n++; if (ksPct(e.r.y, e.cj) != null) o.h++; }));
+          log(''); log('## 65 연결 진단 — 한국 후보 중 공매도 값이 연결된 비율: ' + Object.keys(byY).sort().map(Y => `${Y} ${byY[Y].h}/${byY[Y].n}`).join(' · '));
+          log(`## 65 한국 후보 ${total}건 중 연결 ${have}건(${total ? (have / total * 100).toFixed(0) : 0}%)` + (have === 0 ? ' → 자료 없음: KRX_COOKIE를 넣고 node 2o_krx_short.js 먼저 실행' : ''));
+        }); });
+      }
     }
     if (on(63)) {                                                              // ═════ 묶음 63: 금융소득종합과세에 다른 소득(연봉 등)이 있다고 가정 — 새 규칙(AD9_REAL=1 → 번호 163)으로, 지금 규칙(한국6·미국10+수급) 기준
       PFX = '63';
