@@ -761,25 +761,39 @@ function drawChart(cv, y, endYm, buyYm, sellYm, rawOverride){
     g.stroke();
   }
   // 이 종목의 매수·매도 표시 (구매 ▲는 캔들 아래, 판매 ▼는 캔들 위). 같은 달에 여러 번이면 겹치지 않게 쌓아서 그림
-  var evB={}, evS={};
+  var evB={}, evS={}, pB={}, pS={};                                              // 월별 구매·판매 횟수와 체결가(그 종목 통화, 모르면 null)
+  var addE=function(cnt,pr,m,v){ cnt[m]=(cnt[m]||0)+1; (pr[m]=pr[m]||[]).push(v!=null&&isFinite(v)?+v:null); };
+  var sellPx=function(b){ if(b.px!=null) return b.px; return (b.sh>0&&b.gross!=null)?b.gross/b.sh/(b.us&&b.fxUsed?b.fxUsed:1):null; };
   if(LED && LED.months){                                                        // 지금 보고 있는 계산(시작 시점·금액을 바꿨으면 그 계산)의 구매·판매
-    Object.keys(LED.months).forEach(function(m){ var M=LED.months[m]; (M.buys||[]).forEach(function(b){ if(b.y===y) evB[m]=(evB[m]||0)+1; }); (M.sells||[]).forEach(function(b){ if(b.y===y) evS[m]=(evS[m]||0)+1; }); });
-  } else DATA.trades.forEach(function(t){ if(t.y!==y) return; evB[t.buyYm]=(evB[t.buyYm]||0)+1; if(t.sellYm) evS[t.sellYm]=(evS[t.sellYm]||0)+1; });
-  if(buyYm && !evB[buyYm]) evB[buyYm]=1;                                         // 보유 중인 마지막 구매·예정 주문은 거래 기록에 아직 없음
-  if(sellYm && !evS[sellYm]) evS[sellYm]=1;
-  var mark=function(ym, up, cnt){
+    Object.keys(LED.months).forEach(function(m){ var M=LED.months[m]; (M.buys||[]).forEach(function(b){ if(b.y===y) addE(evB,pB,m,b.px); }); (M.sells||[]).forEach(function(b){ if(b.y===y) addE(evS,pS,m,sellPx(b)); }); });
+  } else DATA.trades.forEach(function(t){ if(t.y!==y) return; addE(evB,pB,t.buyYm,t.buyPx); if(t.sellYm) addE(evS,pS,t.sellYm,t.sellPx); });
+  if(buyYm && !evB[buyYm]) addE(evB,pB,buyYm,buyPxHint);                          // 보유 중인 마지막 구매·예정 주문은 거래 기록에 아직 없음
+  if(sellYm && !evS[sellYm]) addE(evS,pS,sellYm,null);
+  var haloC=cssv('--card')||'#fff', buyPxHint=null;
+  var fmtP=function(v){ return v>=1000?Math.round(v).toLocaleString():v>=100?v.toFixed(1):v.toFixed(2); };
+  var mark=function(ym, up, cnt, prs){
     var p=posOf(ym); if(p<s0||p>e) return;
     var x=X(p);
     for(var q=0;q<cnt;q++){
-      var yy=up?Y(u.l[p])+4+q*11:Y(u.h[p])-4-q*11;
-      g.fillStyle=up?buyC:sellC; g.beginPath();
-      if(up){ g.moveTo(x,yy); g.lineTo(x-5,yy+9); g.lineTo(x+5,yy+9); }
-      else { g.moveTo(x,yy); g.lineTo(x-5,yy-9); g.lineTo(x+5,yy-9); }
-      g.closePath(); g.fill();
+      var pr=prs[q], has=pr!=null&&pr>0;
+      var tip=has?Y(Math.min(hi,Math.max(lo,pr))):(up?Y(u.l[p])+4+q*11:Y(u.h[p])-4-q*11);   // 체결가를 알면 화살촉이 그 가격에 닿게, 모르면 예전처럼 캔들 아래·위
+      var d=up?1:-1, w=7, hh=12;
+      if(has){                                                                  // 체결가 위치를 가로 눈금 선으로도 표시(보는 사람이 정확한 높이를 찾기 쉽게)
+        g.save(); g.strokeStyle=up?buyC:sellC; g.lineWidth=1.2; g.globalAlpha=.85; g.setLineDash([3,3]);
+        g.beginPath(); g.moveTo(x-w-14,tip); g.lineTo(x+w+14,tip); g.stroke(); g.restore();
+      }
+      g.beginPath(); g.moveTo(x,tip); g.lineTo(x-w,tip+d*hh); g.lineTo(x+w,tip+d*hh); g.closePath();
+      g.lineWidth=2.4; g.strokeStyle=haloC; g.stroke();                         // 흰 테두리로 캔들 위에서도 눈에 띄게
+      g.fillStyle=up?buyC:sellC; g.fill();
+      if(has){                                                                  // 체결가 숫자(화살표 옆, 가장자리면 반대쪽)
+        var lab=fmtP(pr); g.font='bold 10px -apple-system,sans-serif'; g.textBaseline='middle';
+        var right=x<W2-R-60; g.textAlign=right?'left':'right'; var tx=x+(right?w+3:-w-3), ty2=tip+d*(hh*0.55);
+        g.lineWidth=3; g.strokeStyle=haloC; g.strokeText(lab,tx,ty2); g.fillStyle=up?buyC:sellC; g.fillText(lab,tx,ty2); g.textBaseline='alphabetic'; g.textAlign='left';
+      }
     }
   };
-  Object.keys(evB).forEach(function(k){ mark(k,true,evB[k]); });
-  Object.keys(evS).forEach(function(k){ mark(k,false,evS[k]); });
+  Object.keys(evB).forEach(function(k){ mark(k,true,evB[k],pB[k]); });
+  Object.keys(evS).forEach(function(k){ mark(k,false,evS[k],pS[k]); });
   if(canPan){                                                                   // 아래 가는 막대: 전체 기간 중 지금 보는 위치(옆으로 끌면 이동)
     var tl=L, tw=W2-L-R, ty=H-3, tot=yms.length;
     g.strokeStyle=line; g.lineWidth=3; g.lineCap='round'; g.beginPath(); g.moveTo(tl,ty); g.lineTo(tl+tw,ty); g.stroke();
