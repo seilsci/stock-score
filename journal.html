@@ -1531,9 +1531,12 @@ function planCore(o){
     });
     while(taxOf11(g11)-cash>0 && pool.length){
       var bi=0; pool.forEach(function(q,i){ var a=q.pri, c2=pool[bi].pri; if(a[0]<c2[0]||(a[0]===c2[0]&&(a[1]<c2[1]||(a[1]===c2[1]&&a[2]<c2[2])))) bi=i; });
-      var q=pool.splice(bi,1)[0], h2=q.h, fxv2=q.us?o.fx:1, val2=h2.sh*q.price*fxv2, feeR2=q.us?usFee:krFee, taxR2=q.us?0:(isEtfHold(h2)?0:krTaxY(+o.nowYm)), got2=val2*(1-feeR2-taxR2);
-      sells.push({y:h2.y,name:h2.name||h2.y,us:q.us,sh:h2.sh,px:q.price,fxUsed:q.us?o.fx:null,gross:val2,fee:val2*feeR2,feeRate:feeR2,tax:val2*taxR2,taxRate:taxR2,amt:got2,basis:h2.basis,ret:got2/h2.basis-1,reason:'taxPresell',buyYm:h2.buyYm,buyPx:h2.buyPx});
-      cash+=got2; if(q.us) g11+=got2-h2.basis; watch=watch.filter(function(w){ return w.y!==h2.y; });
+      var q=pool[bi], h2=q.h, fxv2=q.us?o.fx:1, feeR2=q.us?usFee:krFee, taxR2=q.us?0:(isEtfHold(h2)?0:krTaxY(+o.nowYm));
+      var perGot=q.price*fxv2*(1-feeR2-taxR2), gPer=q.us?perGot-h2.basis/h2.sh:0, gNow=g11, cNow=cash;      // 필요한 만큼만(정수 주) 판다: 그 이익의 세금까지 넣어 현금이 세금 이상이 되는 가장 작은 주 수
+      var okN=function(n){ return cNow+n*perGot>=taxOf11(gNow+n*gPer); }, lo=1, hi=Math.ceil(h2.sh); while(lo<hi){ var mid=(lo+hi)>>1; if(okN(mid)) hi=mid; else lo=mid+1; }
+      var nSell=Math.min(lo,h2.sh), whole=nSell>=h2.sh, fr=nSell/h2.sh, val2=nSell*q.price*fxv2, got2=val2*(1-feeR2-taxR2), basis2=h2.basis*fr;
+      sells.push({y:h2.y,name:h2.name||h2.y,us:q.us,sh:nSell,px:q.price,fxUsed:q.us?o.fx:null,gross:val2,fee:val2*feeR2,feeRate:feeR2,tax:val2*taxR2,taxRate:taxR2,amt:got2,basis:basis2,ret:got2/basis2-1,reason:'taxPresell',buyYm:h2.buyYm,buyPx:h2.buyPx,part:!whole});
+      cash+=got2; if(q.us) g11+=got2-basis2; if(whole){ pool.splice(bi,1); watch=watch.filter(function(w){ return w.y!==h2.y; }); } else break;
     }
   }
   var taxPaid=0;
@@ -1663,13 +1666,14 @@ function scoreFromBars(y, brk, us){          // 돌파한 달 시점 점수(0~10
   var f=featsFromBars(y,brk,us); if(!f) return null;
   var e=explainFeats(Object.keys(f).map(function(k){ return [k,f[k]]; })); return e?e.score:null;
 }
-function planHoldings(P){                    // 예상 보유 = 지난달 보유 − 판매 예정 + 구매 예정 (현재 가격 기준)
-  var nowYm=PLAN_YM, sold={}; P.sells.forEach(function(x){ sold[x.y+'|'+x.buyYm]=1; });
+function planHoldings(P){                    // 예상 보유 = 지난달 보유 − 판매 예정 + 구매 예정 (현재 가격 기준). 일부만 파는 판매(세금 몫 미리 확보)는 판 주 수만큼만 뺌
+  var nowYm=PLAN_YM, sold={}; P.sells.forEach(function(x){ var k=x.y+'|'+x.buyYm; sold[k]=sold[k]||{sh:0,basis:0}; sold[k].sh+=x.sh; sold[k].basis+=x.basis; });
   var out=[];
   (P.base||[]).forEach(function(h){
-    if(sold[h.y+'|'+h.buyYm]) return;
+    var sd=sold[h.y+'|'+h.buyYm], sh=h.sh, basis=h.basis;
+    if(sd){ if(sd.sh>=h.sh-1e-9) return; sh=h.sh-sd.sh; basis=h.basis-sd.basis; }
     var b=barsOf(h.y), i=b&&b.pos[nowYm], cur=(b&&i!=null)?b.cs[i]:h.curPx;
-    out.push({y:h.y,name:h.name,buyYm:h.buyYm,buyPx:h.buyPx,curPx:cur,sh:h.sh,basis:h.basis,ret:cur/h.buyPx-1,score:h.score});
+    out.push({y:h.y,name:h.name,buyYm:h.buyYm,buyPx:h.buyPx,curPx:cur,sh:sh,basis:basis,ret:cur/h.buyPx-1,score:h.score});
   });
   P.buys.forEach(function(x){
     if(P.fd&&sold[x.y+'|'+nowYm]) return;                                  // 첫날 구매 방식: 산 달 말에 판매 예정이면 보유에서 뺌
@@ -1710,7 +1714,7 @@ function renderPlanView(){
   var FDP=!!P.fd;
   var depRow=function(){ var dd=planDep(); bal+=dd; row('dep','입금',(START_YM===PLAN_YM?'첫달 투자금':'월 적립금'),'',signWon(dd),bal); };
   var sellRows=function(){
-    if(P.sells.some(function(x){ return x.reason==='taxPresell'; })) html+='<div class="sum-note" style="margin:8px 4px 0">🧾 <b>세금 몫 미리 확보</b>: 올해 미국 주식 양도세가 11월 말 현금(이번 달 입금 제외)보다 많아서, 모자란 만큼 미리 팝니다. 1순위는 이평 아래라 유예 중인 종목, 2순위는 점수가 낮은 종목이고, 팔면 생기는 이익의 세금도 다시 계산해 넣었어요. 이렇게 하면 12월 말에 보유 종목을 억지로 팔거나 12월·1월 구매를 못 하는 일이 없습니다.</div>';
+    if(P.sells.some(function(x){ return x.reason==='taxPresell'; })) html+='<div class="sum-note" style="margin:8px 4px 0">🧾 <b>세금 몫 미리 확보</b>: 올해 미국 주식 양도세가 11월 말 현금(이번 달 입금 제외)보다 많아서, 모자란 세금만큼만(일부 주식만) 미리 팝니다. 1순위는 이평 아래라 유예 중인 종목, 2순위는 점수가 낮은 종목이고, 팔면 생기는 이익의 세금도 다시 계산해 넣었어요. 이렇게 하면 12월 말에 보유 종목을 억지로 팔거나 12월·1월 구매를 못 하는 일이 없습니다.</div>';
   P.sells.forEach(function(x){
     bal+=x.amt;
     var hm=holdMonths(x.buyYm,ym), rr=REASON[x.reason]||x.reason||'';
@@ -1859,10 +1863,12 @@ function simulateFrom(S){
       var taxOfN=function(){ return C.us.cg_tax_rate*Math.max(0,(usGain[Y]||0)-C.us.cg_exemption_krw); };
       while(holds.length && taxOfN()-cash>0){
         var bj=0, bpr=null; holds.forEach(function(h,j){ var bb2=barsOf(h.y), ii=bb2&&bb2.pos[ym], pr=closeAt(h.y,ym,h.last), xm=(bb2&&ii!=null)?exitMaAt(bb2.cs,ii,h.y):null, rel=xm?pr/xm:9, p=(xm!=null&&pr<xm)?[0,rel,0]:[1,(h.score==null?0:+h.score),rel]; if(!bpr||p[0]<bpr[0]||(p[0]===bpr[0]&&(p[1]<bpr[1]||(p[1]===bpr[1]&&p[2]<bpr[2])))){ bpr=p; bj=j; } });
-        var hh=holds.splice(bj,1)[0], px2=closeAt(hh.y,ym,hh.last), val3=hh.sh*px2*(hh.us?fx:1), feeR3=hh.us?usFee:krFee, taxR3=hh.us?0:(hh.etf?0:krTaxY(+ym)), got3=val3*(1-feeR3-taxR3);
-        if(hh.us) usGain[Y]=(usGain[Y]||0)+got3-hh.basis;
-        sells.push({y:hh.y,name:hh.name,us:hh.us,sh:hh.sh,px:px2,fxUsed:hh.us?fx:null,gross:val3,fee:val3*feeR3,feeRate:feeR3,tax:val3*taxR3,taxRate:taxR3,amt:got3,basis:hh.basis,ret:got3/hh.basis-1,reason:'taxPresell',buyYm:hh.buyYm});
-        cash+=got3;
+        var hh=holds[bj], px2=closeAt(hh.y,ym,hh.last), feeR3=hh.us?usFee:krFee, taxR3=hh.us?0:(hh.etf?0:krTaxY(+ym)), perG=px2*(hh.us?fx:1)*(1-feeR3-taxR3), gP=hh.us?perG-hh.basis/hh.sh:0, gN=usGain[Y]||0, cN=cash;
+        var okM=function(n){ return cN+n*perG>=C.us.cg_tax_rate*Math.max(0,gN+n*gP-C.us.cg_exemption_krw); }, lo2=1, hi2=Math.ceil(hh.sh); while(lo2<hi2){ var md=(lo2+hi2)>>1; if(okM(md)) hi2=md; else lo2=md+1; }
+        var nS=Math.min(lo2,hh.sh), whole3=nS>=hh.sh, fr3=nS/hh.sh, val3=nS*px2*(hh.us?fx:1), got3=val3*(1-feeR3-taxR3), basis3=hh.basis*fr3;
+        if(hh.us) usGain[Y]=(usGain[Y]||0)+got3-basis3;
+        sells.push({y:hh.y,name:hh.name,us:hh.us,sh:nS,px:px2,fxUsed:hh.us?fx:null,gross:val3,fee:val3*feeR3,feeRate:feeR3,tax:val3*taxR3,taxRate:taxR3,amt:got3,basis:basis3,ret:got3/basis3-1,reason:'taxPresell',buyYm:hh.buyYm,part:!whole3});
+        cash+=got3; if(whole3) holds.splice(bj,1); else { hh.sh-=nS; hh.basis-=basis3; break; }
       }
     }
     var tax=0, depM=(ym===yms[0]?curInit():dep);                                     // 첫 달에는 첫달 투자금만 넣고(그 달 월 불입금은 따로 안 더함), 이후 매달 월 불입금

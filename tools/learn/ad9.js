@@ -1488,7 +1488,7 @@ function build(c, which) {
       const isSame = (y, k) => { if (!has(y, k)) return null; const a = net(y, k, 'f'), b = net(y, k, 'i'); return (a > 0 && b > 0) || (a < 0 && b < 0); };
       const flowOK = drop(isSame)(mBase);
       add(S('A 규칙'), '지금(모자라면 12월 말에 보유 종목을 비율대로 판매)', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6 } });
-      add(S('B 미리 확보'), '11월 말 세금 몫 미리 확보(유예 중 → 점수 낮은 순)', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, taxPresell: true } });
+      add(S('B 미리 확보'), '11월 말 세금 몫만큼만 미리 판다(유예 중 → 점수 낮은 순)', { cand: flowOK, rule: rule10, o: { exitMaFn: KR6, taxPresell: true } });
       posts.push(() => safe('49 세금 몫', () => {
         const mine = V.filter(v => String(v.sec).startsWith('49-') && v.full && v.full.yearly), ys = YEARS_ALL.slice();
         const per = [['처음 보는 기간', ys.filter(Y => Y < 2012)], ['2012~', ys.filter(Y => Y >= 2012)], ['전체', ys]];

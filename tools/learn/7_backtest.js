@@ -461,7 +461,13 @@ function simulate(pickFn, N, C, opt = {}, dep = DEP) {
       const pri = h => ((h.graceCnt || 0) > 0 ? [0, relOf(h), 0] : [1, h.buyScore ?? 0, relOf(h)]);       // 1순위 이평 아래라 유예 중인 종목(많이 아래인 것부터), 2순위 점수가 낮은 것부터(같으면 이평에 가까운 것부터)
       while (holds.length && usTax(Yp) - cash > 0) {
         let best = null, bp = null; for (const h of holds) { const p = pri(h); if (!bp || p[0] < bp[0] || (p[0] === bp[0] && (p[1] < bp[1] || (p[1] === bp[1] && p[2] < bp[2])))) { best = h; bp = p; } }
-        const got = sellCash(best, k, 'taxPresell'); cash += got; presellN++; presellAmt += got; holds = holds.filter(x => x !== best);
+        // 필요한 만큼만 판다: n주를 팔았을 때 (그 이익에 붙는 세금까지 계산해) 현금이 세금 이상이 되는 가장 작은 n(정수 주). 다 팔아도 모자라면 전부 팔고 다음 종목으로
+        const perGot = best.us ? best.last * fxf(k) * (1 - usFee) : best.last * (1 - C.kr.commission - ((best.etf && C.kr.etf_exempt) ? 0 : krTax(C, ymOf(k)))), gPer = best.us ? perGot - best.basis / best.sh : 0;
+        const ok = n => cash + n * perGot >= C.us.cg_tax_rate * Math.max(0, (usGain[Yp] || 0) + n * gPer - C.us.cg_exemption_krw);
+        let lo = 1, hi = Math.ceil(best.sh); while (lo < hi) { const mid = (lo + hi) >> 1; if (ok(mid)) hi = mid; else lo = mid + 1; }
+        const n = Math.min(lo, best.sh);
+        if (n >= best.sh) { const got = sellCash(best, k, 'taxPresell'); cash += got; presellN++; presellAmt += got; holds = holds.filter(x => x !== best); }
+        else { const hh = Object.assign({}, best, { sh: n, basis: best.basis * n / best.sh, _part: true }); const got = sellCash(hh, k, 'taxPresell'); best.sh -= n; best.basis -= hh.basis; cash += got; presellN++; presellAmt += got; }
       }
     }
     let depK = (opt.depEvery ? ((k - START) % opt.depEvery === 0 ? dep * opt.depEvery : 0) : dep) + (opt.lump && k === START ? opt.lump : 0);
